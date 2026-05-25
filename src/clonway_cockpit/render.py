@@ -195,13 +195,21 @@ def render_needs_you(
 
 def _letters_cue(letters: list[str]) -> str:
     """The second-gutter range cue for the toolkit — "A–G" style — derived from
-    the actual letters laid out. A single letter renders just itself; two or more
-    render "first–last"."""
+    the actual letters laid out. Contiguous runs collapse to "first–last"; a gap
+    splits into separate runs joined with ", " so the cue never asserts a phantom
+    letter. So a contiguous [A..G] stays "A–G", the fleet's gapped [A,B,C,D,E,G]
+    (no F) reads "A–E, G" — matching the legend instead of implying a live F — and
+    a lone letter renders just itself."""
     if not letters:
         return ""
-    if len(letters) == 1:
-        return letters[0]
-    return f"{letters[0]}–{letters[-1]}"
+    runs: list[list[str]] = [[letters[0]]]
+    for letter in letters[1:]:
+        # Adjacency by code point: 'F' follows 'E', so a missing 'F' breaks the run.
+        if ord(letter) == ord(runs[-1][-1]) + 1:
+            runs[-1].append(letter)
+        else:
+            runs.append([letter])
+    return ", ".join(run[0] if len(run) == 1 else f"{run[0]}–{run[-1]}" for run in runs)
 
 
 def render_toolkit(
@@ -219,7 +227,8 @@ def render_toolkit(
     gutter cue ("toolkit" for shelves, "workers" for the roster). Both default so
     the extracting worker (xbook) is unchanged. When a custom ``shelves`` is given,
     exactly those letters are laid out; the second-gutter range cue is derived from
-    them (e.g. "A–E"), while the default keeps the canonical "A–G"."""
+    them, gap-aware (e.g. "A–E" for five workers, "A–E, G" for the bridge's gapped
+    roster — never a phantom "A–G"), while the default keeps the canonical "A–G"."""
     shelf_map = shelves or SHELVES
     present = {s.shelf for s in specs}
 
@@ -843,13 +852,20 @@ class _FilterRow(Protocol):
 
 
 def render_filter(
-    term: str, matches: Sequence[_FilterRow], *, selected: int | None = None
+    term: str,
+    matches: Sequence[_FilterRow],
+    *,
+    selected: int | None = None,
+    title: str | None = None,
 ) -> RenderableType:
+    # The header title defaults to xbook's single-worker "Find a tool"; a worker
+    # whose filter finds more than tools (the Fleet Cockpit finds workers AND needs)
+    # passes its own title so the header names what's actually being searched.
     typed = Text()
     typed.append("  filter  ", style=DIM)
     typed.append(term or "type to filter…", style="bold" if term else DIM)
     parts: list[RenderableType] = [
-        screen_header("filter", "Find a tool", "⏎ open · esc back"),
+        screen_header("filter", title or "Find a tool", "⏎ open · esc back"),
         Text(""),
         typed,
         Text(""),
@@ -882,12 +898,12 @@ def _legend(state: CockpitState) -> Text:
     #    Fleet Cockpit's read-only pills) passes state.legend_hint (e.g. "open
     #    worker") so the dead "sync" key isn't advertised.
     #  * the shelf segment — by default the letter-range cue ("A–E" for a
-    #    five-worker roster, derived from state.shelves' actual letters so it never
-    #    asserts a phantom range) plus the verb "browse"; the default (shelves=None)
-    #    stays the canonical "A–G to browse". A worker whose computed range would
-    #    lie — the Fleet Cockpit's A,B,C,D,E,G shelves render "A–G", implying F is a
-    #    live browsable letter — passes state.shelf_hint to render the whole segment
-    #    verbatim instead (e.g. "A–E, G open a worker").
+    #    five-worker roster, derived from state.shelves' actual letters; gap-aware,
+    #    so the Fleet Cockpit's A,B,C,D,E,G shelves render "A–E, G", never a phantom
+    #    "A–G") plus the verb "browse"; the default (shelves=None) stays the canonical
+    #    "A–G to browse". A worker that wants its own verb — the Fleet Cockpit says a
+    #    letter "open a worker", not "browse" — passes state.shelf_hint to render the
+    #    whole segment verbatim instead (e.g. "A–E, G open a worker").
     enter_cue = state.legend_hint if state.legend_hint is not None else "open / sync"
     letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
     range_cue = _letters_cue(letters) if state.shelves is not None else "A–G"
