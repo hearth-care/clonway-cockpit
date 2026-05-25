@@ -84,12 +84,35 @@ directly.
 
 A worker MUST declare its **forward-looking** alerts, not just its right-now
 ones. This is the difference between a reactive log and a fleet that warns you
-*before* the deadline. Put them in a `scan_horizon()`-style function (xbook's
-`signals/horizon.py` is the model: it surfaces insurance renewals and compliance
-filings with real `due_at`, emit-only, never added to the live cockpit render).
-This is the one place your worker says "here's what's coming" — give every
-horizon item a real `due_at` so urgency can sharpen as the date approaches
-without re-raising the signal.
+*before* the deadline. A horizon scan is just the `(*, today, now) ->
+Sequence[Signal]` shape `emit_signals(build=...)` already consumes — the
+framework names it `ScanHorizon` in `clonway_cockpit.signals.horizon`. This is
+the one place your worker says "here's what's coming" — give every horizon item
+a real `due_at` so urgency can sharpen as the date approaches without re-raising
+the signal.
+
+The shared abstraction (additive — your existing `build_<worker>_signals` keeps
+working as-is):
+
+```python
+from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
+
+@scan_horizon                                     # marks this as a horizon scan
+def scan_insurance(*, today, now): ...            # -> Sequence[Signal], real due_at
+
+@scan_horizon
+def scan_compliance(*, today, now): ...
+
+# compose_horizon stitches one-or-more scanners into the single build= callable
+# emit_signals expects (concatenated in declaration order; ranking happens later).
+build_<worker>_signals = compose_horizon(scan_insurance, scan_compliance)
+```
+
+`compose_horizon()` with no scanners returns an always-empty `build`; with one
+it's a passthrough. The `@scan_horizon` marker is discoverable via
+`is_scan_horizon(fn)` so the C6 worker template (and a future lint/test) can
+assert a worker actually ships a horizon — today that's a guide rule, not yet
+code-enforced.
 
 Examples from the fleet:
 
