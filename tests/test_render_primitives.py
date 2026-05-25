@@ -52,6 +52,26 @@ def test_cockpit_screen_has_three_regions():
     assert "Bills overdue" in out  # ranked needs-you item
 
 
+def test_header_app_label_defaults_to_xbook():
+    """The header product name defaults to "xbook" so the worker that extracted
+    this framework is unchanged."""
+    out = _capture(render.render_header(_state()))
+    assert "xbook" in out
+
+
+def test_header_app_label_is_configurable():
+    """A worker (the Fleet Cockpit) can override the header product name."""
+    state = CockpitState(
+        tenant_name="Clonway Care",
+        app_label="Clonway Office",
+        date_label="Fri 23 May 2026",
+        time_label="06:45",
+    )
+    out = _capture(render.render_header(state))
+    assert "Clonway Office" in out
+    assert "xbook" not in out
+
+
 def test_render_uses_no_emoji():
     out = _capture(render.render_cockpit_screen(_state(), []))
     assert all(ord(ch) < 0x1F000 for ch in out)  # no emoji codepoints

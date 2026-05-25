@@ -105,7 +105,7 @@ def page(body: RenderableType) -> RenderableType:
 
 def render_header(state: CockpitState) -> RenderableType:
     t = Text()
-    t.append("xbook", style="bold")
+    t.append(state.app_label, style="bold")
     t.append(" · ", style=DIM)
     t.append(state.date_label, style=ACCENT)
     t.append(" · ", style=DIM)
