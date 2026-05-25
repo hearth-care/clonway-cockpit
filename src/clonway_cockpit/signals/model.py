@@ -134,6 +134,31 @@ class Signal:
             "emitted_at": self.emitted_at.isoformat(),
         }
 
+    @classmethod
+    def from_wire(cls, d: dict) -> Signal:
+        """Reconstruct a Signal from a ``to_wire()`` dict.
+
+        Tolerant of slightly-old/partial wire lines: ``state``, ``source_ref``,
+        ``source_id``, ``focus``, and ``capability_key`` are optional and
+        default to safe values so old messages still parse cleanly.
+        """
+        return cls(
+            worker=d["worker"],
+            kind=d["kind"],
+            title=d["title"],
+            detail=d["detail"],
+            level=d["level"],
+            urgency=d["urgency"],
+            capability_key=d.get("capability_key"),
+            focus=d.get("focus"),
+            dedup_key=d["dedup_key"],
+            emitted_at=datetime.fromisoformat(d["emitted_at"]),
+            due_at=Date.fromisoformat(d["due_at"]) if d.get("due_at") else None,
+            state=d.get("state", "open"),
+            source_ref=d.get("source_ref"),
+            source_id=d.get("source_id"),
+        )
+
 
 def build_signals(
     needs: tuple[NeedsItem, ...],
