@@ -43,6 +43,10 @@ class NeedsItem:
 @dataclass(frozen=True)
 class CockpitState:
     tenant_name: str
+    # The product name in the header — defaulted to "xbook" so the worker that
+    # extracted this framework is unchanged; another worker (the Fleet Cockpit)
+    # passes its own label, e.g. "Clonway Office".
+    app_label: str = "xbook"
     date_label: str = ""  # "Mon 27 Apr 2026"
     time_label: str = ""  # "08:14"
     tenant_id: str | None = None  # "9b40…"
