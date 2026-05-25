@@ -20,16 +20,15 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from rich.console import RenderableType
 
 from clonway_cockpit import keys, render, walk
+from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
-from clonway_cockpit.registry import get_capabilities as _get_capabilities
-from clonway_cockpit.registry import get_capability as _get_capability
 from clonway_cockpit.state import CockpitState
 
 # How long the cockpit sleeps between progress frames — ~8 redraws/second, fast
@@ -88,6 +87,13 @@ class Host:
     # Fired once per cockpit open — catalog registration + best-effort signal
     # emit. Worker-specific; the loop just calls it before the first paint.
     on_open: Callable[[], None]
+    # The worker's capability registry accessors. A worker may keep its own
+    # registry dict (e.g. xbook does, so its tests can snapshot/restore it) rather
+    # than share ``clonway_cockpit.registry``'s module global — so the loop reads
+    # capabilities through the host, not a hard import. Default to the framework
+    # registry for a worker that does share it.
+    get_capabilities: Callable[[], list[CapabilitySpec]] = field(default=_registry.get_capabilities)
+    get_capability: Callable[[str], CapabilitySpec | None] = field(default=_registry.get_capability)
 
 
 def run_with_progress[T](
@@ -199,7 +205,7 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         else:
             sel %= len(items)
         selection = items[sel]
-        screen.update(r.render_cockpit_screen(state, _get_capabilities(), selection=selection))
+        screen.update(r.render_cockpit_screen(state, host.get_capabilities(), selection=selection))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
@@ -242,7 +248,7 @@ def _activate(
         host.activate_pill(state.pills[ref], screen, read_key)
         return
     need = state.needs[ref]
-    if need.capability_key and _get_capability(need.capability_key):
+    if need.capability_key and host.get_capability(need.capability_key):
         # A needs-you item can carry a focus (e.g. "Bills overdue" → "overdue"),
         # threaded into the walk's WizardContext so it opens scoped to that subset.
         _open_capability(host, need.capability_key, screen, read_key, focus=need.focus)
@@ -251,7 +257,7 @@ def _activate(
 
 
 def _shelf(host: Host, letter: str, screen: Screen, read_key: Callable[[], str]) -> None:
-    specs = [s for s in _get_capabilities() if s.shelf == letter]
+    specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
         return
     n = len(specs)  # navigable rows = the specs plus a trailing "Back"
@@ -310,7 +316,7 @@ def _open_capability(
     *,
     focus: str | None = None,
 ) -> None:
-    spec = _get_capability(key)
+    spec = host.get_capability(key)
     if spec is None:
         return
     # The single chokepoint where any capability is opened (walks, reports, cards,
@@ -356,7 +362,7 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                 fixes,
                 selected=sel if runnable else None,
                 usage=host.usage.load(),  # best-effort; {} on any failure
-                specs=_get_capabilities(),
+                specs=host.get_capabilities(),
             )
         )
         key = read_key()
@@ -412,7 +418,7 @@ def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
     """Type-to-filter the catalog by name; ↑↓ to move, Enter opens, Esc cancels."""
     term, sel = "", 0
     while True:
-        matches = _matches(term)
+        matches = _matches(host, term)
         if matches:
             sel %= len(matches)
         screen.update(r.render_filter(term, matches, selected=(sel if matches else None)))
@@ -433,8 +439,8 @@ def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             term, sel = term + key, 0
 
 
-def _matches(term: str) -> list[CapabilitySpec]:
+def _matches(host: Host, term: str) -> list[CapabilitySpec]:
     t = term.strip().lower()
     if not t:
         return []
-    return [s for s in _get_capabilities() if t in s.title.lower() or t in s.summary.lower()]
+    return [s for s in host.get_capabilities() if t in s.title.lower() or t in s.summary.lower()]
