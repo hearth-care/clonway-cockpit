@@ -499,6 +499,7 @@ def render_doctor(
     selected: int | None = None,
     usage: dict | None = None,
     specs: list[CapabilitySpec] | None = None,
+    app_label: str = "xbook",
 ) -> RenderableType:
     """The Doctor screen — the same probe table + verdict as the static view, but
     the fixes become a navigable list. ``selected`` indexes the RUNNABLE fixes
@@ -509,8 +510,11 @@ def render_doctor(
 
     When ``usage`` is provided, a calm read-only "what you reach for" section is
     appended BELOW the fixes (most-used / never-used / completion) — secondary to
-    the health probes. ``usage=None`` omits it entirely (today's behaviour)."""
-    head = Text("xbook doctor ", style="bold")
+    the health probes. ``usage=None`` omits it entirely (today's behaviour).
+
+    ``app_label`` controls the screen title (e.g. "xbook doctor" vs "Clonway Office
+    doctor"); defaults to "xbook" so existing callers are unchanged."""
+    head = Text(f"{app_label} doctor ", style="bold")
     head.append(f"deep health check · {len(probes)} probes", style=DIM)
 
     probe_body = Text()
