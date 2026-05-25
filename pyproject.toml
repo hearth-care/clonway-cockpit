@@ -1,0 +1,58 @@
+[project]
+name = "clonway-cockpit"
+version = "0.1.0"
+description = "Shared interactive-cockpit framework spine extracted from xbook (C1) — walk machine + write gate, capability registry, render primitives, Signal model."
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    "rich>=15.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clonway_cockpit"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.2",
+    "pytest>=9.0.3",
+    "ruff>=0.15.14",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# -ra            : report all non-pass outcomes at end of run
+# --strict-markers : reject unregistered pytest marks (catches typos)
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line-too-long — formatter handles this
+    "E741",  # ambiguous-variable-name — over-strict; "l"/"I" fine in narrow scopes
+]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/clonway_cockpit"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true

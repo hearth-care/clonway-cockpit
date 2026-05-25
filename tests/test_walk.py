@@ -1,0 +1,345 @@
+from rich.console import Console
+
+from clonway_cockpit import keys, walk
+from clonway_cockpit.registry import BlastRadius, WizardContext
+from clonway_cockpit.walk import Precondition, Remedy, Step, StepResult
+
+
+def _ctx(confirms):
+    cq = list(confirms)
+
+    def _confirm(prompt):
+        return cq.pop(0) if cq else False
+
+    return WizardContext(
+        state={},
+        client=None,
+        console=Console(record=True),
+        input_fn=lambda p, d="": "",
+        confirm_fn=_confirm,
+    )
+
+
+def _key_ctx(presented, keys_seq):
+    """A screen-mode context: records presented renderables; reads scripted keys."""
+    kq = list(keys_seq)
+
+    def _present(renderable):
+        presented.append(renderable)
+
+    def _read_key():
+        return kq.pop(0) if kq else keys.ESC
+
+    return WizardContext(
+        state={},
+        client=None,
+        console=Console(record=True),
+        input_fn=lambda p, d="": "",
+        confirm_fn=lambda p: False,
+        present=_present,
+        read_key=_read_key,
+    )
+
+
+def _br():
+    return BlastRadius(
+        summary="Sets PlannedPaymentDate.",
+        details=("Does NOT post payments.",),
+        reversible="Idempotent within 24h.",
+    )
+
+
+def test_preflight_blocks_when_a_precondition_fails():
+    ctx = _ctx([True])  # operator would continue, but a precondition is red
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=False, detail="no token")],
+        equivalent_cli="uv run xbook plan",
+    )
+    assert ok is False
+
+
+def test_apply_is_never_reached_without_explicit_confirm():
+    posted = {"n": 0}
+
+    def _propose(ctx, bag):
+        return StepResult(ok=True, data={"plan": "p.json"})
+
+    def _apply(ctx, bag):
+        if not walk.confirm_apply(
+            ctx,
+            prompt="Apply now? [a]pply / [c]ancel",
+            equivalent_cli="uv run xbook apply p.json --confirm",
+        ):
+            return StepResult(ok=True, message="cancelled — nothing posted")
+        posted["n"] += 1
+        return StepResult(ok=True)
+
+    ctx = _ctx([True, False])  # continue at preflight, decline at apply
+    walk.run_walk(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+        steps=[Step("propose", _propose), Step("apply", _apply)],
+    )
+    assert posted["n"] == 0  # the write never happened
+
+
+def test_equivalent_cli_is_shown():
+    """preflight renders the equivalent-CLI chip (console fallback)."""
+    ctx = _ctx([True])
+    walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+    )
+    assert "uv run xbook plan" in ctx.console.export_text()
+
+
+def test_preflight_shows_step_counter_via_run_walk():
+    """run_walk() passes ``step 1 of N`` to preflight so the header includes the counter."""
+    ctx = _ctx([True])
+
+    def _noop(c, bag):
+        return StepResult(ok=True)
+
+    walk.run_walk(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+        steps=[Step("propose", _noop), Step("apply", _noop)],
+    )
+    out = ctx.console.export_text()
+    assert "step 1 of 3" in out  # 2 steps + preflight = 3 total
+
+
+def test_preflight_no_progress_when_called_directly():
+    """preflight() without ``progress`` still renders the escape hint without a counter."""
+    ctx = _ctx([True])
+    walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+    )
+    out = ctx.console.export_text()
+    assert "esc" in out and "cancel" in out
+    assert "step" not in out
+
+
+def test_blast_radius_not_is_highlighted():
+    """A blast-radius detail containing NOT is rendered (the token appears in output)."""
+    ctx = _ctx([True])
+    walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),  # details = ("Does NOT post payments.",)
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+    )
+    out = ctx.console.export_text()
+    # The word NOT must appear in the rendered text
+    assert "NOT" in out
+
+
+# --- Screen-mode (cockpit) path -----------------------------------------------
+
+
+def test_preflight_screen_mode_continues_on_enter():
+    """With present + read_key bound, preflight draws ONE screen and reads ONE key;
+    ENTER continues."""
+    presented: list = []
+    ctx = _key_ctx(presented, [keys.ENTER])
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+        progress="step 1 of 2",
+    )
+    assert ok is True
+    assert len(presented) == 1  # exactly one framed screen drawn
+
+
+def test_preflight_screen_mode_blocks_when_precondition_fails():
+    """A red precondition draws the screen, waits for a key, and returns False
+    without reading a continue key."""
+    presented: list = []
+    ctx = _key_ctx(presented, [keys.ENTER])  # the single key is the 'press any key' ack
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=False, detail="no token")],
+        equivalent_cli="uv run xbook plan",
+    )
+    assert ok is False
+    assert len(presented) == 1
+
+
+# --- Inline precondition remedy (FIX 1: stale apply-lock) --------------------
+
+
+def test_preflight_offers_remedy_key_for_blocked_precondition():
+    """A blocked precondition carrying a Remedy makes the footer offer its
+    one-key hint instead of the dead-end 'fix the above first' message."""
+    presented: list = []
+    # esc → anything-other-than-the-remedy-key returns False without running it.
+    ctx = _key_ctx(presented, [keys.ESC])
+    remedy = Remedy(key="u", label="clear the stale apply lock", action=lambda: "cleared")
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Apply lock free", ok=False, remedy=remedy)],
+        equivalent_cli="uv run xbook plan",
+    )
+    assert ok is False
+    # screen-mode present is the recorder (console export is empty), so assert on
+    # the directly-rendered preflight text instead.
+    text = _render_preflight_text(remedy)
+    assert "[u]" in text and "clear the stale apply lock" in text
+
+
+def _render_preflight_text(remedy) -> str:
+    from clonway_cockpit import render
+
+    con = Console(record=True, width=120)
+    con.print(
+        render.render_preflight(
+            title="Schedule bills",
+            blast_radius=_br(),
+            preconditions=[Precondition("Apply lock free", ok=False, remedy=remedy)],
+            equivalent_cli="uv run xbook plan",
+            ready=False,
+            remedy=remedy,
+        )
+    )
+    return con.export_text()
+
+
+def test_preflight_runs_remedy_on_key_then_rechecks_and_continues():
+    """Pressing the remedy key + confirming runs the remedy (spied) and
+    re-evaluates the preconditions; once cleared, preflight returns True so the
+    operator continues from the same screen."""
+    presented: list = []
+    ran = {"n": 0}
+
+    def _action() -> str:
+        ran["n"] += 1
+        return "Removed .xbook/apply.lock"
+
+    remedy = Remedy(key="u", label="clear the stale apply lock", action=_action)
+    # keys: 'u' (offer) → ENTER (confirm) → ENTER (continue once cleared)
+    ctx = _key_ctx(presented, ["u", keys.ENTER, keys.ENTER])
+
+    # recheck flips the precondition to ok after the remedy runs.
+    def _recheck():
+        return [Precondition("Apply lock free", ok=ran["n"] > 0)]
+
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Apply lock free", ok=False, remedy=remedy)],
+        equivalent_cli="uv run xbook plan",
+        recheck=_recheck,
+    )
+    assert ran["n"] == 1  # the remedy ran exactly once
+    assert ok is True  # cleared → the operator can continue
+
+
+def test_preflight_non_remedy_key_returns_false_without_running_remedy():
+    """Any key other than the remedy key returns False (back to the cockpit) and
+    does NOT run the remedy."""
+    presented: list = []
+    ran = {"n": 0}
+    remedy = Remedy(
+        key="u",
+        label="clear the stale apply lock",
+        action=lambda: ran.__setitem__("n", ran["n"] + 1) or "x",
+    )
+    ctx = _key_ctx(presented, ["x"])  # not the remedy key
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Apply lock free", ok=False, remedy=remedy)],
+        equivalent_cli="uv run xbook plan",
+        recheck=lambda: [Precondition("Apply lock free", ok=False, remedy=remedy)],
+    )
+    assert ok is False
+    assert ran["n"] == 0  # the remedy never ran
+
+
+def test_preflight_remedy_confirm_declined_does_not_run():
+    """Pressing the remedy key but declining the one-key confirm does NOT run
+    the remedy and returns False."""
+    presented: list = []
+    ran = {"n": 0}
+    remedy = Remedy(
+        key="u",
+        label="clear the stale apply lock",
+        action=lambda: ran.__setitem__("n", ran["n"] + 1) or "x",
+    )
+    ctx = _key_ctx(presented, ["u", "n"])  # offer → decline confirm
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Apply lock free", ok=False, remedy=remedy)],
+        equivalent_cli="uv run xbook plan",
+        recheck=lambda: [Precondition("Apply lock free", ok=False, remedy=remedy)],
+    )
+    assert ok is False
+    assert ran["n"] == 0
+
+
+def test_preflight_blocked_without_remedy_is_unchanged():
+    """A blocked precondition with NO remedy keeps today's behaviour: draw the
+    screen, wait for any key, return False — never runs anything."""
+    presented: list = []
+    ctx = _key_ctx(presented, [keys.ENTER])  # the 'press any key' ack
+    ok = walk.preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=False, detail="no token")],
+        equivalent_cli="uv run xbook plan",
+    )
+    assert ok is False
+    assert len(presented) == 1  # one screen, no remedy flow
+
+
+def test_run_walk_screen_mode_drives_preflight_then_step():
+    """run_walk in screen mode: ENTER at preflight, the step runs, the result
+    screen is drawn and a key returns."""
+    presented: list = []
+    ran: list = []
+
+    def _step(ctx, bag):
+        ran.append(bag.get("progress"))
+        return StepResult(ok=True, data={"summary": "Done well."})
+
+    ctx = _key_ctx(presented, [keys.ENTER, keys.ENTER])  # continue, then ack the result
+    walk.run_walk(
+        ctx,
+        title="Schedule bills",
+        blast_radius=_br(),
+        preconditions=[Precondition("Auth valid", ok=True)],
+        equivalent_cli="uv run xbook plan",
+        steps=[Step("review", _step)],
+    )
+    assert ran == ["step 2 of 2"]  # 1 step + preflight = total 2
+    # preflight screen + result screen drawn.
+    assert len(presented) == 2

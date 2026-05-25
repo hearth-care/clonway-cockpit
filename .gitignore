@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.cockpit/
+.env
+.env.*
+dist/
+build/
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+.idea/
+# pytest-cov artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+# AI-tool scratch dirs / worktrees
+.claude/
+.claire/
+.superpowers/
