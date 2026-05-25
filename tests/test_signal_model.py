@@ -51,6 +51,7 @@ def test_build_signals_maps_one_to_one_in_order():  # T1
     [
         ("Set up xbook", "action.required"),
         ("Re-authenticate Xero", "credential.expiring"),
+        ("Re-authenticate Lloyds", "credential.expiring"),
         ("Sync the books", "action.required"),
         ("Sync is stale", "action.required"),
         ("Bills overdue", "action.required"),
@@ -75,6 +76,17 @@ def test_kind_for_known_titles(title, kind):  # T2
 
 def test_kind_for_unknown_title_defaults_action_required():  # T3
     assert _kind_for("Some future signal") == "action.required"
+
+
+def test_lloyds_reauth_title_maps_to_credential_expiring():  # S6b follow-up
+    """A distinct Lloyds/TrueLayer re-auth title maps to credential.expiring, so
+    xbook can emit a per-credential title instead of reusing the Xero one. Additive:
+    the Xero mapping is unchanged and an unrelated title is unaffected."""
+    assert _kind_for("Re-authenticate Lloyds") == "credential.expiring"
+    # The existing Xero mapping is untouched (additive, not a rename).
+    assert _kind_for("Re-authenticate Xero") == "credential.expiring"
+    # An unrelated title still falls through to the action.required default.
+    assert _kind_for("Re-authenticate Revolut") == "action.required"
 
 
 @pytest.mark.parametrize(

@@ -778,3 +778,82 @@ def test_sub_screens_share_the_visual_language():
     card = _capture(render.render_capability_card(spec))
     assert "Reconcile gap" in card and "what this does" in card
     assert "uv run xbook gap" in card
+
+
+# --- cross-deck breadcrumb (Fleet-Cockpit §4.3) -------------------------------
+
+
+def test_render_header_no_breadcrumb_is_byte_identical():
+    """Default-preserving — a state with no breadcrumb renders the header exactly
+    as before (no mode-line, no separators leaked in). Pinned in full so the
+    default path can never drift; xbook (which never sets a crumb) is unchanged."""
+    out = _capture(render.render_header(_state()))
+    assert out == "xbook · Fri 23 May 2026 · 06:45 · Clonway Care (tenant 9b40…)\n"
+    assert "▸" not in out  # no crumb glyph when unset
+
+
+def test_render_header_renders_supplied_breadcrumb_trail():
+    """A state carrying a breadcrumb trail renders it as a persistent 'A ▸ B ▸ C'
+    mode-line. The framework only RENDERS the supplied trail; the worker/bridge
+    decides the content."""
+    state = CockpitState(
+        tenant_name="",
+        app_label="Clonway Office",
+        date_label="Mon 25 May 2026",
+        time_label="08:00",
+        breadcrumb=("Fleet", "xbook", "Schedule bills"),
+    )
+    out = _capture(render.render_header(state))
+    assert "Fleet ▸ xbook ▸ Schedule bills" in out
+    # The standard header bits still render above/around the crumb.
+    assert "Clonway Office" in out and "08:00" in out
+
+
+def test_render_header_single_breadcrumb_renders_without_separator():
+    """A one-element trail renders just the crumb — no dangling ' ▸ ' separator."""
+    state = CockpitState(
+        tenant_name="",
+        app_label="Clonway Office",
+        date_label="Mon 25 May 2026",
+        time_label="08:00",
+        breadcrumb=("Fleet",),
+    )
+    out = _capture(render.render_header(state))
+    assert "Fleet" in out
+    assert "▸" not in out  # no separator for a lone crumb
+
+
+def test_render_header_empty_breadcrumb_tuple_is_byte_identical():
+    """An empty breadcrumb tuple is treated like None — no mode-line — so a worker
+    that always passes a (possibly empty) trail never accidentally adds chrome."""
+    state = CockpitState(
+        tenant_name="Clonway Care",
+        date_label="Fri 23 May 2026",
+        time_label="06:45",
+        tenant_id="9b40…",
+        breadcrumb=(),
+    )
+    out = _capture(render.render_header(state))
+    assert out == "xbook · Fri 23 May 2026 · 06:45 · Clonway Care (tenant 9b40…)\n"
+
+
+def test_cockpit_screen_threads_breadcrumb():
+    """render_cockpit_screen routes state.breadcrumb into the rendered header."""
+    state = CockpitState(
+        tenant_name="",
+        app_label="Clonway Office",
+        date_label="Mon 25 May 2026",
+        time_label="08:00",
+        breadcrumb=("Fleet", "xbook", "Schedule bills"),
+    )
+    out = _capture(render.render_cockpit_screen(state, []))
+    assert "Fleet ▸ xbook ▸ Schedule bills" in out
+
+
+def test_cockpit_screen_default_state_has_no_breadcrumb():
+    """Default-preserving — a state with no breadcrumb renders the home screen with
+    no mode-line crumb (the crumb glyph ▸ appears only in the legend's '▸ Press')."""
+    out = _capture(render.render_cockpit_screen(_state(), []))
+    # The only ▸ on the home screen is the legend opener — no crumb mode-line.
+    crumb_lines = [ln for ln in out.splitlines() if "▸" in ln and "Press" not in ln]
+    assert crumb_lines == []

@@ -88,3 +88,10 @@ class CockpitState:
     # passes e.g. "Find a worker or need". Defaulted to None → today's xbook
     # "Find a tool", byte-identical, so the extracting worker is unchanged.
     filter_title: str | None = None
+    # A persistent "where am I" trail rendered as an 'A ▸ B ▸ C' mode-line under the
+    # header (Fleet-Cockpit §4.3). The xops bridge wants 'Fleet ▸ <worker> ▸ <walk>'
+    # to survive the shell-out boundary, so the crumb support must live in the shared
+    # render. The framework only RENDERS a supplied trail; the worker/bridge decides
+    # the content. Defaulted to None → no mode-line, today's header byte-identical, so
+    # the extracting worker (xbook) is unchanged. An empty tuple is treated like None.
+    breadcrumb: tuple[str, ...] | None = None
