@@ -586,6 +586,40 @@ def test_render_toolkit_custom_shelves_derives_letter_range_cue():
     assert "A–G" not in out
 
 
+# --- R1: _letters_cue compresses contiguous runs, gap-aware --------------------
+
+
+def test_letters_cue_contiguous_run_unchanged():
+    """A single contiguous run renders 'first–last' exactly as before — xbook's
+    canonical A–G is unchanged."""
+    assert render._letters_cue(list("ABCDEFG")) == "A–G"
+
+
+def test_letters_cue_gapped_set_compresses_each_run():
+    """The bridge's [A,B,C,D,E,G] has a gap at F: the cue must compress the
+    contiguous A–E run and list G separately, never the lying 'A–G'."""
+    assert render._letters_cue(list("ABCDEG")) == "A–E, G"
+
+
+def test_letters_cue_two_gap_set():
+    """Two gaps → three runs, each compressed independently and comma-joined."""
+    assert render._letters_cue(list("ACDFG")) == "A, C–D, F–G"
+
+
+def test_letters_cue_single_letter_stays_itself():
+    """A lone letter is its own cue (no dash)."""
+    assert render._letters_cue(["A"]) == "A"
+
+
+def test_render_toolkit_gapped_shelves_cue_is_gap_aware():
+    """The WORKERS-region gutter for the bridge's gapped roster shows 'A–E, G',
+    matching the legend below — no phantom-F 'A–G'."""
+    shelves = {ltr: f"w{ltr}" for ltr in "ABCDEG"}
+    out = _capture(render.render_toolkit([], shelves=shelves, label="workers"))
+    assert "A–E, G" in out
+    assert "A–G" not in out
+
+
 def test_render_cockpit_screen_renders_custom_shelves_under_label():
     """render_cockpit_screen threads CockpitState.shelves / toolkit_label into the
     bottom region, so the home shows the worker rows under "workers"."""
@@ -711,6 +745,23 @@ def test_legend_default_shelf_segment_byte_identical():
         "▸ Press ↑↓←→ to move · ⏎ to open / sync · A–G to browse · "
         "/ to filter · ? for help · q to quit\n"
     )
+
+
+# --- R2: the filter screen title is parametrised -------------------------------
+
+
+def test_render_filter_default_title_is_find_a_tool():
+    """No title passed → the canonical 'Find a tool' header, byte-identical to
+    xbook's single-worker filter."""
+    out = _capture(render.render_filter("", []))
+    assert "Find a tool" in out
+
+
+def test_render_filter_custom_title_renders():
+    """A custom title (the bridge finds workers AND needs) replaces 'Find a tool'."""
+    out = _capture(render.render_filter("", [], title="Find a worker or need"))
+    assert "Find a worker or need" in out
+    assert "Find a tool" not in out
 
 
 def test_sub_screens_share_the_visual_language():

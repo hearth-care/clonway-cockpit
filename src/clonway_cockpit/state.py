@@ -83,3 +83,8 @@ class CockpitState:
     # the help describes the product the operator is actually using. Each entry is a
     # (key, description) pair. Defaulted to None → today's xbook help, byte-identical.
     help_lines: tuple[tuple[str, str], ...] | None = None
+    # Overrides the filter screen's header title ("Find a tool" for xbook's single
+    # worker). The Fleet Cockpit's filter finds workers AND cross-worker needs, so it
+    # passes e.g. "Find a worker or need". Defaulted to None → today's xbook
+    # "Find a tool", byte-identical, so the extracting worker is unchanged.
+    filter_title: str | None = None

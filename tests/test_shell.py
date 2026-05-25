@@ -692,6 +692,96 @@ def test_filter_with_no_needs_is_capability_only_unchanged(usage_to_tmp):
     assert "Status board" in joined
 
 
+# --- R2: the filter screen title is threaded from CockpitState.filter_title ----
+
+
+def test_filter_title_threads_from_state(usage_to_tmp):
+    """R2 — a CockpitState.filter_title flows through the shell into the filter
+    header, so the bridge can title its filter 'Find a worker or need'."""
+    state = CockpitState(tenant_name="Clonway Office", filter_title="Find a worker or need")
+    host = _FakeHost(state=state).as_host()
+    scr = _Screen()
+    # '/' opens the filter; esc closes it; q quits home.
+    shell.run_cockpit(host, read_key=_keys(["/", keys.ESC, "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Find a worker or need" in joined
+    assert "Find a tool" not in joined
+
+
+def test_filter_title_default_is_find_a_tool_unchanged(usage_to_tmp):
+    """R2 default-preserving — no filter_title (xbook's default) → the filter still
+    reads 'Find a tool', byte-identical to before."""
+    host = _FakeHost().as_host()  # default state, filter_title=None
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["/", keys.ESC, "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Find a tool" in joined
+
+
+# --- R4: need-matches are ordered ahead of capability-matches ------------------
+
+
+def test_matches_orders_needs_before_capabilities(usage_to_tmp):
+    """R4 — when both a need and capabilities match the term, the need comes FIRST
+    in the returned list, so it survives the downstream 9-match truncation."""
+    register_capability(
+        CapabilitySpec(
+            key="xbook-status",
+            shelf="A",
+            title="xbook status",
+            summary="See where the books stand",
+            equivalent_cli="uv run worker status",
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="xhr-status",
+            shelf="B",
+            title="xhr status",
+            summary="See the rota",
+            equivalent_cli="uv run worker status",
+        )
+    )
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        needs=(NeedsItem("xbook bills overdue", "3 · £4,210", "error", None),),
+    )
+    host = _FakeHost(state=state).as_host()
+    # "xbook" matches the need title AND the xbook-status capability title.
+    matches = shell._matches(host, state, "xbook")
+    assert len(matches) == 2
+    assert matches[0].title == "xbook bills overdue"  # the need is first
+    assert matches[1].title == "xbook status"  # the capability follows
+
+
+def test_matches_capabilities_only_order_unchanged(usage_to_tmp):
+    """R4 default-preserving — with no needs (xbook's typical filter use), the
+    returned list is capability-only and capability order is stable."""
+    register_capability(
+        CapabilitySpec(
+            key="cap-a",
+            shelf="A",
+            title="status alpha",
+            summary="one",
+            equivalent_cli="uv run worker a",
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="status beta",
+            summary="two",
+            equivalent_cli="uv run worker b",
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")  # no needs
+    host = _FakeHost(state=state).as_host()
+    matches = shell._matches(host, state, "status")
+    titles = [m.title for m in matches]
+    assert titles == ["status alpha", "status beta"]  # capability order preserved
+
+
 # --- W4: a single-spec shelf opens directly (no intermediate menu) ------------
 
 

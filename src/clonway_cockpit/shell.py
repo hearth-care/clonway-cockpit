@@ -487,7 +487,14 @@ def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         matches = _matches(host, state, term)
         if matches:
             sel %= len(matches)
-        screen.update(r.render_filter(term, matches, selected=(sel if matches else None)))
+        screen.update(
+            r.render_filter(
+                term,
+                matches,
+                selected=(sel if matches else None),
+                title=state.filter_title,
+            )
+        )
         key = read_key()
         if key == keys.ESC:
             return
@@ -518,13 +525,18 @@ def _matches(host: Host, state: CockpitState, term: str) -> list[_FilterMatch]:
     t = term.strip().lower()
     if not t:
         return []
+    # Needs come first: the match list is capped at 9 downstream, and a need (the
+    # cross-worker thing the operator most wants to find) must survive truncation
+    # ahead of a common-substring flood of capability matches. Order WITHIN each
+    # group is left stable (R4). With no needs (xbook's typical use) this reduces to
+    # the capability-only list, unchanged.
     out: list[_FilterMatch] = []
-    for s in host.get_capabilities():
-        if t in s.title.lower() or t in s.summary.lower():
-            out.append(_FilterMatch(s.title, s.summary, _capability_activation(host, s.key)))
     for need in state.needs:
         if t in need.title.lower() or t in need.detail.lower():
             out.append(_FilterMatch(need.title, need.detail, _need_activation(host, need)))
+    for s in host.get_capabilities():
+        if t in s.title.lower() or t in s.summary.lower():
+            out.append(_FilterMatch(s.title, s.summary, _capability_activation(host, s.key)))
     return out
 
 
