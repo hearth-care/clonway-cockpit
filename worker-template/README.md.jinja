@@ -1,0 +1,50 @@
+# {{ worker_title }} ({{ worker_id }})
+
+A Clonway fleet worker, scaffolded from
+[clonway-cockpit](https://github.com/hearth-care/clonway-cockpit)'s worker
+template (S8/C6). It is **born with**:
+
+- an interactive **cockpit** — `{{ worker_id }}` (bare, on a TTY) opens the
+  three-region shell (pulse / needs-you / toolkit) with one example capability,
+  a pulse stub, and a Doctor stub;
+- a flag-guarded **Signal emit** path (`{{ worker_id }} signals scan`, gated on
+  `{{ emit_flag }}`, default OFF) that writes the C0 wire shape to
+  `signals/{{ worker_id }}/latest.jsonl`;
+- a **mandatory** `@scan_horizon` stub (`scan_{{ package_name }}_horizon`) — a
+  worker can't exist without at least an empty forward scan (proactive by
+  construction), guarded by an `xfail` test until you fill it in;
+- run/stage **telemetry** (`{{ package_name }}.obs`) to the xops dashboard;
+- the single **write-gate + draft-never-send** safety posture, inherited from
+  the framework;
+- **CI** (ruff + mypy + pytest).
+
+## Quick start
+
+```bash
+uv sync
+uv run {{ worker_id }} signals scan                  # -> disabled (flag off)
+{{ emit_flag }}=1 uv run {{ worker_id }} signals scan  # -> emitted 0 (no horizon yet)
+uv run pytest -q && uv run ruff check .              # green out of the box
+```
+
+## Make it real
+
+1. **`src/{{ package_name }}/signals/build.py`** — replace the empty
+   `scan_{{ package_name }}_horizon` stub with real forward-looking Signals from
+   live domain state, each with a real `due_at`. Add more `@scan_horizon`
+   functions and list them in `compose_horizon(...)`. Then flip the
+   `xfail` test in `tests/test_signals_build.py` to assert your real signals.
+2. **`src/{{ package_name }}/cli/cockpit.py`** — replace the example capability,
+   the pulse stub, the Doctor probes, and `capture_state()` with real
+   {{ worker_id }} surfaces.
+3. **Go live** — register `{{ worker_id }}` in the bridge roster
+   (`Auto-Orchestrator/src/xops/bridge/workers.py`), set `{{ emit_flag }}=1`, and
+   add a daily `signals scan` scheduler entry (see clonway-cockpit's
+   `docs/onboarding-a-worker.md` §5–6 for the per-shape recipe).
+
+## Pull template improvements
+
+```bash
+copier update   # re-applies clonway-cockpit's worker-template; your filled-in
+                # domain code is preserved (see the template's _exclude).
+```

@@ -1,0 +1,109 @@
+# copier.yml — the Clonway fleet worker template (S8 / C6).
+#
+# Generates a new fleet worker that is born with a working cockpit, a
+# flag-guarded Signal emit path, a *mandatory* `@scan_horizon` stub, telemetry,
+# CI, and the single write-gate + draft-never-send safety posture — out of the
+# box. The template lives IN clonway-cockpit (no repo proliferation); copier
+# copies fine from this subdirectory or a local path.
+#
+# Scaffold a new worker (run from anywhere, pointing at a clonway-cockpit
+# checkout or its Git URL):
+#
+#     copier copy /path/to/clonway-cockpit ../xadmit
+#     copier copy gh:hearth-care/clonway-cockpit ../xcqc
+#
+# then answer the prompts. The generated worker runs, emits, opens a cockpit,
+# and passes its own `uv run pytest` / `ruff` immediately.
+
+_subdirectory: worker-template
+
+# Re-run `copier update` inside a generated repo to pull template improvements
+# (S8 propagation). Exclude the worker's own evolving domain code from being
+# clobbered — once a worker fills in real horizon scans / capabilities, those
+# files are the worker's, not the template's.
+_exclude:
+  - "copier.yml"
+  - "~*"
+  - "*.pyc"
+  - "__pycache__"
+  - ".git"
+  - ".venv"
+
+_message_after_copy: |
+  Worker "{{ worker_id }}" scaffolded into {{ _copier_conf.dst_path }}.
+
+  Next:
+    1. cd {{ _copier_conf.dst_path }}
+    2. uv sync
+    3. uv run {{ worker_id }} signals scan        # -> "disabled" (flag off by default)
+    4. {{ emit_flag }}=1 uv run {{ worker_id }} signals scan  # -> "emitted 0" (no horizon yet)
+    5. uv run pytest -q && uv run ruff check .     # green out of the box
+
+  THEN fill in the real domain horizon in src/{{ package_name }}/signals/build.py
+  (the @scan_horizon stub currently returns ()). Its test is marked xfail until
+  you replace the stub — that is the proactive-by-construction gate.
+
+worker_id:
+  type: str
+  help: >-
+    Short fleet codename (lowercase, the signals/<worker>/ path + the CLI app
+    name + the telemetry id). e.g. xadmit, xcqc.
+  placeholder: xadmit
+  validator: >-
+    {% if not (worker_id | regex_search('^[a-z][a-z0-9]{2,15}$')) %}
+    worker_id must be lowercase alphanumeric, 3-16 chars, starting with a letter
+    (e.g. xadmit).
+    {% endif %}
+
+worker_title:
+  type: str
+  help: >-
+    Human-facing product title shown in the cockpit header + Doctor + docs.
+    e.g. "Auto-Admissions".
+  default: "Auto-{{ worker_id[1:] | capitalize }}"
+
+package_name:
+  type: str
+  help: >-
+    Python package / import name under src/ (snake_case). e.g. xadmit.
+  default: "{{ worker_id }}"
+  validator: >-
+    {% if not (package_name | regex_search('^[a-z][a-z0-9_]*$')) %}
+    package_name must be a valid snake_case Python identifier (e.g. xadmit).
+    {% endif %}
+
+deploy_shape:
+  type: str
+  help: >-
+    How this worker runs in prod. Drives whether a Dockerfile (with the
+    clonway-cockpit git-install fix) is generated.
+  choices:
+    Cloud Run job (args-override scheduler) — xbook / xletter: job
+    Cloud Run service (HTTP route + OIDC scheduler) — xhr: service
+    Local launchd daemon (no Docker) — xquill: local
+  default: job
+
+clonway_rev:
+  type: str
+  help: >-
+    Git rev (branch, tag or SHA) of clonway-cockpit to pin in the generated
+    pyproject.toml. Defaults to main; pin a SHA for reproducible builds.
+  default: main
+
+# --- computed (not prompted) ---------------------------------------------
+# Derived so templates read `emit_flag` / `worker_upper` directly instead of
+# repeating the filter chain everywhere.
+worker_upper:
+  type: str
+  default: "{{ worker_id | upper }}"
+  when: false
+
+emit_flag:
+  type: str
+  default: "{{ worker_id | upper }}_EMIT_SIGNALS"
+  when: false
+
+runtime_env:
+  type: str
+  default: "{{ worker_id | upper }}_RUNTIME"
+  when: false

@@ -1,0 +1,33 @@
+"""``{{ worker_id }} signals scan`` — emit {{ worker_id }}'s forward Signals.
+
+Builds {{ worker_id }}'s forward-looking items and emits them to the shared fleet
+Signal store (``signals/{{ worker_id }}/latest.jsonl``). Flag-gated on
+``{{ emit_flag }}``; a no-op that prints ``disabled`` when off.
+
+Verify locally before scheduling:
+    uv run {{ worker_id }} signals scan                  # -> disabled (flag off)
+    {{ emit_flag }}=1 uv run {{ worker_id }} signals scan  # -> emitted N
+"""
+
+from __future__ import annotations
+
+import typer
+
+from {{ package_name }}.signals.emit import _enabled, scan_and_emit
+
+signals_app = typer.Typer(
+    name="signals",
+    help="Emit {{ worker_id }} forward items as fleet Signals ({{ emit_flag }}-gated).",
+    no_args_is_help=True,
+)
+
+
+@signals_app.command("scan")
+def cmd_scan() -> None:
+    """Build and emit {{ worker_id }}'s forward-item Signals. Prints ``emitted N``
+    or ``disabled`` (flag off)."""
+    if not _enabled():
+        typer.echo("signals: disabled (set {{ emit_flag }}=1 to enable)")
+        return
+    signals = scan_and_emit()
+    typer.echo(f"signals: emitted {len(signals)}")

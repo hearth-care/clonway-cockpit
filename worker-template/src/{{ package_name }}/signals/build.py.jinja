@@ -1,0 +1,68 @@
+"""Build {{ worker_id }}'s forward-looking items into shared fleet Signals.
+
+A worker MUST declare its **forward-looking** alerts — insurance renewals,
+filing deadlines, things due to post — not just its right-now ones. That is the
+difference between a reactive log and a fleet that warns you *before* the
+deadline. The framework names that shape ``ScanHorizon`` in
+``clonway_cockpit.signals.horizon``: ``(*, today, now) -> Sequence[Signal]``,
+exactly what ``emit_signals(build=...)`` consumes.
+
+This module is **proactive by construction**: it ships a mandatory
+``@scan_horizon`` stub (``scan_{{ package_name }}_horizon``) wired through
+``compose_horizon`` into the public ``build_{{ package_name }}_signals`` callable.
+The stub returns ``()`` today — a guarded ``xfail`` test
+(``tests/test_signals_build.py``) makes that emptiness *visible* until you fill
+in real domain signals, so a worker can't quietly ship a dead horizon.
+
+TODO({{ worker_id }}): replace the stub body with real domain scans, each
+returning ``Signal``s grounded in live state (your integration / DB / Sheets —
+DON'T fabricate), every horizon item carrying a real ``due_at`` so urgency
+sharpens as the date approaches without re-raising. Add more ``@scan_horizon``
+functions and list them in ``compose_horizon(...)`` below. Then flip the
+``xfail`` test to assert your real signals.
+
+Worked examples in the fleet:
+
+* xbook — insurance renewal due, compliance filing due, pay run due to post,
+  HMRC/pension payment coming up, cash getting tight.
+* xhr — DBS expiring, right-to-work recheck due, probation review due.
+* xletter — campaign send window, content review due.
+* xquill — promise/commitment deadlines from chat digests.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from datetime import date as Date
+from datetime import datetime
+
+from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
+from clonway_cockpit.signals.model import Signal
+
+_WORKER = "{{ worker_id }}"
+
+
+@scan_horizon
+def scan_{{ package_name }}_horizon(*, today: Date, now: datetime) -> Sequence[Signal]:
+    """{{ worker_id }}'s forward horizon scan — the one place this worker says
+    "here's what's coming".
+
+    STUB: returns ``()``. Replace with real forward-looking Signals built from
+    live domain state, each with a real ``due_at``. Until then the guarded
+    ``xfail`` test keeps this empty horizon visible (proactive by construction).
+
+    Build each Signal with a stable ``title`` (drives the dedup key — keep it
+    constant as the item escalates) and a ``source_id`` (per-instance business
+    id, folded into the dedup key so two concurrent same-title items get distinct
+    keys). ``clonway_cockpit.signals.model.build_signals`` maps a tuple of
+    ``NeedsItem`` 1:1 if you keep a cockpit needs-list.
+    """
+    # TODO({{ worker_id }}): scan real domain state and yield forward Signals.
+    return ()
+
+
+# compose_horizon stitches one-or-more @scan_horizon scanners into the single
+# build(*, today, now) callable emit_signals expects (concatenated in
+# declaration order; ranking + the global cap happen downstream). Add scanners
+# here as you grow the horizon: compose_horizon(scan_a, scan_b, ...).
+build_{{ package_name }}_signals = compose_horizon(scan_{{ package_name }}_horizon)

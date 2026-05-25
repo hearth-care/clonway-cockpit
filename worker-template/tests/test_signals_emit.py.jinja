@@ -1,0 +1,52 @@
+"""AC-C6-2 — the generated worker emits the C0 wire shape, flag-guarded.
+
+* Flag OFF (default): ``scan_and_emit`` is a no-op — zero work, no GCS write.
+* Flag ON: it writes ``signals/{{ worker_id }}/latest.jsonl`` to the fleet bucket
+  every run (incl. empty, so a now-quiet worker clears its old set), and the
+  command prints ``disabled`` / ``emitted N`` accordingly.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from typer.testing import CliRunner
+
+from {{ package_name }}.cli import app
+from {{ package_name }}.signals.emit import scan_and_emit
+
+_NOW = datetime(2026, 6, 1, 7, 0, tzinfo=UTC)
+_LATEST = "signals/{{ worker_id }}/latest.jsonl"
+
+runner = CliRunner()
+
+
+def test_emit_is_noop_when_flag_off(monkeypatch, fake_gcs) -> None:
+    monkeypatch.delenv("{{ emit_flag }}", raising=False)
+    out = scan_and_emit(now=_NOW)
+    assert out == ()
+    assert fake_gcs == {}  # no GCS write when the flag is off
+
+
+def test_emit_writes_latest_when_flag_on(monkeypatch, fake_gcs) -> None:
+    monkeypatch.setenv("{{ emit_flag }}", "1")
+    out = scan_and_emit(now=_NOW)
+    # Stub horizon → empty set, but latest.jsonl is STILL written (clears the
+    # previously-raised set — the read-model contract).
+    assert out == ()
+    assert _LATEST in fake_gcs
+    assert fake_gcs[_LATEST] == ""  # empty set → empty body, snapshot still flushed
+
+
+def test_cli_scan_disabled_when_flag_off(monkeypatch) -> None:
+    monkeypatch.delenv("{{ emit_flag }}", raising=False)
+    result = runner.invoke(app, ["signals", "scan"])
+    assert result.exit_code == 0
+    assert "disabled" in result.stdout
+
+
+def test_cli_scan_emits_when_flag_on(monkeypatch, fake_gcs) -> None:
+    monkeypatch.setenv("{{ emit_flag }}", "1")
+    result = runner.invoke(app, ["signals", "scan"])
+    assert result.exit_code == 0
+    assert "emitted 0" in result.stdout  # stub horizon → 0 signals, but it ran
