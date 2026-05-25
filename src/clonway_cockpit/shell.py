@@ -131,13 +131,35 @@ def run_cockpit(host: Host, *, read_key: Callable[[], str] = keys.read_key, scre
     _home(host, screen, read_key)
 
 
+def _shelf_letters(state: CockpitState) -> list[str]:
+    """The shelf letters the shell navigates — the letters it actually DRAWS. When
+    a worker supplies ``state.shelves`` (the Fleet Cockpit's roster), navigate
+    exactly those; otherwise fall back to xbook's canonical A–G ``render.SHELVES``.
+
+    This is the single source of truth for the navigable letter set, so the
+    arrow-down selectables, the ←/→ grid math, and the letter-hotkey handler all
+    agree with ``render_toolkit`` (which lays out ``state.shelves or SHELVES``)."""
+    return list(state.shelves) if state.shelves is not None else list(render.SHELVES)
+
+
+def _shelf_label(state: CockpitState, letter: str) -> str:
+    """The display name for a shelf letter — the worker's tagline from
+    ``state.shelves`` (the Fleet Cockpit's roster) when present, else xbook's
+    canonical taxonomy. Drives the shelf sub-menu title so it names the worker,
+    not xbook's "Money in"/"Daily rhythm" shelf names."""
+    if state.shelves is not None:
+        return state.shelves[letter]
+    return render.SHELVES[letter]
+
+
 def selectables(state: CockpitState) -> list[tuple[str, object]]:
     """Ordered list of arrow-navigable rows, top-down as they're drawn: pulse
-    pills first, then needs-you items, then the A–G shelves."""
+    pills first, then needs-you items, then the shelves actually drawn (the
+    fleet's ``state.shelves`` letters, or xbook's A–G when unset)."""
     return (
         [("pill", i) for i in range(len(state.pills))]
         + [("need", i) for i in range(len(state.needs))]
-        + [("shelf", letter) for letter in render.SHELVES]
+        + [("shelf", letter) for letter in _shelf_letters(state)]
     )
 
 
@@ -158,16 +180,17 @@ def move_horizontal(items: list[tuple[str, object]], sel: int, key: str) -> int:
     A–G toolkit shelves). Single-column regions (needs-you) are a no-op. Returns
     the new index, or ``sel`` unchanged when there's no column to jump to.
 
-    The grids must match ``render``: the toolkit splits ``SHELVES`` at
+    The grids must match ``render``: the toolkit splits the DRAWN letters at
     ``half = (len+1)//2`` into ``left = letters[:half]`` / ``right = letters[half:]``
-    and draws them row-by-row (A↔E, B↔F, C↔G; D has no right pair); the pulse grid
-    fills row-major two-per-row, so an even pill index is the left column and the
-    next odd index is its right neighbour."""
+    and draws them row-by-row; the pulse grid fills row-major two-per-row, so an
+    even pill index is the left column and the next odd index is its right
+    neighbour. The shelf letters come from ``items`` (the same set ``selectables``
+    drew), so the jump matches the fleet's roster, not xbook's hardcoded A–G."""
     kind, ref = items[sel]
     want_right = key == keys.RIGHT
 
     if kind == "shelf" and isinstance(ref, str):
-        letters = list(render.SHELVES)
+        letters = [r for k, r in items if k == "shelf" and isinstance(r, str)]
         half = (len(letters) + 1) // 2
         left, right = letters[:half], letters[half:]
         if ref in left:
@@ -230,8 +253,8 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             _filter(host, screen, read_key)
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
             _activate(host, ("need", int(key) - 1), state, screen, read_key)
-        elif low.isalpha() and low.upper() in render.SHELVES:
-            _shelf(host, low.upper(), screen, read_key)
+        elif low.isalpha() and low.upper() in _shelf_letters(state):
+            _shelf(host, low.upper(), screen, read_key, title=_shelf_label(state, low.upper()))
         # any other key: ignore — the highlight is the guide
 
 
@@ -244,7 +267,7 @@ def _activate(
 ) -> None:
     kind, ref = item
     if kind == "shelf" and isinstance(ref, str):
-        _shelf(host, ref, screen, read_key)
+        _shelf(host, ref, screen, read_key, title=_shelf_label(state, ref))
         return
     if not isinstance(ref, int):
         return
@@ -260,10 +283,21 @@ def _activate(
         _show(screen, r.render_note(need.title, need.detail), read_key)
 
 
-def _shelf(host: Host, letter: str, screen: Screen, read_key: Callable[[], str]) -> None:
+def _shelf(
+    host: Host,
+    letter: str,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    title: str | None = None,
+) -> None:
     specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
         return
+    # The menu title names the worker (fleet roster) or xbook's shelf taxonomy.
+    # Default to the canonical SHELVES name so callers that don't pass one (xbook)
+    # are unchanged.
+    menu_title = title if title is not None else render.SHELVES[letter]
     n = len(specs)  # navigable rows = the specs plus a trailing "Back"
     sel = 0
     # Load usage once per shelf render-loop and scale the inline notch against the
@@ -274,9 +308,7 @@ def _shelf(host: Host, letter: str, screen: Screen, read_key: Callable[[], str])
     while True:
         options = [(str(i), s.title, s.summary) for i, s in enumerate(specs, 1)]
         opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
-        screen.update(
-            r.render_menu(render.SHELVES[letter], options, selected=sel, opens=opens, peak=peak)
-        )
+        screen.update(r.render_menu(menu_title, options, selected=sel, opens=opens, peak=peak))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
