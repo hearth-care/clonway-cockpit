@@ -881,9 +881,13 @@ def _legend(state: CockpitState) -> Text:
     #  * the ⏎ cue — "open / sync" for xbook; a worker with no sync action (the
     #    Fleet Cockpit's read-only pills) passes state.legend_hint (e.g. "open
     #    worker") so the dead "sync" key isn't advertised.
-    #  * the letter-range cue — derived from state.shelves' actual letters (e.g.
-    #    "A–E" for a five-worker roster) so it never asserts a phantom range; the
-    #    default (shelves=None) stays the canonical "A–G".
+    #  * the shelf segment — by default the letter-range cue ("A–E" for a
+    #    five-worker roster, derived from state.shelves' actual letters so it never
+    #    asserts a phantom range) plus the verb "browse"; the default (shelves=None)
+    #    stays the canonical "A–G to browse". A worker whose computed range would
+    #    lie — the Fleet Cockpit's A,B,C,D,E,G shelves render "A–G", implying F is a
+    #    live browsable letter — passes state.shelf_hint to render the whole segment
+    #    verbatim instead (e.g. "A–E, G open a worker").
     enter_cue = state.legend_hint if state.legend_hint is not None else "open / sync"
     letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
     range_cue = _letters_cue(letters) if state.shelves is not None else "A–G"
@@ -892,8 +896,12 @@ def _legend(state: CockpitState) -> Text:
     legend.append(" to move · ", style=DIM)
     legend.append("⏎", style=_KEY_STYLE)
     legend.append(f" to {enter_cue} · ", style=DIM)
-    legend.append(range_cue, style=_KEY_STYLE)
-    legend.append(" to browse · ", style=DIM)
+    if state.shelf_hint is not None:
+        legend.append(state.shelf_hint, style=_KEY_STYLE)
+        legend.append(" · ", style=DIM)
+    else:
+        legend.append(range_cue, style=_KEY_STYLE)
+        legend.append(" to browse · ", style=DIM)
     legend.append("/", style=_KEY_STYLE)
     legend.append(" to filter · ", style=DIM)
     legend.append("?", style=_KEY_STYLE)
