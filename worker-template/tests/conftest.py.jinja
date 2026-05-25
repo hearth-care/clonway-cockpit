@@ -1,0 +1,51 @@
+"""Shared test fixtures for {{ worker_id }}.
+
+``fake_gcs`` patches the shared emitter's lazy ``google.cloud.storage`` import
+with an in-memory fake, so the flag-on emit path can be exercised without creds
+or network. Captures every upload as ``{blob_path: body}``.
+"""
+
+from __future__ import annotations
+
+import pytest
+from clonway_cockpit.signals import emit as _emit
+
+
+class _FakeBlob:
+    def __init__(self, store: dict[str, str], path: str) -> None:
+        self._store = store
+        self._path = path
+
+    def upload_from_string(self, body: str, content_type: str = "") -> None:
+        self._store[self._path] = body
+
+
+class _FakeBucket:
+    def __init__(self, store: dict[str, str]) -> None:
+        self._store = store
+
+    def blob(self, path: str) -> _FakeBlob:
+        return _FakeBlob(self._store, path)
+
+
+class _FakeClient:
+    def __init__(self, store: dict[str, str]) -> None:
+        self._store = store
+
+    def bucket(self, _name: str) -> _FakeBucket:
+        return _FakeBucket(self._store)
+
+
+class _FakeStorageModule:
+    def __init__(self, store: dict[str, str]) -> None:
+        self._store = store
+
+    def Client(self, *_a, **_k) -> _FakeClient:  # noqa: N802 — mirror google's API
+        return _FakeClient(self._store)
+
+
+@pytest.fixture
+def fake_gcs(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    store: dict[str, str] = {}
+    monkeypatch.setattr(_emit, "_import_storage", lambda: _FakeStorageModule(store))
+    return store

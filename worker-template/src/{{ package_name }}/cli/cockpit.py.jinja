@@ -1,0 +1,220 @@
+"""{{ worker_id }}'s cockpit — the interactive operations surface.
+
+The GENERIC three-region cockpit loop (pulse / needs-you / toolkit, navigation,
+type-to-filter, the open-capability chokepoint, the Doctor loop, animated
+progress) lives in ``clonway_cockpit.shell``. This module is the THIN
+{{ worker_id }} wrapper: it builds the worker's :class:`clonway_cockpit.shell.Host`
+(how {{ worker_id }} captures state, builds a walk's ``WizardContext``, activates
+a pulse pill, runs its Doctor probes, records usage, and what fires on open) and
+threads it into the framework loop.
+
+Scaffolded with ONE example capability, a pulse stub, and a Doctor stub so the
+three-region grammar renders out of the box. Replace these with real {{ worker_id }}
+capabilities + live status as the worker grows.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import sys
+
+from clonway_cockpit import keys, render, shell, usage
+from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.prompts import default_confirm_fn, make_clean_input_fn
+from clonway_cockpit.registry import (
+    BlastRadius,
+    CapabilitySpec,
+    WizardContext,
+    register_capability,
+)
+from clonway_cockpit.state import CockpitState, NeedsItem, Pill
+from clonway_cockpit.walk import Step, StepResult, make_walk_handler
+from rich.console import Console, RenderableType
+
+from {{ package_name }}.signals import emit as signals_emit
+
+_APP_LABEL = "{{ worker_id }}"
+
+
+# The toolkit shelves this worker draws (letter -> label). Scaffolded with two:
+# A for the example capability, G for Doctor. Add shelves as you grow the toolkit;
+# the cockpit lays out exactly these letters (not xbook's default A–G taxonomy).
+_SHELVES: dict[str, str] = {"A": "Capabilities", "G": "Diagnostics & setup"}
+
+# The example capability's blast radius — read-only, the safety floor a generated
+# worker starts from. Carried on the spec AND handed to the walk handler.
+_EXAMPLE_BLAST = BlastRadius(
+    summary="Nothing — this is a read-only example stub.",
+    reversible="Read-only; nothing to undo.",
+)
+
+
+# --- the example capability ------------------------------------------------
+# A trivial single-step walk so the toolkit region has something to open and the
+# write-gate posture is inherited. Replace with real {{ worker_id }} capabilities.
+def _example_step(ctx: WizardContext, bag: dict) -> StepResult:
+    return StepResult(ok=True, message="Example capability ran (stub).", data={"summary": "Done."})
+
+
+_example_handler = make_walk_handler(
+    title="Example capability",
+    steps=[Step(label="Run example", run=_example_step)],
+    blast_radius=_EXAMPLE_BLAST,
+    preconditions_fn=lambda ctx: [],
+    equivalent_cli="{{ worker_id }} example",
+)
+
+
+def register_all() -> None:
+    """Register {{ worker_id }}'s cockpit capabilities. Idempotent (register by
+    key). Doctor is a framework-special; add it so the toolkit shows a health
+    shelf. TODO({{ worker_id }}): register real capabilities here."""
+    register_capability(
+        CapabilitySpec(
+            key="example",
+            shelf="A",
+            title="Example capability",
+            summary="A scaffolded read-only example — replace with real tools.",
+            equivalent_cli="{{ worker_id }} example",
+            run=_example_handler,
+            blast_radius=_EXAMPLE_BLAST,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="doctor",
+            shelf="G",
+            title="Doctor",
+            summary="Deep health check — auth, freshness, config.",
+            equivalent_cli="{{ worker_id }} doctor",
+            run=None,  # the shell's Doctor loop handles this key specially
+        )
+    )
+
+
+# --- state snapshot (pure-read, network-free) ------------------------------
+def capture_state() -> CockpitState:
+    """{{ worker_id }}'s cockpit state — pure-read, no network (the home loop
+    re-calls this on every redraw). Scaffolded with a stub pulse pill and a stub
+    needs-you item so all three regions render. TODO({{ worker_id }}): populate
+    from a real status report."""
+    return CockpitState(
+        tenant_name="{{ worker_title }}",
+        app_label=_APP_LABEL,
+        date_label="",
+        time_label="",
+        pills=(
+            Pill(
+                label="{{ worker_id }}",
+                status="scaffolded",
+                detail="fill in real sources",
+                level="ok",
+            ),
+        ),
+        needs=(
+            NeedsItem(
+                title="Wire up {{ worker_id }}",
+                detail="Replace the cockpit/signals stubs with real domain logic.",
+                level="warn",
+                capability_key=None,
+            ),
+        ),
+        # The worker's own shelf taxonomy (not xbook's default A–G), so the
+        # toolkit region names {{ worker_id }}'s shelves.
+        shelves=_SHELVES,
+        toolkit_label="toolkit",
+    )
+
+
+# --- a walk's WizardContext bound to the alt-screen ------------------------
+def build_walk_ctx(screen, read_key, *, focus: str | None = None) -> WizardContext:
+    return WizardContext(
+        state={},
+        client=None,
+        console=Console(),
+        input_fn=make_clean_input_fn(),
+        confirm_fn=default_confirm_fn(),
+        present=screen.update,
+        read_key=read_key,
+        focus=focus,
+    )
+
+
+# --- pulse pill activation -------------------------------------------------
+def activate_pill(pill, screen, read_key) -> None:
+    """⏎ on a pulse pill. Scaffolded as a read-only note. TODO({{ worker_id }}):
+    wire the worker's sync / refresh action (read-only, no-login)."""
+    screen.update(render.render_note("{{ worker_id }}", "Pulse activation is a stub — wire a sync."))
+    read_key()
+
+
+# --- Doctor stub -----------------------------------------------------------
+def doctor_build_report() -> object:
+    """Build the worker's status report. Raising here degrades the Doctor to a
+    setup hint (the unconfigured path). TODO({{ worker_id }}): return a real
+    status object."""
+    return object()
+
+
+def doctor_build_probes(report: object) -> list[Probe]:
+    """Turn the report into probes. Scaffolded with one OK probe so the Doctor
+    table renders. TODO({{ worker_id }}): add real auth/freshness/config probes."""
+    return [
+        Probe(
+            name="Scaffold",
+            level="ok",
+            detail="Generated worker — replace probes with real checks.",
+            fix=Fix(
+                title="Fill in Doctor probes",
+                cmd="edit src/{{ package_name }}/cli/cockpit.py",
+                note="See xbook.cockpit.doctor for a worked example.",
+                run=None,  # display-only
+            ),
+        )
+    ]
+
+
+def doctor_unconfigured_renderable() -> RenderableType:
+    return render.render_note(
+        "{{ worker_id }} doctor",
+        "Worker not configured yet — fill in doctor_build_report().",
+    )
+
+
+def _on_open() -> None:
+    """Fired once per cockpit open: register capabilities + best-effort Signal
+    emit (flag-guarded, default off). Kept off the per-redraw path."""
+    register_all()
+    with contextlib.suppress(Exception):
+        signals_emit.scan_and_emit()
+
+
+def _host() -> shell.Host:
+    return shell.Host(
+        capture_state=capture_state,
+        build_walk_ctx=build_walk_ctx,
+        activate_pill=activate_pill,
+        doctor_build_report=doctor_build_report,
+        doctor_build_probes=doctor_build_probes,
+        doctor_fixes_for=fixes_for,
+        doctor_unconfigured_renderable=doctor_unconfigured_renderable,
+        usage=usage,
+        on_open=_on_open,
+        app_label=_APP_LABEL,
+    )
+
+
+def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
+    """Drive the cockpit. With ``screen`` injected (tests) the loop runs against
+    it directly (headless); otherwise it opens the terminal's alternate screen."""
+    host = _host()
+    if screen is not None:
+        host.on_open()
+        shell._home(host, screen, read_key)
+        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return
+    console = Console()
+    host.on_open()
+    with console.screen() as scr:
+        shell._home(host, scr, read_key)

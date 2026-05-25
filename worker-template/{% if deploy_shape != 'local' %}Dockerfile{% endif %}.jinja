@@ -1,0 +1,47 @@
+# {{ worker_title }} ({{ worker_id }}) — {{ deploy_shape }} image.
+#
+# Two-stage slim build (the Cloud Run pattern). The builder stage installs git
+# because `uv sync` clones the clonway-cockpit `git+https` dependency and the
+# slim base ships without git — the fleet-wide fix (see clonway-cockpit's
+# docs/onboarding-a-worker.md). The runtime image copies the already-built venv
+# and never shells out to git.
+
+FROM python:3.12-slim AS builder
+
+# git is required to resolve the clonway-cockpit git+https dependency during
+# `uv sync`. Builder-stage only.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0
+
+# Resolve + install dependencies first (cached layer), then the project.
+COPY pyproject.toml ./
+COPY uv.lock* ./
+COPY src ./src
+COPY README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+COPY --from=builder /app /app
+ENV PATH="/app/.venv/bin:$PATH"
+
+{% if deploy_shape == "service" -%}
+# Cloud Run service: a long-running process exposing an HTTP entry. Replace with
+# your real server (e.g. uvicorn src/{{ package_name }}/webhook/app.py). The
+# scheduler hits POST /jobs/signals-scan with an OIDC token (see onboarding §5).
+ENTRYPOINT ["{{ worker_id }}"]
+{%- else -%}
+# Cloud Run job: the args-override entry point. A scheduler invokes it with
+# ["signals", "scan"] for the daily Signal emit (see onboarding §5).
+ENTRYPOINT ["{{ worker_id }}"]
+{%- endif %}

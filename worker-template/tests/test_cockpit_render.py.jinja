@@ -1,0 +1,54 @@
+"""AC-C6-1 — the generated worker's cockpit opens the three-region shell.
+
+A headless render: feed the framework home loop a fake screen + a scripted
+"quit" key, capture the single painted frame, and assert all three regions
+(pulse / needs-you / toolkit) plus the worker's identity are present. Proves the
+generated cockpit entry imports and renders the three-region grammar with no TTY.
+"""
+
+from __future__ import annotations
+
+from clonway_cockpit import registry
+from rich.console import Console
+
+from {{ package_name }}.cli import cockpit
+
+
+class _FakeScreen:
+    """Records every frame the loop paints, rendered to plain text."""
+
+    def __init__(self) -> None:
+        self.frames: list[str] = []
+        self._console = Console(width=120, record=True)
+
+    def update(self, renderable) -> None:
+        with self._console.capture() as cap:
+            self._console.print(renderable)
+        self.frames.append(cap.get())
+
+
+def _open_once() -> str:
+    screen = _FakeScreen()
+    # Scripted key: quit immediately after the first paint.
+    cockpit.run_cockpit(read_key=lambda: "q", screen=screen)
+    assert screen.frames, "cockpit painted no frame"
+    return screen.frames[0]
+
+
+def test_cockpit_opens_three_region_shell() -> None:
+    frame = _open_once()
+    # The three-region grammar: pulse / needs you / toolkit, each with its label
+    # plus the worker's own content (a stub pill, a stub needs item, a worker
+    # shelf). Asserting the region labels proves all three regions painted.
+    assert "pulse" in frame  # region 1
+    assert "needs you" in frame  # region 2
+    assert "toolkit" in frame  # region 3
+    assert "{{ worker_id }}" in frame  # the worker's identity (header + pulse)
+    assert "Wire up {{ worker_id }}" in frame  # the needs-you stub item
+    assert "Capabilities" in frame  # the worker's own shelf label (toolkit)
+
+
+def test_cockpit_registers_example_and_doctor() -> None:
+    cockpit.register_all()
+    registered = {s.key for s in registry.get_capabilities()}
+    assert {"example", "doctor"} <= registered

@@ -1,0 +1,40 @@
+"""{{ worker_id }}'s Typer CLI entry point.
+
+``{{ worker_id }}`` (bare, on a TTY) opens the interactive cockpit; otherwise it
+prints help so pipes / scheduled jobs keep working. Sub-apps:
+
+* ``{{ worker_id }} signals scan`` — emit forward Signals to the fleet store
+  (flag-guarded on ``{{ emit_flag }}``).
+"""
+
+from __future__ import annotations
+
+import sys
+
+import typer
+
+from {{ package_name }}.cli.cockpit import run_cockpit
+from {{ package_name }}.cli.signals import signals_app
+
+app = typer.Typer(
+    name="{{ worker_id }}",
+    help="{{ worker_title }} ({{ worker_id }}) — Clonway fleet worker.",
+    no_args_is_help=False,  # bare invocation opens the cockpit (or prints help off-TTY)
+)
+app.add_typer(signals_app, name="signals")
+
+
+@app.callback(invoke_without_command=True)
+def _root(ctx: typer.Context) -> None:
+    """Bare ``{{ worker_id }}``: open the cockpit on a real TTY; else print help
+    so pipes and scheduled jobs keep today's behaviour."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        run_cockpit()
+    else:
+        typer.echo(ctx.get_help())
+
+
+def main() -> None:
+    app()
