@@ -53,3 +53,11 @@ class CockpitState:
     pills: tuple[Pill, ...] = ()
     needs: tuple[NeedsItem, ...] = ()
     report: object | None = None
+    # The toolkit taxonomy — defaulted to None so the extracting worker (xbook) is
+    # unchanged (render_toolkit falls back to the per-domain A-G SHELVES). Another
+    # worker (the Fleet Cockpit) passes its own letter→label map, e.g. the WORKERS
+    # roster, so the bottom region reads the fleet's workers, not xbook's shelves.
+    shelves: dict[str, str] | None = None
+    # The dim gutter cue for the toolkit region — "toolkit" for xbook's shelves,
+    # "workers" for the fleet bridge's roster. Defaulted so xbook is unchanged.
+    toolkit_label: str = "toolkit"

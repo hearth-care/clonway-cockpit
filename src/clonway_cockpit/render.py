@@ -182,7 +182,34 @@ def render_needs_you(
     return Group(head, Text(""), table)
 
 
-def render_toolkit(specs: list[CapabilitySpec], *, selected: str | None = None) -> RenderableType:
+def _letters_cue(letters: list[str]) -> str:
+    """The second-gutter range cue for the toolkit — "A–G" style — derived from
+    the actual letters laid out. A single letter renders just itself; two or more
+    render "first–last"."""
+    if not letters:
+        return ""
+    if len(letters) == 1:
+        return letters[0]
+    return f"{letters[0]}–{letters[-1]}"
+
+
+def render_toolkit(
+    specs: list[CapabilitySpec],
+    *,
+    selected: str | None = None,
+    shelves: dict[str, str] | None = None,
+    label: str = "toolkit",
+) -> RenderableType:
+    """The bottom home region — a 2-column letter grid of shelf rows.
+
+    ``shelves`` (letter→display-name) overrides the default per-domain ``SHELVES``
+    taxonomy: a worker (the Fleet Cockpit) passes its own map (the WORKERS roster)
+    so the region reads its workers, not xbook's shelves. ``label`` is the dim
+    gutter cue ("toolkit" for shelves, "workers" for the roster). Both default so
+    the extracting worker (xbook) is unchanged. When a custom ``shelves`` is given,
+    exactly those letters are laid out; the second-gutter range cue is derived from
+    them (e.g. "A–E"), while the default keeps the canonical "A–G"."""
+    shelf_map = shelves or SHELVES
     present = {s.shelf for s in specs}
 
     def _cell(letter: str | None) -> Text:
@@ -191,21 +218,24 @@ def render_toolkit(specs: list[CapabilitySpec], *, selected: str | None = None) 
         is_sel = letter == selected
         body_style = "bold" if is_sel else (DIM if letter in present else "grey30")
         t = Text(f"{_CURSOR if is_sel else ' '} ", style=ACCENT)
-        t.append(f"{letter}. {SHELVES[letter]}", style=body_style)
+        t.append(f"{letter}. {shelf_map[letter]}", style=body_style)
         return t
 
-    letters = list(SHELVES)
+    letters = list(shelf_map)
     half = (len(letters) + 1) // 2
     left, right = letters[:half], letters[half:]
     table = Table(show_header=False, box=None, padding=(0, 3), pad_edge=False)
     table.add_column(style=BLUE)
     table.add_column()
     table.add_column()
-    # The gutter carries a one-word verb cue (H-2): toolkit shelves open with the
-    # A–G letters. The cue rides the second gutter row when there is one.
-    gutter: list[str | Text] = ["toolkit", *([""] * (half - 1))]
+    # The gutter carries a one-word verb cue (H-2): the first row names the region
+    # ("toolkit"/"workers"), the second carries the letter-range cue. For the
+    # default taxonomy this stays the canonical "A–G"; a custom shelf map derives
+    # the cue from its own letters so it never lies about the rows present.
+    cue = "A–G" if shelves is None else _letters_cue(letters)
+    gutter: list[str | Text] = [label, *([""] * (half - 1))]
     if half > 1:
-        gutter[1] = Text("A–G", style=DIM)
+        gutter[1] = Text(cue, style=DIM)
     for i in range(half):
         table.add_row(gutter[i], _cell(left[i]), _cell(right[i] if i < len(right) else None))
     return table
@@ -834,7 +864,12 @@ def render_cockpit_screen(
             render_needs_you(state.needs, selected=sel_need),  # type: ignore[arg-type]
             Text(""),
             Text(""),
-            render_toolkit(specs, selected=sel_shelf),  # type: ignore[arg-type]
+            render_toolkit(
+                specs,
+                selected=sel_shelf,  # type: ignore[arg-type]
+                shelves=state.shelves,
+                label=state.toolkit_label,
+            ),
             Text(""),
             Rule(style=DIM),
             _legend(),
