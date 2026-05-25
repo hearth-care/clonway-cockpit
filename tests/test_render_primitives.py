@@ -121,6 +121,97 @@ def test_pill_glyph_varies_by_severity():
     )
 
 
+def test_pill_status_pad_separates_a_long_status_from_the_detail():
+    """P3 — a ≥7-char status (the bridge emits the 9-char 'in-flight') must not
+    collide with the detail. The status pad is widened so there is whitespace
+    between status and detail."""
+    out = _capture(render._pill_text(Pill("xquill", "in-flight", "07:30", "warn")))
+    assert "in-flight07:30" not in out  # the regression: status ran into the detail
+    assert "in-flight" in out and "07:30" in out
+    # There is at least one space between the status text and the detail.
+    import re as _re
+
+    assert _re.search(r"in-flight\s+07:30", out)
+
+
+def test_pill_short_statuses_keep_their_spacing():
+    """P3 default-preserving — xbook's short statuses (≤ the new width) still render
+    a space between status and detail; widening the pad only adds trailing space, it
+    never removes the gap that was already there."""
+    out = _capture(render._pill_text(Pill("Xero", "synced", "06:45", "ok")))
+    import re as _re
+
+    assert _re.search(r"synced\s+06:45", out)
+
+
+def test_render_header_skips_separator_when_tenant_empty():
+    """P4 — when tenant_name is empty (the fleet bridge), the header must not append
+    a dangling '· ' tenant separator."""
+    state = CockpitState(
+        tenant_name="",
+        app_label="Clonway Office",
+        date_label="Mon 25 May 2026",
+        time_label="08:00",
+    )
+    out = _capture(render.render_header(state))
+    assert out.rstrip().endswith("08:00")  # no trailing "· "
+    assert " · " in out  # the date/time separators are still present
+
+
+def test_render_header_keeps_separator_when_tenant_present():
+    """P4 default-preserving — a non-empty tenant still gets its '· {tenant}'
+    segment, exactly as before."""
+    out = _capture(render.render_header(_state()))
+    assert "08:45" not in out  # sanity: _state's time is 06:45
+    assert "· Clonway Care" in out.replace("  ", " ") or "Clonway Care" in out
+    assert "Clonway Care" in out
+
+
+def test_render_pulse_default_gutter_says_enter_sync():
+    """P1 default-preserving — with no pulse_hint set, the gutter cue is the exact
+    xbook '⏎ sync' string."""
+    out = _capture(render.render_pulse(_state()))
+    assert "⏎ sync" in out
+
+
+def test_render_pulse_gutter_honours_custom_pulse_hint():
+    """P1 — a state with pulse_hint set renders that cue in the gutter instead of
+    '⏎ sync' (the fleet's read-only pills become '⏎ open')."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        pills=(
+            Pill("xbook", "ran", "07:30", "ok"),
+            Pill("xhr", "stale", "2d", "warn"),
+            Pill("xletter", "idle", "", "ok"),
+        ),
+        pulse_hint="⏎ open",
+    )
+    out = _capture(render.render_pulse(state))
+    assert "⏎ open" in out
+    assert "⏎ sync" not in out
+
+
+def test_cockpit_screen_threads_pulse_hint():
+    """render_cockpit_screen routes state.pulse_hint into render_pulse's gutter.
+
+    Needs 3+ pills so the pulse grid has a second gutter row (where the ⏎ cue
+    lives)."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        pills=(
+            Pill("xbook", "ran", "07:30", "ok"),
+            Pill("xhr", "stale", "2d", "warn"),
+            Pill("xletter", "idle", "", "ok"),
+        ),
+        pulse_hint="⏎ open",
+    )
+    out = _capture(render.render_cockpit_screen(state, []))
+    assert "⏎ open" in out
+    assert "⏎ sync" not in out
+
+
 def test_walk_progress_renders_optional_step_line():
     plain = _capture(render.render_walk_progress("Working…"))
     assert "Working…" in plain and "step" not in plain
@@ -186,6 +277,68 @@ def test_render_needs_you_lists_items_with_count_badge():
     out = _capture(render.render_needs_you(needs))
     assert "Bills overdue" in out and "Sync is stale" in out
     assert "2" in out and "items" in out
+
+
+def test_render_help_default_is_xbook_verbatim():
+    """H1 default-preserving — render_help() with no help_lines keeps xbook's exact
+    help body (toolkit shelves / sync the pulse pill / A–G / filter capabilities)."""
+    out = _capture(render.render_help())
+    assert "toolkit shelves" in out
+    assert "sync the selected pulse pill" in out
+    assert "open a toolkit shelf" in out
+    assert "filter capabilities by name" in out
+    # The chrome (title + return hint) is present.
+    assert "Keys" in out and "any key to return" in out
+
+
+def test_render_help_renders_custom_help_lines():
+    """H1 — a caller-supplied help body (the fleet's worker-accurate keys) renders
+    in place of xbook's, keeping the same chrome/title."""
+    lines = (
+        ("↑ ↓", "move the highlight"),
+        ("⏎", "open the selected worker"),
+        ("A–E, G", "open a worker · Fleet Doctor"),
+        ("q / esc", "back · quit"),
+    )
+    out = _capture(render.render_help(help_lines=lines))
+    assert "open the selected worker" in out
+    assert "open a worker · Fleet Doctor" in out
+    # xbook's verbatim lines are gone.
+    assert "toolkit shelves" not in out
+    assert "sync the selected pulse pill" not in out
+    # The chrome is unchanged.
+    assert "Keys" in out and "any key to return" in out
+
+
+def test_render_doctor_no_fixes_still_shows_a_back_hint():
+    """D2 — a read-only Doctor (no runnable fixes) must still render a minimal
+    'q back' footer so it isn't an exit-less cul-de-sac. No '⏎ run' / '↑↓ move'
+    since nothing is runnable."""
+    from clonway_cockpit.doctor import Probe
+
+    probes = [Probe("worker · xbook", "ok", "ran ✓", None)]
+    out = _capture(render.render_doctor(probes, [], app_label="Clonway Office"))
+    assert "q" in out and "back" in out
+    # Nothing runnable, so the run/move affordances must not appear.
+    assert "run" not in out.replace("Clonway", "")  # 'run' only in the missing footer
+    assert "move" not in out
+
+
+def test_render_doctor_with_fixes_footer_unchanged():
+    """D2 default-preserving — when there ARE runnable fixes, the full
+    '↑↓ move · ⏎ run · q back' footer is unchanged."""
+    from clonway_cockpit.doctor import Fix, Probe
+
+    probes = [
+        Probe(
+            "state · lloyds",
+            "warn",
+            "stale",
+            Fix("Sync now", "uv run xbook bank sync", run=lambda: "ok"),
+        ),
+    ]
+    out = _capture(render.render_doctor(probes, [probes[0].fix], selected=0))
+    assert "move" in out and "run" in out and "back" in out
 
 
 def _minimal_probes_and_fixes():

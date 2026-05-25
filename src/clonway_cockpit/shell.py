@@ -248,7 +248,7 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         elif low == "r":
             continue
         elif low == "?":
-            _show(screen, r.render_help(), read_key)
+            _show(screen, r.render_help(state.help_lines), read_key)
         elif low == "/":
             _filter(host, screen, read_key)
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
@@ -274,7 +274,13 @@ def _activate(
     if kind == "pill":
         host.activate_pill(state.pills[ref], screen, read_key)
         return
-    need = state.needs[ref]
+    _activate_need(host, state.needs[ref], screen, read_key)
+
+
+def _activate_need(host: Host, need, screen: Screen, read_key: Callable[[], str]) -> None:
+    """Drill a needs-you item — the single activation path shared by a needs-you ⏎
+    (``_activate``) and a filtered-need ⏎ (``_filter``), so a need found through the
+    filter opens identically to one selected on the home screen."""
     if need.capability_key and host.get_capability(need.capability_key):
         # A needs-you item can carry a focus (e.g. "Bills overdue" → "overdue"),
         # threaded into the walk's WizardContext so it opens scoped to that subset.
@@ -293,6 +299,13 @@ def _shelf(
 ) -> None:
     specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
+        return
+    # A shelf with exactly one spec has no real choice to make — open it directly
+    # instead of forcing a second ⏎ through a one-row "browse" menu. For the fleet,
+    # every worker-shelf is single-spec, so this removes a detour on every drill;
+    # xbook's multi-spec shelves still get the menu (the branch below).
+    if len(specs) == 1:
+        _open_capability(host, specs[0].key, screen, read_key)
         return
     # The menu title names the worker (fleet roster) or xbook's shelf taxonomy.
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
@@ -451,20 +464,40 @@ def _show(screen: Screen, renderable: RenderableType, read_key: Callable[[], str
     read_key()
 
 
+@dataclass(frozen=True)
+class _FilterMatch:
+    """One filter hit — a capability OR a needs-you item — carrying its display
+    title/summary (so ``render_filter`` reads it like a CapabilitySpec) plus the
+    drill it triggers on ⏎. A need's ``activate`` routes through ``_activate_need``,
+    the same path a needs-you ⏎ takes, so a filtered need opens identically."""
+
+    title: str
+    summary: str
+    activate: Callable[[Screen, Callable[[], str]], None]
+
+
 def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
-    """Type-to-filter the catalog by name; ↑↓ to move, Enter opens, Esc cancels."""
+    """Type-to-filter the things on screen — capabilities AND needs-you items — by
+    name; ↑↓ moves, Enter drills, Esc always cancels. ``q`` also cancels when the
+    term is empty (consistency with every other screen); once a term is typed, ``q``
+    is a normal search char so a term containing 'q' stays searchable."""
+    state = host.capture_state()
     term, sel = "", 0
     while True:
-        matches = _matches(host, term)
+        matches = _matches(host, state, term)
         if matches:
             sel %= len(matches)
         screen.update(r.render_filter(term, matches, selected=(sel if matches else None)))
         key = read_key()
         if key == keys.ESC:
             return
+        # q quits the filter only with an empty term — once the operator has typed
+        # something, q is a normal search char (so "bq" etc. stay searchable).
+        if key == "q" and not term:
+            return
         if key == keys.ENTER:
             if matches:
-                _open_capability(host, matches[sel].key, screen, read_key)
+                matches[sel].activate(screen, read_key)
             return
         if key == keys.UP and matches:
             sel = (sel - 1) % len(matches)
@@ -476,8 +509,32 @@ def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             term, sel = term + key, 0
 
 
-def _matches(host: Host, term: str) -> list[CapabilitySpec]:
+def _matches(host: Host, state: CockpitState, term: str) -> list[_FilterMatch]:
+    """The filter's candidate set: capabilities (title/summary) PLUS the rendered
+    needs-you items (title/detail). A need that isn't a capability — the bridge's
+    cross-worker alerts — is otherwise invisible to the filter; matching it here and
+    routing ⏎ to ``_activate_need`` makes the filter find what's actually on screen.
+    With no needs (xbook's typical use) this reduces to the capability-only match."""
     t = term.strip().lower()
     if not t:
         return []
-    return [s for s in host.get_capabilities() if t in s.title.lower() or t in s.summary.lower()]
+    out: list[_FilterMatch] = []
+    for s in host.get_capabilities():
+        if t in s.title.lower() or t in s.summary.lower():
+            out.append(_FilterMatch(s.title, s.summary, _capability_activation(host, s.key)))
+    for need in state.needs:
+        if t in need.title.lower() or t in need.detail.lower():
+            out.append(_FilterMatch(need.title, need.detail, _need_activation(host, need)))
+    return out
+
+
+def _capability_activation(host: Host, key: str) -> Callable[[Screen, Callable[[], str]], None]:
+    """The drill a filtered capability fires on ⏎ — the open-capability chokepoint,
+    bound to ``key``."""
+    return lambda scr, rk: _open_capability(host, key, scr, rk)
+
+
+def _need_activation(host: Host, need) -> Callable[[Screen, Callable[[], str]], None]:
+    """The drill a filtered need fires on ⏎ — ``_activate_need``, the SAME path a
+    needs-you ⏎ takes, bound to this ``need`` (so its focus/note carry through)."""
+    return lambda scr, rk: _activate_need(host, need, scr, rk)

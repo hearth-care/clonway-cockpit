@@ -12,8 +12,9 @@ domain screen. The domain screens themselves are supplied by each worker."""
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from rich import box
 from rich.align import Align
@@ -110,10 +111,13 @@ def render_header(state: CockpitState) -> RenderableType:
     t.append(state.date_label, style=ACCENT)
     t.append(" · ", style=DIM)
     t.append(state.time_label, style=ACCENT)
-    t.append(" · ", style=DIM)
-    t.append(state.tenant_name)
-    if state.tenant_id:
-        t.append(f" (tenant {state.tenant_id})", style=DIM)
+    # The fleet bridge has no single tenant, so it leaves tenant_name empty — skip
+    # the "· {tenant}" segment entirely rather than render a dangling "08:00 · ".
+    if state.tenant_name:
+        t.append(" · ", style=DIM)
+        t.append(state.tenant_name)
+        if state.tenant_id:
+            t.append(f" (tenant {state.tenant_id})", style=DIM)
     return t
 
 
@@ -124,7 +128,11 @@ def _pill_text(p: Pill, *, selected: bool = False) -> Text:
     t = Text(f"{_CURSOR} " if selected else "  ", style=ACCENT)
     t.append(f"{_PILL_GLYPH[p.level]} ", style=_DOT[p.level])
     t.append(f"{p.label:<9}", style="bold" if selected else "")
-    t.append(f"{p.status:<7}", style=DIM)
+    # Padded to <10 so a long status (the fleet bridge emits the 9-char "in-flight")
+    # keeps a space before the detail instead of running together ("in-flight07:30");
+    # xbook's short statuses (ran/idle/stale/synced ≤ 6) are unaffected — widening the
+    # pad only adds trailing space, never removes the existing gap.
+    t.append(f"{p.status:<10}", style=DIM)
     if p.detail:
         t.append(p.detail, style=DIM)
     return t
@@ -144,7 +152,10 @@ def render_pulse(state: CockpitState, *, selected: int | None = None) -> Rendera
     n_rows = (len(pills) + 1) // 2
     gutter = ["pulse"] + [""] * (n_rows - 1)
     if n_rows > 1:
-        gutter[1] = "⏎ sync"
+        # The ⏎ cue defaults to "⏎ sync" (xbook syncs the selected pill); a worker
+        # whose pills are read-only (the Fleet Cockpit) passes pulse_hint, e.g.
+        # "⏎ open", so the gutter advertises the action it actually has.
+        gutter[1] = state.pulse_hint if state.pulse_hint is not None else "⏎ sync"
     for r, i in enumerate(range(0, len(pills), 2)):
         left = _pill_text(pills[i], selected=selected == i)
         right = (
@@ -504,17 +515,28 @@ def render_note(title: str, detail: str) -> RenderableType:
     )
 
 
-def render_help() -> RenderableType:
-    rows = [
-        ("↑ ↓", "move the highlight"),
-        ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
-        ("⏎", "open the item · sync the selected pulse pill"),
-        ("1–9", "jump to a needs-you item"),
-        ("A–G", "open a toolkit shelf"),
-        ("/", "filter capabilities by name"),
-        ("r", "refresh the cockpit"),
-        ("q / esc", "back · quit"),
-    ]
+def render_help(
+    help_lines: tuple[tuple[str, str], ...] | None = None,
+) -> RenderableType:
+    """The help screen. ``help_lines`` (key, description) pairs override the body so
+    a worker (the Fleet Cockpit) can describe its own keys — workers, not shelves;
+    no dead "sync"; the real letter set. ``None`` → xbook's verbatim help, so the
+    extracting worker is byte-identical. The chrome (title + border + return hint) is
+    the same either way."""
+    rows = (
+        list(help_lines)
+        if help_lines is not None
+        else [
+            ("↑ ↓", "move the highlight"),
+            ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
+            ("⏎", "open the item · sync the selected pulse pill"),
+            ("1–9", "jump to a needs-you item"),
+            ("A–G", "open a toolkit shelf"),
+            ("/", "filter capabilities by name"),
+            ("r", "refresh the cockpit"),
+            ("q / esc", "back · quit"),
+        ]
+    )
     body = Text()
     for k, d in rows:
         body.append(f"  {k:<9}", style=_KEY_STYLE)
@@ -597,6 +619,12 @@ def render_doctor(
         parts.append(ftable)
         parts.append(Text(""))
         parts.append(_doctor_footer())
+    else:
+        # A read-only Doctor (no runnable fixes — e.g. the Fleet Doctor) still needs
+        # an exit cue, or the screen is a cul-de-sac. Show only "q back" — there's no
+        # "⏎ run" / "↑↓ move" because nothing is runnable.
+        parts.append(Text(""))
+        parts.append(_doctor_back_only_footer())
 
     # "What you reach for" — appended BELOW the fixes, dim/secondary so it doesn't
     # compete with the health probes. Only when usage telemetry is supplied.
@@ -614,6 +642,15 @@ def _doctor_footer() -> Text:
     footer.append(" move · ", style=DIM)
     footer.append("⏎", style=_KEY_STYLE)
     footer.append(" run · ", style=DIM)
+    footer.append("q", style=_KEY_STYLE)
+    footer.append(" back", style=DIM)
+    return footer
+
+
+def _doctor_back_only_footer() -> Text:
+    """The read-only Doctor footer (D2): just "q back" — no move/run keys, since a
+    Doctor with no runnable fixes has nothing to navigate or execute."""
+    footer = Text("  ")
     footer.append("q", style=_KEY_STYLE)
     footer.append(" back", style=DIM)
     return footer
@@ -792,8 +829,21 @@ def render_doctor_confirm(fix: Fix) -> RenderableType:
     )
 
 
+class _FilterRow(Protocol):
+    """The shape ``render_filter`` reads from each match — a title + a summary. Both
+    a ``CapabilitySpec`` and the shell's needs-aware filter match satisfy it, so the
+    filter can list capabilities AND needs-you items (F1) without this primitive
+    importing the shell's match type."""
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def summary(self) -> str: ...
+
+
 def render_filter(
-    term: str, matches: list[CapabilitySpec], *, selected: int | None = None
+    term: str, matches: Sequence[_FilterRow], *, selected: int | None = None
 ) -> RenderableType:
     typed = Text()
     typed.append("  filter  ", style=DIM)
