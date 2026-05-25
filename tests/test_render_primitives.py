@@ -397,6 +397,71 @@ def _now_iso():
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def test_render_toolkit_default_shelves_unchanged():
+    """No ``shelves`` → the per-domain A-G SHELVES taxonomy + the "toolkit" gutter
+    cue, so the extracting worker (xbook) is unchanged."""
+    out = _capture(render.render_toolkit(_specs()))
+    assert "toolkit" in out
+    assert "A. Daily rhythm" in out
+    assert "B. Money in" in out
+    assert "G. Diagnostics & setup" in out
+    assert "A–G" in out  # the canonical second-gutter cue
+
+
+def test_render_toolkit_custom_shelves_and_label():
+    """A custom ``shelves`` map + ``label`` renders exactly those letters under the
+    given gutter cue — the WORKERS-style taxonomy, not xbook's shelves."""
+    shelves = {"A": "xbook · Bookkeeping", "B": "xhr · HR & rota"}
+    out = _capture(render.render_toolkit([], shelves=shelves, label="workers"))
+    assert "workers" in out
+    assert "A. xbook · Bookkeeping" in out
+    assert "B. xhr · HR & rota" in out
+    # The default taxonomy is not leaked in.
+    assert "Daily rhythm" not in out
+    assert "Money in" not in out
+    # Two letters fit on a single row, so there is no second-gutter cue — but the
+    # hardcoded default cue must NOT leak in for a custom map.
+    assert "A–G" not in out
+
+
+def test_render_toolkit_custom_shelves_derives_letter_range_cue():
+    """The derived range cue spans the actual custom letters (e.g. A–E for the
+    five-worker roster), not the hardcoded A–G."""
+    shelves = {ltr: f"w{ltr}" for ltr in "ABCDE"}
+    out = _capture(render.render_toolkit([], shelves=shelves, label="workers"))
+    assert "A–E" in out
+    assert "A–G" not in out
+
+
+def test_render_cockpit_screen_renders_custom_shelves_under_label():
+    """render_cockpit_screen threads CockpitState.shelves / toolkit_label into the
+    bottom region, so the home shows the worker rows under "workers"."""
+    state = CockpitState(
+        tenant_name="Clonway Care",
+        app_label="Clonway Office",
+        date_label="Mon 25 May 2026",
+        time_label="08:00",
+        shelves={"A": "xbook · Bookkeeping", "B": "xhr · HR & rota"},
+        toolkit_label="workers",
+    )
+    out = _capture(render.render_cockpit_screen(state, []))
+    assert "workers" in out
+    assert "xbook · Bookkeeping" in out
+    assert "xhr · HR & rota" in out
+    # The bottom region is the roster, NOT xbook's shelf taxonomy.
+    assert "Daily rhythm" not in out
+    assert "Money in" not in out
+
+
+def test_render_cockpit_screen_default_state_keeps_shelf_taxonomy():
+    """A CockpitState with no shelves (xbook's default) still shows the A-G shelf
+    taxonomy under "toolkit" — the extracting worker is unaffected."""
+    out = _capture(render.render_cockpit_screen(_state(), _specs()))
+    assert "toolkit" in out
+    assert "A. Daily rhythm" in out
+    assert "workers" not in out
+
+
 def test_sub_screens_share_the_visual_language():
     menu = _capture(render.render_menu("Money out", [("1", "Schedule bills", "plan + apply")]))
     assert "browse" in menu and "Money out" in menu and "1." in menu and "Back" in menu
