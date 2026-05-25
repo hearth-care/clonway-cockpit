@@ -104,6 +104,22 @@ def page(body: RenderableType) -> RenderableType:
     return Align(window, align="center", vertical="middle")
 
 
+_CRUMB_SEP = " ▸ "  # the cross-deck breadcrumb separator (U+25B8 — not an emoji)
+
+
+def _breadcrumb_line(trail: tuple[str, ...]) -> Text:
+    """The persistent 'A ▸ B ▸ C' mode-line under the header (Fleet-Cockpit §4.3).
+    The crumb labels sit at the dim secondary weight; the ▸ joints carry the amber
+    accent so the trail reads as navigation chrome, not body text. A lone crumb
+    renders just itself — no dangling joint."""
+    t = Text()
+    for i, crumb in enumerate(trail):
+        if i:
+            t.append(_CRUMB_SEP, style=ACCENT)
+        t.append(crumb, style=DIM)
+    return t
+
+
 def render_header(state: CockpitState) -> RenderableType:
     t = Text()
     t.append(state.app_label, style="bold")
@@ -118,7 +134,14 @@ def render_header(state: CockpitState) -> RenderableType:
         t.append(state.tenant_name)
         if state.tenant_id:
             t.append(f" (tenant {state.tenant_id})", style=DIM)
-    return t
+    # An optional persistent breadcrumb mode-line below the identity row. The xops
+    # bridge supplies 'Fleet ▸ <worker> ▸ <walk>' so "where am I" survives the
+    # shell-out boundary; the framework just renders the supplied trail. No crumb
+    # (None or empty) → the bare identity Text, byte-identical to today, so the
+    # extracting worker (xbook) is unchanged.
+    if not state.breadcrumb:
+        return t
+    return Group(t, _breadcrumb_line(state.breadcrumb))
 
 
 def _pill_text(p: Pill, *, selected: bool = False) -> Text:

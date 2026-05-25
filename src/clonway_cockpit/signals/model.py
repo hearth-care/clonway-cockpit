@@ -35,6 +35,10 @@ _SIGNAL_NS = uuid5(NAMESPACE_URL, "clonway.signals")
 _TITLE_KIND: dict[str, str] = {
     "Set up xbook": "action.required",
     "Re-authenticate Xero": "credential.expiring",
+    # The Lloyds/TrueLayer bank credential expires on its own cadence; a distinct
+    # title (vs reusing the Xero one) lets xbook emit a per-credential signal while
+    # the machine kind stays credential.expiring (S6b follow-up). Additive.
+    "Re-authenticate Lloyds": "credential.expiring",
     "Sync the books": "action.required",
     "Sync is stale": "action.required",
     "Bills overdue": "action.required",
