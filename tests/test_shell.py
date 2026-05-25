@@ -86,6 +86,8 @@ class _FakeHost:
         probes: list[Probe] | None = None,
         report_raises: bool = False,
         usage_module=usage,
+        ack=None,
+        snooze=None,
     ):
         self._state = state or CockpitState(tenant_name="Clonway")
         self._probes = probes or []
@@ -93,11 +95,22 @@ class _FakeHost:
         self.pill_calls: list = []
         self.open_calls = 0
         self.usage = usage_module
+        # Optional ack/snooze callbacks (the Fleet bridge supplies these; xbook
+        # leaves them None). Defaults None so a default _FakeHost is xbook-shaped.
+        self._ack = ack
+        self._snooze = snooze
+        # Count capture_state calls so a test can assert the loop re-captured after
+        # an ack/snooze (the acked item drops on the redraw).
+        self.capture_calls = 0
+
+    def _capture(self) -> CockpitState:
+        self.capture_calls += 1
+        return self._state
 
     # --- shell.Host surface ------------------------------------------------
     def as_host(self) -> shell.Host:
         return shell.Host(
-            capture_state=lambda: self._state,
+            capture_state=self._capture,
             build_walk_ctx=_walk_ctx,
             activate_pill=lambda pill, scr, rk: self.pill_calls.append(pill),
             doctor_build_report=self._build_report,
@@ -108,6 +121,8 @@ class _FakeHost:
             ),
             usage=self.usage,
             on_open=self._on_open,
+            ack=self._ack,
+            snooze=self._snooze,
         )
 
     def _build_report(self) -> object:
@@ -1014,6 +1029,185 @@ def test_run_with_progress_spinner_uses_no_emoji():
     shell.run_with_progress(scr, "Syncing…", lambda: None, sleep=lambda s: None)
     for ch in render.SPINNER_FRAMES:
         assert ord(ch) < 0x10000
+
+
+# --- R3: in-cockpit ack/snooze on a selected need (Host.ack / Host.snooze) -----
+
+
+def _two_needs_state() -> CockpitState:
+    """A state with two needs-you items the cursor can sit on. The first need
+    carries a capability+focus; the second is note-only."""
+    return CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        needs=(
+            NeedsItem("Bills overdue", "3 · £4,210", "error", "schedule-bills", focus="overdue"),
+            NeedsItem("Payroll due", "Fri", "warn", None),
+        ),
+    )
+
+
+def test_ack_on_a_selected_need_calls_host_ack_with_that_need(usage_to_tmp):
+    """R3 — with a host that supplies ack, pressing 'a' on the selected (first)
+    needs-you item calls host.ack with THAT exact need and renders its confirmation."""
+    acked: list = []
+    fh = _FakeHost(
+        state=_two_needs_state(),
+        ack=lambda need: acked.append(need) or f"Acked: {need.title}",
+    )
+    scr = _Screen()
+    # First paint lands the cursor on need #1 ("Bills overdue"); 'a' acks it; q quits.
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q"]), screen=scr)
+    assert len(acked) == 1
+    assert acked[0].title == "Bills overdue"
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Acked: Bills overdue" in joined  # the confirmation rendered
+
+
+def test_snooze_on_a_selected_need_calls_host_snooze_with_that_need(usage_to_tmp):
+    """R3 — 's' on the selected need calls host.snooze with that need and renders
+    its confirmation. The host callback owns the snooze DURATION; the shell just
+    calls it."""
+    snoozed: list = []
+    fh = _FakeHost(
+        state=_two_needs_state(),
+        snooze=lambda need: snoozed.append(need) or f"Snoozed {need.title} for 1d",
+    )
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["s", "q"]), screen=scr)
+    assert len(snoozed) == 1
+    assert snoozed[0].title == "Bills overdue"
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Snoozed Bills overdue for 1d" in joined
+
+
+def test_ack_re_captures_state_so_the_item_drops(usage_to_tmp):
+    """R3 — after ack, the loop re-captures state (so the acked item drops from the
+    list on the redraw). The fake's capture drops the acked need; we assert the
+    dropped need is gone from the post-ack home frame."""
+    # A mutable state whose needs shrink when the ack callback fires — modelling the
+    # Fleet bridge's real ack writing to Firestore and the next capture re-reading.
+    remaining = list(_two_needs_state().needs)
+
+    fh = _FakeHost(state=_two_needs_state())
+
+    def _ack(need):
+        # Drop the acked need from what the next capture will return.
+        nonlocal remaining
+        remaining = [n for n in remaining if n.title != need.title]
+        fh._state = CockpitState(
+            tenant_name="Clonway Office",
+            app_label="Clonway Office",
+            needs=tuple(remaining),
+        )
+        return f"Acked: {need.title}"
+
+    fh._ack = _ack
+    scr = _Screen()
+    before = fh.capture_calls
+    # 'a' acks "Bills overdue"; the next home redraw must re-capture (capture_calls
+    # increases) and the dropped need's title must be gone from the LAST home frame.
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q"]), screen=scr)
+    assert fh.capture_calls > before + 1  # the loop re-captured after the ack
+    last_home = _text(scr.frames[-1])
+    assert "Bills overdue" not in last_home  # the acked item dropped on redraw
+    assert "Payroll due" in last_home  # the surviving need is still shown
+
+
+def test_snooze_re_captures_state_so_the_item_drops(usage_to_tmp):
+    """R3 — symmetric to ack: after snooze, the loop re-captures and the snoozed
+    item is gone from the redraw."""
+    remaining = list(_two_needs_state().needs)
+    fh = _FakeHost(state=_two_needs_state())
+
+    def _snooze(need):
+        nonlocal remaining
+        remaining = [n for n in remaining if n.title != need.title]
+        fh._state = CockpitState(
+            tenant_name="Clonway Office",
+            app_label="Clonway Office",
+            needs=tuple(remaining),
+        )
+        return f"Snoozed {need.title}"
+
+    fh._snooze = _snooze
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["s", "q"]), screen=scr)
+    last_home = _text(scr.frames[-1])
+    assert "Bills overdue" not in last_home
+    assert "Payroll due" in last_home
+
+
+def test_ack_keybind_is_inert_on_a_pill_even_when_host_supports_ack(usage_to_tmp):
+    """R3 context-sensitivity — when the cursor is on a PILL (not a need), 'a' keeps
+    its shelf-letter behaviour (opens shelf A) even though the host supports ack.
+    host.ack must NOT be called."""
+    _register_reference()  # sync-all on shelf A → 'a' should open shelf A
+    acked: list = []
+    fh = _FakeHost(
+        state=CockpitState(tenant_name="Clonway", pills=_PILLS),  # boot lands on pill #0
+        ack=lambda need: acked.append(need) or "acked",
+    )
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q", "q"]), screen=scr)
+    assert acked == []  # ack NOT called on a pill
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined  # 'a' opened shelf A instead
+
+
+def test_ack_keybind_is_inert_on_a_shelf_even_when_host_supports_ack(usage_to_tmp):
+    """R3 context-sensitivity — with the cursor on a SHELF row, 'a' opens shelf A
+    (unchanged), not an ack, even with a host that supports ack."""
+    _register_reference()  # sync-all on shelf A
+    acked: list = []
+    fh = _FakeHost(
+        state=CockpitState(tenant_name="Clonway"),  # no pills/needs → boot on shelf A
+        ack=lambda need: acked.append(need) or "acked",
+    )
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q", "q"]), screen=scr)
+    assert acked == []
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined
+
+
+def test_ack_on_selected_need_with_no_ack_callback_opens_shelf_a(usage_to_tmp):
+    """R3 DEFAULT-PRESERVING (xbook) — a host with NO ack callback: 'a' on a SELECTED
+    NEED still opens shelf A (the shelf-letter hotkey), byte-identical to today.
+    This is the proof xbook (which supplies no ack/snooze) is unchanged."""
+    _register_reference()  # sync-all on shelf A
+    fh = _FakeHost(state=_two_needs_state())  # ack=None, snooze=None (xbook-shaped)
+    scr = _Screen()
+    # Boot lands on need #1; with no ack callback, 'a' is the shelf-A hotkey.
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined  # 'a' opened shelf A, as it always has
+
+
+def test_snooze_on_selected_need_with_no_snooze_callback_is_unchanged(usage_to_tmp):
+    """R3 DEFAULT-PRESERVING — a host with NO snooze callback: 's' on a selected need
+    keeps its current behaviour (no snooze fires). With no shelf S registered, 's'
+    is simply inert (the home stays put) — exactly as today."""
+    fh = _FakeHost(state=_two_needs_state())  # snooze=None
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["s", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    # No confirmation toast (nothing was snoozed); the home is still the last frame.
+    assert "Snoozed" not in joined
+
+
+def test_ack_only_host_leaves_snooze_as_shelf_hotkey(usage_to_tmp):
+    """R3 — a host that supplies ONLY ack (not snooze): 'a' on a need acks; 's' on a
+    need is NOT a snooze (snooze is None) and falls through to its shelf behaviour.
+    The two keys are gated independently on their own callback."""
+    acked: list = []
+    fh = _FakeHost(state=_two_needs_state(), ack=lambda need: acked.append(need) or "ack ok")
+    scr = _Screen()
+    # 'a' acks the selected need; then 's' (no snooze callback) does not ack/snooze.
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q"]), screen=scr)
+    assert len(acked) == 1
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Snoozed" not in joined
 
 
 # A small type-resolution sanity: Host is constructible with the expected fields.

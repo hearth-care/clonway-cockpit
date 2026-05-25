@@ -98,6 +98,16 @@ class Host:
     # default worker; a fleet bridge passes its own label ("Clonway Office doctor").
     # Defaulted so existing Host constructions that don't set it are unchanged.
     app_label: str = "xbook"
+    # Optional in-cockpit ack / snooze on a SELECTED needs-you item — the Fleet
+    # bridge wires these to its real Firestore-backed lifecycle store; each takes the
+    # selected NeedsItem and returns a short confirmation line (or None). The host
+    # callback owns everything domain-specific (snooze DURATION, the write, what
+    # "ack" means) — the shell only routes the keypress and shows the returned
+    # confirmation. Defaulted None so xbook's single-worker cockpit (which supplies
+    # neither) is byte-identical: with both None, 'a'/'s' stay the shelf-letter
+    # hotkeys on every selectable, including a selected need.
+    ack: Callable[[object], str | None] | None = None
+    snooze: Callable[[object], str | None] | None = None
 
 
 def run_with_progress[T](
@@ -253,9 +263,58 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             _filter(host, screen, read_key)
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
             _activate(host, ("need", int(key) - 1), state, screen, read_key)
+        elif isinstance(selection[1], int) and _ack_snooze_cb(host, selection, low) is not None:
+            # Context-sensitive ack/snooze: ONLY when a needs-you item is selected
+            # AND the host wired the matching callback. This branch sits BEFORE the
+            # shelf-letter handler so 'a'/'s' act on the need first — but only in
+            # that exact case. With no callback (xbook) _ack_snooze_cb returns None
+            # and we fall through to the shelf-letter handler below, so 'a' stays
+            # the shelf-A hotkey, byte-identical.
+            _ack_snooze_need(host, state.needs[selection[1]], low, screen, read_key)
         elif low.isalpha() and low.upper() in _shelf_letters(state):
             _shelf(host, low.upper(), screen, read_key, title=_shelf_label(state, low.upper()))
         # any other key: ignore — the highlight is the guide
+
+
+def _ack_snooze_cb(
+    host: Host, selection: tuple[str, object], low: str
+) -> Callable[[object], str | None] | None:
+    """The host callback a key would fire on the CURRENT selection, or ``None`` when
+    the keypress is not a context-sensitive ack/snooze.
+
+    Returns ``host.ack`` for 'a' / ``host.snooze`` for 's' — but ONLY when the
+    selected row is a needs-you item AND the host wired that callback. In every
+    other case (a different key, a pill/shelf selected, or the callback absent) it
+    returns ``None`` so the caller falls through to the unchanged shelf-letter
+    handler. This single predicate is what keeps the new keybind from ever shadowing
+    xbook's 'a'=shelf-A hotkey: with ``host.ack`` None it returns None for 'a'."""
+    if selection[0] != "need":
+        return None
+    if low == "a":
+        return host.ack
+    if low == "s":
+        return host.snooze
+    return None
+
+
+def _ack_snooze_need(
+    host: Host,
+    need: object,
+    low: str,
+    screen: Screen,
+    read_key: Callable[[], str],
+) -> None:
+    """Fire the ack ('a') / snooze ('s') callback for ``need``, then show its
+    confirmation. The host callback owns the action (and, for snooze, the duration);
+    the shell only renders the short message it returns and waits for a key, after
+    which ``_home``'s loop re-captures state on its next pass so the acked/snoozed
+    item drops from the redraw. A ``None`` / empty return falls back to a neutral
+    confirmation so the operator always gets feedback that the key landed."""
+    cb = host.ack if low == "a" else host.snooze
+    assert cb is not None  # guarded by _ack_snooze_cb before we get here
+    verb = "Acknowledged" if low == "a" else "Snoozed"
+    message = cb(need) or verb
+    _show(screen, r.render_note(verb, message), read_key)
 
 
 def _activate(
