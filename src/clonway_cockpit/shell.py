@@ -94,6 +94,10 @@ class Host:
     # registry for a worker that does share it.
     get_capabilities: Callable[[], list[CapabilitySpec]] = field(default=_registry.get_capabilities)
     get_capability: Callable[[str], CapabilitySpec | None] = field(default=_registry.get_capability)
+    # The product name used in the Doctor screen header — "xbook doctor" for the
+    # default worker; a fleet bridge passes its own label ("Clonway Office doctor").
+    # Defaulted so existing Host constructions that don't set it are unchanged.
+    app_label: str = "xbook"
 
 
 def run_with_progress[T](
@@ -363,6 +367,7 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                 selected=sel if runnable else None,
                 usage=host.usage.load(),  # best-effort; {} on any failure
                 specs=host.get_capabilities(),
+                app_label=host.app_label,
             )
         )
         key = read_key()

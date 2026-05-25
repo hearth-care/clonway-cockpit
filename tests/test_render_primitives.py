@@ -188,6 +188,30 @@ def test_render_needs_you_lists_items_with_count_badge():
     assert "2" in out and "items" in out
 
 
+def _minimal_probes_and_fixes():
+    from clonway_cockpit.doctor import Probe
+
+    probes = [Probe("auth · xero", "ok", "ok", None)]
+    fixes: list = []
+    return probes, fixes
+
+
+def test_render_doctor_default_app_label_reads_xbook():
+    """render_doctor() with no app_label → header contains 'xbook doctor'."""
+    probes, fixes = _minimal_probes_and_fixes()
+    out = _capture(render.render_doctor(probes, fixes))
+    assert "xbook doctor" in out
+
+
+def test_render_doctor_custom_app_label_overrides_header():
+    """render_doctor(app_label='Clonway Office') → header contains 'Clonway Office doctor',
+    not 'xbook doctor'."""
+    probes, fixes = _minimal_probes_and_fixes()
+    out = _capture(render.render_doctor(probes, fixes, app_label="Clonway Office"))
+    assert "Clonway Office doctor" in out
+    assert "xbook doctor" not in out
+
+
 def test_render_doctor_marks_selected_and_dims_display_only():
     from clonway_cockpit.doctor import Fix, Probe
 
