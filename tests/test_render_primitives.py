@@ -680,6 +680,39 @@ def test_cockpit_screen_threads_legend_hint():
     assert "sync" not in legend_line
 
 
+def test_legend_shelf_hint_overrides_computed_shelf_segment():
+    """A custom shelf_hint replaces the computed 'A–G to browse' shelf segment, so
+    the fleet (whose shelves are A,B,C,D,E,G — no F) doesn't imply F is a live
+    browsable letter and can say the letters open a worker, not 'browse' (H2)."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        shelves={
+            "A": "xbook",
+            "B": "xhr",
+            "C": "xletter",
+            "D": "xquill",
+            "E": "xops",
+            "G": "Doctor",
+        },
+        toolkit_label="workers",
+        shelf_hint="A–E, G open a worker",
+    )
+    out = _capture(render._legend(state))
+    assert "A–E, G open a worker" in out
+    assert "A–G to browse" not in out
+
+
+def test_legend_default_shelf_segment_byte_identical():
+    """The default state (no shelf_hint) renders the canonical xbook legend line
+    byte-for-byte — pinned in full so the default path can never drift."""
+    out = _capture(render._legend(_state()))
+    assert out == (
+        "▸ Press ↑↓←→ to move · ⏎ to open / sync · A–G to browse · "
+        "/ to filter · ? for help · q to quit\n"
+    )
+
+
 def test_sub_screens_share_the_visual_language():
     menu = _capture(render.render_menu("Money out", [("1", "Schedule bills", "plan + apply")]))
     assert "browse" in menu and "Money out" in menu and "1." in menu and "Back" in menu

@@ -66,6 +66,13 @@ class CockpitState:
     # so the bottom legend doesn't advertise a dead "sync" key. Defaulted to None →
     # today's xbook legend, byte-identical, so the extracting worker is unchanged.
     legend_hint: str | None = None
+    # Overrides the legend's shelf segment ("A–G to browse" for xbook, derived from
+    # the shelf letters). The Fleet Cockpit's shelves are A,B,C,D,E,G (no F), so the
+    # computed "A–G" implies F is a live browsable letter (it isn't), and "browse"
+    # understates that a letter opens a worker; it passes e.g. "A–E, G open a worker".
+    # Defaulted to None → today's computed segment, byte-identical, so xbook is
+    # unchanged.
+    shelf_hint: str | None = None
     # Overrides the pulse region's ⏎ gutter cue ("⏎ sync" for xbook). A read-only
     # fleet whose pills can't be synced passes e.g. "⏎ open" so the gutter advertises
     # the drill action it actually has, not a dead sync. Defaulted to None → today's
