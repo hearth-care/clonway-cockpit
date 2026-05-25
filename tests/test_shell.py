@@ -218,6 +218,171 @@ def test_needs_you_left_right_are_noop():
     assert shell.move_horizontal(items, n0, keys.RIGHT) == n0
 
 
+# --- the fleet's state.shelves drives navigation (UX-QA #1 / #2) ---------------
+
+# The Fleet Cockpit's roster: A,B,C,D,E,G — note NO F. The shell must navigate
+# exactly these (the letters it draws), not xbook's hardcoded A–G.
+_FLEET_SHELVES = {
+    "A": "xbook · Bookkeeping",
+    "B": "xhr · HR & rota",
+    "C": "xletter · Comms",
+    "D": "xquill · Notes",
+    "E": "xops · Orchestrator",
+    "G": "Fleet Doctor",
+}
+
+
+def _fleet_state(**kw) -> CockpitState:
+    return CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        shelves=_FLEET_SHELVES,
+        toolkit_label="workers",
+        **kw,
+    )
+
+
+def _register_fleet_specs():
+    """One spec per fleet letter so each shelf has content to open."""
+    for letter, label in _FLEET_SHELVES.items():
+        register_capability(
+            CapabilitySpec(
+                key=f"worker-{letter.lower()}",
+                shelf=letter,
+                title=label,
+                summary=f"open {label}",
+                equivalent_cli=f"uv run worker-{letter.lower()}",
+            )
+        )
+
+
+def test_selectables_uses_state_shelves_when_present():
+    """The shelf selectables come from state.shelves (the fleet's 6 letters), NOT
+    the hardcoded render.SHELVES — so there is no phantom ('shelf','F')."""
+    items = shell.selectables(_fleet_state())
+    shelf_letters = [ref for kind, ref in items if kind == "shelf"]
+    assert shelf_letters == ["A", "B", "C", "D", "E", "G"]
+    assert ("shelf", "F") not in items
+
+
+def test_selectables_falls_back_to_render_shelves_when_none():
+    """Default state (shelves=None) → xbook's canonical A–G, unchanged."""
+    items = shell.selectables(CockpitState(tenant_name="Clonway"))
+    shelf_letters = [ref for kind, ref in items if kind == "shelf"]
+    assert shelf_letters == list(render.SHELVES)
+
+
+def test_arrowing_down_lands_only_on_present_fleet_letters(usage_to_tmp):
+    """Arrowing DOWN through the fleet roster lands the ❯ on each PRESENT letter
+    and NEVER on a phantom (no empty/F stop where the cursor vanishes)."""
+    _register_fleet_specs()
+    host = _FakeHost(state=_fleet_state()).as_host()
+    scr = _Screen()
+    # 6 shelves; arrow down through all of them then quit. Every home frame must
+    # show exactly one ❯ cursor (never zero — a phantom F stop drops it to zero).
+    keypresses = [keys.DOWN] * 6 + ["q"]
+    shell.run_cockpit(host, read_key=_keys(keypresses), screen=scr)
+    for frame in scr.frames:
+        text = _text(frame)
+        assert text.count("❯") >= 1, "cursor vanished — landed on a phantom row"
+    # And F must never appear as a drawn row label.
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "F." not in joined
+
+
+def test_enter_opens_each_present_fleet_shelf(usage_to_tmp):
+    """⏎ on each present fleet letter opens its spec; the menu titles the worker."""
+    _register_fleet_specs()
+    for letter, label in _FLEET_SHELVES.items():
+        host = _FakeHost(state=_fleet_state()).as_host()
+        scr = _Screen()
+        shell.run_cockpit(host, read_key=_keys([letter.lower(), "q", "q"]), screen=scr)
+        joined = "\n".join(_text(f) for f in scr.frames)
+        assert label in joined, f"shelf {letter} did not open {label!r}"
+
+
+def test_phantom_f_hotkey_is_inert_for_the_fleet(usage_to_tmp):
+    """Pressing 'f' on the fleet home does nothing (F is not a present letter) —
+    no menu opens, the home stays put."""
+    _register_fleet_specs()
+    host = _FakeHost(state=_fleet_state()).as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["f", "q"]), screen=scr)
+    # Only home frames — no shelf menu opened. The menu carries render_menu's
+    # distinctive "⏎ select · q back" hint (the home legend says "⏎ to ... browse").
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "⏎ select" not in joined
+
+
+def test_shelf_menu_title_is_the_fleet_worker_not_xbook_taxonomy(usage_to_tmp):
+    """Opening fleet shelf B shows the worker label ('xhr · HR & rota'), NOT
+    xbook's 'Money in' shelf name."""
+    _register_fleet_specs()
+    host = _FakeHost(state=_fleet_state()).as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["b", "q", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "xhr · HR & rota" in joined
+    assert "Money in" not in joined
+
+
+# --- ←/→ column math matches the rendered grid for the fleet (UX-QA #2) --------
+
+
+def _fleet_items():
+    return shell.selectables(_fleet_state())
+
+
+def test_fleet_right_jumps_to_correct_column_pair():
+    """The fleet's 6 letters split left=[A,B,C] / right=[D,E,G] (matching
+    render_toolkit's (len+1)//2 split). RIGHT from a left letter lands on its
+    visual right pair."""
+    items = _fleet_items()
+    for left_letter, right_letter in (("A", "D"), ("B", "E"), ("C", "G")):
+        sel = items.index(("shelf", left_letter))
+        new = shell.move_horizontal(items, sel, keys.RIGHT)
+        assert items[new] == ("shelf", right_letter)
+
+
+def test_fleet_left_returns_to_correct_column_pair():
+    items = _fleet_items()
+    for right_letter, left_letter in (("D", "A"), ("E", "B"), ("G", "C")):
+        sel = items.index(("shelf", right_letter))
+        new = shell.move_horizontal(items, sel, keys.LEFT)
+        assert items[new] == ("shelf", left_letter)
+
+
+def test_fleet_left_from_left_letter_is_noop():
+    """LEFT from a left-column letter (e.g. xquill's pair partner A) is a no-op —
+    no dead jump to a non-present letter."""
+    items = _fleet_items()
+    for left_letter in ("A", "B", "C"):
+        sel = items.index(("shelf", left_letter))
+        assert shell.move_horizontal(items, sel, keys.LEFT) == sel
+
+
+def test_fleet_right_from_right_letter_is_noop():
+    items = _fleet_items()
+    for right_letter in ("D", "E", "G"):
+        sel = items.index(("shelf", right_letter))
+        assert shell.move_horizontal(items, sel, keys.RIGHT) == sel
+
+
+def test_fleet_horizontal_never_lands_on_a_non_present_letter():
+    """Sweep every shelf with both arrows — the result is always a present letter
+    (or the same index), never a phantom F."""
+    items = _fleet_items()
+    present = set(_FLEET_SHELVES)
+    for i, (kind, _ref) in enumerate(items):
+        if kind != "shelf":
+            continue
+        for key in (keys.LEFT, keys.RIGHT):
+            new = shell.move_horizontal(items, i, key)
+            k2, ref2 = items[new]
+            assert k2 == "shelf"
+            assert ref2 in present
+
+
 # --- the home loop: nav, first paint, q-quits ---------------------------------
 
 

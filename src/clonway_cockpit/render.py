@@ -822,16 +822,27 @@ def render_filter(
     return page(Group(*parts))
 
 
-def _legend() -> Text:
+def _legend(state: CockpitState) -> Text:
     # Plain-English voice (reference) trimmed to one line for the 96-col window.
     # Number hotkeys (1–9) still work; they live in the ? help screen rather than
     # crowding the legend.
+    #
+    # Two app-aware bits keep the legend from lying about a different product:
+    #  * the ⏎ cue — "open / sync" for xbook; a worker with no sync action (the
+    #    Fleet Cockpit's read-only pills) passes state.legend_hint (e.g. "open
+    #    worker") so the dead "sync" key isn't advertised.
+    #  * the letter-range cue — derived from state.shelves' actual letters (e.g.
+    #    "A–E" for a five-worker roster) so it never asserts a phantom range; the
+    #    default (shelves=None) stays the canonical "A–G".
+    enter_cue = state.legend_hint if state.legend_hint is not None else "open / sync"
+    letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
+    range_cue = _letters_cue(letters) if state.shelves is not None else "A–G"
     legend = Text("▸ Press ", style=DIM)
     legend.append("↑↓←→", style=_KEY_STYLE)
     legend.append(" to move · ", style=DIM)
     legend.append("⏎", style=_KEY_STYLE)
-    legend.append(" to open / sync · ", style=DIM)
-    legend.append("A–G", style=_KEY_STYLE)
+    legend.append(f" to {enter_cue} · ", style=DIM)
+    legend.append(range_cue, style=_KEY_STYLE)
     legend.append(" to browse · ", style=DIM)
     legend.append("/", style=_KEY_STYLE)
     legend.append(" to filter · ", style=DIM)
@@ -872,6 +883,6 @@ def render_cockpit_screen(
             ),
             Text(""),
             Rule(style=DIM),
-            _legend(),
+            _legend(state),
         )
     )

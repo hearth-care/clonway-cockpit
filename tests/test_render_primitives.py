@@ -462,6 +462,71 @@ def test_render_cockpit_screen_default_state_keeps_shelf_taxonomy():
     assert "workers" not in out
 
 
+# --- the legend reflects the app (UX-QA #5) -----------------------------------
+
+
+def test_legend_default_is_xbook_unchanged():
+    """The default state (no shelves, no legend_hint) keeps xbook's exact legend
+    text — 'open / sync' and the canonical 'A–G to browse'."""
+    out = _capture(render._legend(_state()))
+    assert "to open / sync" in out
+    assert "A–G to browse" in out
+
+
+def test_legend_derives_letter_range_from_state_shelves():
+    """A fleet state with A,B,C,D,E,G shelves reflects the real letter RANGE
+    ('A–G' here is correct because G is present) — but a 5-letter roster shows
+    'A–E', never the hardcoded 7-letter assumption."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        shelves={ltr: f"w{ltr}" for ltr in "ABCDE"},
+        toolkit_label="workers",
+    )
+    out = _capture(render._legend(state))
+    assert "A–E" in out
+    assert "A–G" not in out
+
+
+def test_legend_hint_overrides_open_sync_cue():
+    """A custom legend_hint replaces the 'open / sync' cue, so the fleet (which
+    can't sync another worker) doesn't advertise a dead 'sync' key."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        shelves={
+            "A": "xbook",
+            "B": "xhr",
+            "C": "xletter",
+            "D": "xquill",
+            "E": "xops",
+            "G": "Doctor",
+        },
+        toolkit_label="workers",
+        legend_hint="open worker",
+    )
+    out = _capture(render._legend(state))
+    assert "open worker" in out
+    assert "sync" not in out
+
+
+def test_cockpit_screen_threads_legend_hint():
+    """render_cockpit_screen routes state.legend_hint into the rendered legend."""
+    state = CockpitState(
+        tenant_name="Clonway Office",
+        app_label="Clonway Office",
+        shelves={"A": "xbook", "G": "Doctor"},
+        toolkit_label="workers",
+        legend_hint="open worker",
+    )
+    out = _capture(render.render_cockpit_screen(state, []))
+    assert "open worker" in out
+    # The legend line itself must not advertise "sync" (the pulse-empty placeholder
+    # "run a sync" is a separate region, not the legend).
+    legend_line = next(ln for ln in out.splitlines() if "to move" in ln)
+    assert "sync" not in legend_line
+
+
 def test_sub_screens_share_the_visual_language():
     menu = _capture(render.render_menu("Money out", [("1", "Schedule bills", "plan + apply")]))
     assert "browse" in menu and "Money out" in menu and "1." in menu and "Back" in menu

@@ -61,3 +61,8 @@ class CockpitState:
     # The dim gutter cue for the toolkit region — "toolkit" for xbook's shelves,
     # "workers" for the fleet bridge's roster. Defaulted so xbook is unchanged.
     toolkit_label: str = "toolkit"
+    # Overrides the legend's ⏎ cue ("open / sync" for xbook). A worker that has no
+    # sync action (the Fleet Cockpit's read-only pills) passes e.g. "open worker"
+    # so the bottom legend doesn't advertise a dead "sync" key. Defaulted to None →
+    # today's xbook legend, byte-identical, so the extracting worker is unchanged.
+    legend_hint: str | None = None
