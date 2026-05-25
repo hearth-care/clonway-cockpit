@@ -6,8 +6,8 @@ logic: the walk machine and its single write gate (`confirm_apply`), the
 capability registry (`CapabilitySpec` / `WizardContext` / `BlastRadius`), the
 render primitives that define the cockpit's locked visual language
 (header / pulse / needs-you / toolkit / walk / doctor / usage chrome), the raw
-single-keypress reader, local usage telemetry, the shell-out mechanism, and the
-forward-looking `Signal` model.
+single-keypress reader, local usage telemetry, the shell-out mechanism, the
+forward-looking `Signal` model, and the shared best-effort Signal emitter.
 
 Workers (xbook, and future siblings) depend on this package and supply their own
 capabilities, probes, and domain screens. The only runtime dependency is
@@ -20,8 +20,11 @@ worker — it is the substrate they build on, not the other way round.
 src/clonway_cockpit/
   keys.py        prompts.py     registry.py    state.py
   doctor.py      render.py      walk.py        usage.py    shellout.py
-  signals/model.py
+  signals/model.py   signals/rank.py   signals/emit.py
 ```
+
+Adding a new worker to the Fleet Signal layer? See
+[docs/onboarding-a-worker.md](docs/onboarding-a-worker.md).
 
 ## Develop
 
