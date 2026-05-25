@@ -458,11 +458,15 @@ def test_letter_hotkey_opens_a_shelf(usage_to_tmp):
 
 
 def test_arrow_reaches_the_back_row_in_a_shelf(usage_to_tmp):
-    _register_reference()  # one capability on shelf A → rows = [it, Back]
+    # W4: a single-spec shelf now opens directly (no menu, no Back row), so the
+    # Back-row navigation this test exercises only exists on a MULTI-spec shelf —
+    # register two specs so the browse menu (and its Back row) is shown.
+    _register_reference(key="cap-1", shelf="A", title="First cap", summary="one")
+    _register_reference(key="cap-2", shelf="A", title="Second cap", summary="two")
     host = _FakeHost().as_host()
     scr = _Screen()
-    # A → shelf (1 item); ↓↓ wraps onto Back; Enter returns; q quits.
-    shell.run_cockpit(host, read_key=_keys(["a", keys.DOWN, keys.ENTER]), screen=scr)
+    # A → shelf menu (2 items + Back); ↓↓↓ wraps onto Back; Enter returns; q quits.
+    shell.run_cockpit(host, read_key=_keys(["a", keys.DOWN, keys.DOWN, keys.ENTER]), screen=scr)
     assert any("❯ q." in _text(f) for f in scr.frames)
 
 
@@ -550,6 +554,184 @@ def test_filter_narrows_and_opens(usage_to_tmp):
     )
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Status board" in joined
+
+
+# --- F2: q quits the filter when the term is empty ----------------------------
+
+
+def test_filter_q_on_empty_term_quits_back_home(usage_to_tmp):
+    """F2 — '/' then 'q' (with an empty search term) closes the filter and returns
+    home, matching 'q quits' everywhere else."""
+    _register_reference()
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # '/' opens the filter; 'q' on the empty term quits it back home; 'q' quits home.
+    shell.run_cockpit(host, read_key=_keys(["/", "q", "q"]), screen=scr)
+    # The last frame is the home (the legend line), not the filter.
+    last = _text(scr.frames[-1])
+    assert "to move" in last  # the home legend
+    assert "Find a tool" not in last  # not the filter screen
+
+
+def test_filter_q_mid_term_is_a_search_char(usage_to_tmp):
+    """F2 — once the operator has typed something, 'q' is a normal search char, so
+    a term containing 'q' is still searchable. '/' 'b' 'q' → term 'bq'."""
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["/", "b", "q", keys.ESC, "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    # The filter showed the typed term "bq" (q did not quit mid-term).
+    assert "bq" in joined
+
+
+def test_filter_esc_always_quits(usage_to_tmp):
+    """F2 default-preserving — ESC still closes the filter from any term state."""
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["/", "b", "q", keys.ESC, "q"]), screen=scr)
+    last = _text(scr.frames[-1])
+    assert "to move" in last
+    assert "Find a tool" not in last
+
+
+# --- F1: the filter matches needs-you items and drills like a needs-you ⏎ ------
+
+
+def _need_specs_state() -> CockpitState:
+    """A state carrying needs-you items (with and without a capability)."""
+    return CockpitState(
+        tenant_name="Clonway",
+        needs=(
+            NeedsItem("Bills overdue", "3 · £4,210", "error", "schedule-bills", focus="overdue"),
+            NeedsItem("Payroll due", "Fri", "warn", None),  # note-only need (no capability)
+        ),
+    )
+
+
+def test_filter_matches_a_needs_you_item(usage_to_tmp):
+    """F1 — typing 'bill' with 'Bills overdue' in needs-you finds it (it's not a
+    capability, but the filter now matches rendered needs too)."""
+    register_capability(
+        CapabilitySpec(
+            key="schedule-bills",
+            shelf="C",
+            title="Schedule bills",
+            summary="plan + apply the bills",
+            equivalent_cli="uv run worker plan",
+            run=lambda ctx: ctx.present(render.render_note("Scheduled", "the bills walk ran")),
+        )
+    )
+    host = _FakeHost(state=_need_specs_state()).as_host()
+    scr = _Screen()
+    # '/' filter; type 'bill'; the need "Bills overdue" must appear as a match.
+    shell.run_cockpit(host, read_key=_keys(["/", "b", "i", "l", "l", keys.ESC, "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Bills overdue" in joined
+
+
+def test_filter_enter_on_a_matched_need_drills_via_its_activation(usage_to_tmp):
+    """F1 — ⏎ on a filtered need routes to the SAME drill a needs-you ⏎ uses: the
+    need's capability opens through the open-capability chokepoint (focus threaded)."""
+    seen: dict = {}
+    register_capability(
+        CapabilitySpec(
+            key="schedule-bills",
+            shelf="C",
+            title="Schedule bills",
+            summary="plan + apply the bills",
+            equivalent_cli="uv run worker plan",
+            run=lambda ctx: seen.update(focus=ctx.focus, ran=True),
+        )
+    )
+    host = _FakeHost(state=_need_specs_state()).as_host()
+    scr = _Screen()
+    # "overdue" uniquely matches the need "Bills overdue" (not the capability's
+    # title/summary), so ⏎ must drill the NEED — through _activate_need, which threads
+    # the need's focus into the walk.
+    shell.run_cockpit(
+        host,
+        read_key=_keys(["/", "o", "v", "e", "r", "d", "u", "e", keys.ENTER, "q"]),
+        screen=scr,
+    )
+    assert seen.get("ran") is True
+    assert seen.get("focus") == "overdue"  # the need's focus is threaded through
+
+
+def test_filter_enter_on_a_note_only_need_shows_its_note(usage_to_tmp):
+    """F1 — a matched need with no capability drills to the same note screen a
+    needs-you ⏎ would show (not a dead key)."""
+    host = _FakeHost(state=_need_specs_state()).as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys(["/", "p", "a", "y", "r", "o", "l", "l", keys.ENTER, "q", "q"]),
+        screen=scr,
+    )
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Payroll due" in joined  # the note title rendered
+
+
+def test_filter_with_no_needs_is_capability_only_unchanged(usage_to_tmp):
+    """F1 default-preserving — with no needs present (xbook's typical filter use),
+    the filter matches capabilities exactly as before."""
+    register_capability(
+        CapabilitySpec(
+            key="status",
+            shelf="A",
+            title="Status board",
+            summary="See where the books stand",
+            equivalent_cli="uv run worker status",
+        )
+    )
+    host = _FakeHost().as_host()  # no needs
+    scr = _Screen()
+    shell.run_cockpit(
+        host, read_key=_keys(["/", "s", "t", "a", "t", keys.ENTER, keys.ENTER]), screen=scr
+    )
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Status board" in joined
+
+
+# --- W4: a single-spec shelf opens directly (no intermediate menu) ------------
+
+
+def test_single_spec_shelf_opens_directly_no_menu(usage_to_tmp):
+    """W4 — a shelf with exactly ONE spec opens that spec on the first ⏎/letter,
+    skipping the one-row 'browse' menu. The menu's distinctive '⏎ select · q back'
+    hint must NOT appear."""
+    _register_reference()  # one capability on shelf A
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # 'a' opens shelf A directly to the spec's card; q returns; q quits.
+    shell.run_cockpit(host, read_key=_keys(["a", "q", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined  # the spec opened
+    assert "⏎ select" not in joined  # ... without the intermediate menu
+
+
+def test_single_spec_shelf_via_enter_opens_directly(usage_to_tmp):
+    """W4 — ⏎ on a highlighted single-spec shelf row also opens the spec directly,
+    not the menu."""
+    _register_reference()  # one capability on shelf A
+    host = _FakeHost().as_host()  # no pills/needs → boot lands on shelf A
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys([keys.ENTER, "q", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined
+    assert "⏎ select" not in joined
+
+
+def test_multi_spec_shelf_still_shows_the_menu(usage_to_tmp):
+    """W4 default-preserving — a shelf with two or more specs still renders the
+    intermediate browse menu (xbook's multi-spec shelves are unaffected)."""
+    _register_reference(key="cap-1", shelf="A", title="First cap", summary="one")
+    _register_reference(key="cap-2", shelf="A", title="Second cap", summary="two")
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["a", "q", "q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "⏎ select" in joined  # the menu IS shown
+    assert "First cap" in joined and "Second cap" in joined
 
 
 # --- the doctor loop ----------------------------------------------------------

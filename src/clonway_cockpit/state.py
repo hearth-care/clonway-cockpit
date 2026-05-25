@@ -66,3 +66,13 @@ class CockpitState:
     # so the bottom legend doesn't advertise a dead "sync" key. Defaulted to None →
     # today's xbook legend, byte-identical, so the extracting worker is unchanged.
     legend_hint: str | None = None
+    # Overrides the pulse region's ⏎ gutter cue ("⏎ sync" for xbook). A read-only
+    # fleet whose pills can't be synced passes e.g. "⏎ open" so the gutter advertises
+    # the drill action it actually has, not a dead sync. Defaulted to None → today's
+    # xbook "⏎ sync" gutter, byte-identical.
+    pulse_hint: str | None = None
+    # Replaces the help screen's key/description body. xbook's help is verbatim by
+    # default; a worker (the Fleet Cockpit) supplies its own worker-accurate lines so
+    # the help describes the product the operator is actually using. Each entry is a
+    # (key, description) pair. Defaulted to None → today's xbook help, byte-identical.
+    help_lines: tuple[tuple[str, str], ...] | None = None
