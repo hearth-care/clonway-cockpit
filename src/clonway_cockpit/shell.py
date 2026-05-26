@@ -130,12 +130,10 @@ class Host:
     extra_selectables: Callable[[CockpitState], list[tuple[str, object]]] = field(
         default=lambda state: []
     )
-    extra_regions: Callable[[CockpitState], list[RenderableType]] = field(
-        default=lambda state: []
+    extra_regions: Callable[[CockpitState], list[RenderableType]] = field(default=lambda state: [])
+    handle_extra_key: Callable[[CockpitState, tuple[str, object] | None, str], bool] = field(
+        default=lambda state, sel, key: False
     )
-    handle_extra_key: Callable[
-        [CockpitState, tuple[str, object] | None, str], bool
-    ] = field(default=lambda state, sel, key: False)
 
 
 def run_with_progress[T](
@@ -190,9 +188,7 @@ def _shelf_label(state: CockpitState, letter: str) -> str:
     return render.SHELVES[letter]
 
 
-def selectables(
-    state: CockpitState, host: Host | None = None
-) -> list[tuple[str, object]]:
+def selectables(state: CockpitState, host: Host | None = None) -> list[tuple[str, object]]:
     """Ordered list of arrow-navigable rows, top-down as they're drawn: pulse
     pills first, then needs-you items, then any worker-supplied extra rows
     (``host.extra_selectables``), then the shelves actually drawn (the fleet's
