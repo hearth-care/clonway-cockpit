@@ -122,18 +122,23 @@ class Host:
     # * ``extra_regions(state)`` — additional Rich renderables drawn between the
     #   needs-you region and the toolkit by ``render_cockpit_screen``. Lets the
     #   worker insert its own panel without re-implementing the screen composition.
-    # * ``handle_extra_key(state, selection, key)`` — first refusal on every
-    #   keypress in ``_home``. The worker inspects the current ``selection`` (which
-    #   may be one of its ``extra_selectables`` tuples) and dispatches the key.
-    #   Returning ``True`` tells the shell "I handled it — don't fall through to
-    #   the default dispatch". ``False`` lets the shell's existing logic fire.
+    # * ``handle_extra_key(state, selection, key, screen, read_key)`` — first
+    #   refusal on every keypress in ``_home``. The worker inspects the current
+    #   ``selection`` (which may be one of its ``extra_selectables`` tuples) and
+    #   dispatches the key. The active ``screen`` + ``read_key`` are threaded in
+    #   too, so a worker key that opens a capability (e.g. xbook's ``p`` →
+    #   payroll-status walk) can drive the alt-screen the same way the
+    #   framework's own ``_activate`` does. Returning ``True`` tells the shell
+    #   "I handled it — don't fall through to the default dispatch". ``False``
+    #   lets the shell's existing logic fire.
     extra_selectables: Callable[[CockpitState], list[tuple[str, object]]] = field(
         default=lambda state: []
     )
     extra_regions: Callable[[CockpitState], list[RenderableType]] = field(default=lambda state: [])
-    handle_extra_key: Callable[[CockpitState, tuple[str, object] | None, str], bool] = field(
-        default=lambda state, sel, key: False
-    )
+    handle_extra_key: Callable[
+        [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
+        bool,
+    ] = field(default=lambda state, sel, key, screen, read_key: False)
 
 
 def run_with_progress[T](
@@ -291,10 +296,13 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             return
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
-        # BEFORE the default dispatch fires. Returning True means "I handled
-        # it; skip the framework's branches below". This is the extension point
-        # that lets a worker bolt on key dispatch for its own extra_selectables.
-        if host.handle_extra_key(state, selection, key):
+        # BEFORE the default dispatch fires. ``screen`` + ``read_key`` are
+        # threaded in so a worker key that drills into a capability can drive
+        # the alt-screen the same way the framework's own _activate does.
+        # Returning True means "I handled it; skip the framework's branches
+        # below". This is the extension point that lets a worker bolt on key
+        # dispatch for its own extra_selectables.
+        if host.handle_extra_key(state, selection, key, screen, read_key):
             continue
         if key == keys.UP:
             sel = (sel - 1) % len(items)

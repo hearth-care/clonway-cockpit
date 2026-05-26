@@ -1251,7 +1251,7 @@ def _host_with_extras(
         base,
         extra_selectables=(lambda s: list(extras or [])),
         extra_regions=(lambda s: list(regions or [])),
-        handle_extra_key=(handler or (lambda s, sel, key: False)),
+        handle_extra_key=(handler or (lambda s, sel, key, scr, rk: False)),
     )
 
 
@@ -1284,7 +1284,7 @@ def test_handle_extra_key_fires_on_selection_it_owns(usage_to_tmp):
     NOT fall through to the default dispatch when the handler returns True."""
     calls: list[tuple] = []
 
-    def _handler(state, selection, key):
+    def _handler(state, selection, key, screen, read_key):
         if selection and selection[0] == "statutory":
             calls.append((selection, key))
             return True
@@ -1312,7 +1312,7 @@ def test_handle_extra_key_returning_false_falls_through_to_default(usage_to_tmp)
     _register_reference()  # sync-all on shelf A → 'a' opens shelf A
     handler_calls: list = []
 
-    def _handler(state, selection, key):
+    def _handler(state, selection, key, screen, read_key):
         handler_calls.append((selection, key))
         return False  # decline every key
 
@@ -1362,6 +1362,34 @@ def test_home_passes_extra_regions_into_render(usage_to_tmp):
     shell.run_cockpit(host, read_key=_keys(["q"]), screen=scr)
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "STAT-CARD-SENTINEL" in joined
+
+
+def test_handle_extra_key_receives_screen_and_read_key(usage_to_tmp):
+    """The home loop threads its active screen + read_key into the worker's
+    ``handle_extra_key`` so a worker key that opens a capability can drive the
+    alt-screen exactly the same way the framework's own ``_activate`` does."""
+    captured: list[tuple] = []
+
+    def _handler(state, selection, key, screen, read_key):
+        if selection and selection[0] == "statutory":
+            captured.append((screen, read_key))
+            return True
+        return False
+
+    state = CockpitState(tenant_name="Clonway")
+    host = _host_with_extras(
+        state=state,
+        extras=[("statutory", 0)],
+        handler=_handler,
+    )
+    scr = _Screen()
+    read_key = _keys([keys.ENTER, "q"])
+    shell.run_cockpit(host, read_key=read_key, screen=scr)
+    assert len(captured) == 1
+    seen_screen, seen_read_key = captured[0]
+    # The exact screen + read_key that _home was driving must reach the handler.
+    assert seen_screen is scr
+    assert seen_read_key is read_key
 
 
 def test_default_host_extras_are_noops(usage_to_tmp):
