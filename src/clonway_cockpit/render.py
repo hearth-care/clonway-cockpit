@@ -932,10 +932,19 @@ def render_cockpit_screen(
     specs: list[CapabilitySpec],
     *,
     selection: tuple[str, object] | None = None,
+    extra_regions: list[RenderableType] | None = None,
 ) -> RenderableType:
+    """Compose the home screen. ``extra_regions`` (when supplied by a worker via
+    ``Host.extra_regions``) is a list of additional Rich renderables inserted
+    BETWEEN the needs-you region and the toolkit, so a worker can bolt on its
+    own panel (e.g. xbook's statutory heads-up card) without monkey-patching
+    this composition. Defaulted to None → no extras, byte-identical."""
     sel_pill = selection[1] if selection and selection[0] == "pill" else None
     sel_need = selection[1] if selection and selection[0] == "need" else None
     sel_shelf = selection[1] if selection and selection[0] == "shelf" else None
+    extras: list[RenderableType] = []
+    for region in extra_regions or []:
+        extras.extend([Text(""), region])
     return page(
         Group(
             render_header(state),
@@ -947,6 +956,7 @@ def render_cockpit_screen(
             Text(""),
             Text(""),
             render_needs_you(state.needs, selected=sel_need),  # type: ignore[arg-type]
+            *extras,
             Text(""),
             Text(""),
             render_toolkit(

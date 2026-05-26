@@ -1224,3 +1224,163 @@ def test_host_is_constructible():
         on_open=lambda: None,
     )
     assert isinstance(h, shell.Host)
+
+
+# --- worker-contributed extras (extra_selectables / extra_regions /
+#     handle_extra_key) — the extension points that let a worker bolt on its own
+#     home panel + dispatch its own keys without monkey-patching the framework.
+
+
+def _host_with_extras(
+    *,
+    state: CockpitState,
+    extras: list[tuple[str, object]] | None = None,
+    regions: list | None = None,
+    handler=None,
+) -> shell.Host:
+    """A bare Host wired only with the three new extension callbacks (plus the
+    minimum scaffolding the framework needs to enter ``_home``). Defaults make
+    each extra a no-op so a test can opt in to just the hook it's exercising."""
+    fh = _FakeHost(state=state)
+    base = fh.as_host()
+    # Re-build the host with the new fields populated. shell.Host is frozen, so
+    # we construct a fresh one carrying every field of `base` plus the extras.
+    from dataclasses import replace
+
+    return replace(
+        base,
+        extra_selectables=(lambda s: list(extras or [])),
+        extra_regions=(lambda s: list(regions or [])),
+        handle_extra_key=(handler or (lambda s, sel, key: False)),
+    )
+
+
+def test_extra_selectables_are_spliced_between_needs_and_shelves():
+    """A worker-supplied extra row lands AFTER needs-you and BEFORE shelves so
+    the cursor walks it in the visual order the worker controls (an extra panel
+    drawn above the toolkit on screen is reached by ↓ after the needs)."""
+    needs = (NeedsItem("Sync the books", "never synced", "warn", "sync-all"),)
+    state = CockpitState(tenant_name="Clonway", needs=needs)
+    host = _host_with_extras(state=state, extras=[("statutory", 0), ("statutory", 1)])
+    items = shell.selectables(state, host)
+    # Pills (none) → needs (1) → extras (2) → shelves (7)
+    assert items[0] == ("need", 0)
+    assert items[1] == ("statutory", 0)
+    assert items[2] == ("statutory", 1)
+    assert items[3][0] == "shelf"
+
+
+def test_selectables_without_host_is_unchanged():
+    """Legacy call site (no host) gets the three-tier list, byte-identical."""
+    needs = (NeedsItem("Sync the books", "never synced", "warn", "sync-all"),)
+    state = CockpitState(tenant_name="Clonway", needs=needs)
+    items = shell.selectables(state)  # no host
+    assert items[0] == ("need", 0)
+    assert items[1][0] == "shelf"
+
+
+def test_handle_extra_key_fires_on_selection_it_owns(usage_to_tmp):
+    """A worker key handler claims a key on its own selection. The shell does
+    NOT fall through to the default dispatch when the handler returns True."""
+    calls: list[tuple] = []
+
+    def _handler(state, selection, key):
+        if selection and selection[0] == "statutory":
+            calls.append((selection, key))
+            return True
+        return False
+
+    state = CockpitState(tenant_name="Clonway")  # no pills/needs → boot lands on shelf A
+    # An extra ahead of every shelf so default_sel picks it first.
+    # Actually default_sel picks need→pill→0; with no needs/pills it picks 0 which
+    # is the first extra (since extras are inserted before shelves).
+    host = _host_with_extras(
+        state=state,
+        extras=[("statutory", 0)],
+        handler=_handler,
+    )
+    scr = _Screen()
+    # First paint lands on the statutory row (index 0). ENTER must route through
+    # the handler, not the framework's _activate.
+    shell.run_cockpit(host, read_key=_keys([keys.ENTER, "q"]), screen=scr)
+    assert calls == [(("statutory", 0), keys.ENTER)]
+
+
+def test_handle_extra_key_returning_false_falls_through_to_default(usage_to_tmp):
+    """When the handler returns False the framework's existing dispatch still
+    fires (arrows still move, ⏎ on a shelf still opens the shelf menu)."""
+    _register_reference()  # sync-all on shelf A → 'a' opens shelf A
+    handler_calls: list = []
+
+    def _handler(state, selection, key):
+        handler_calls.append((selection, key))
+        return False  # decline every key
+
+    state = CockpitState(tenant_name="Clonway")  # boot lands on shelf A
+    host = _host_with_extras(state=state, handler=_handler)
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["a", "q", "q"]), screen=scr)
+    # The handler saw 'a' but declined → default dispatch fired → shelf A opened.
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "Sync everything" in joined
+    assert any(key == "a" for _, key in handler_calls)
+
+
+def test_extra_regions_render_between_needs_and_toolkit():
+    """An ``extra_regions`` entry is drawn between the needs-you region and the
+    toolkit (matching ``extra_selectables``'s navigation order)."""
+    from rich.text import Text
+
+    state = CockpitState(tenant_name="Clonway")
+    marker = Text("BOLTED-ON STATUTORY REGION")
+    out = render.render_cockpit_screen(state, [], extra_regions=[marker])
+    rendered = _text(out)
+    assert "BOLTED-ON STATUTORY REGION" in rendered
+
+
+def test_render_cockpit_screen_without_extra_regions_is_unchanged():
+    """``extra_regions=None`` keeps the home screen byte-identical to today's
+    composition (the default for every existing caller)."""
+    state = CockpitState(tenant_name="Clonway")
+    out_default = _text(render.render_cockpit_screen(state, []))
+    out_no_extras = _text(render.render_cockpit_screen(state, [], extra_regions=None))
+    out_empty_extras = _text(render.render_cockpit_screen(state, [], extra_regions=[]))
+    assert out_default == out_no_extras == out_empty_extras
+
+
+def test_home_passes_extra_regions_into_render(usage_to_tmp):
+    """The home loop calls render_cockpit_screen with ``extra_regions=host.extra_regions(state)``,
+    so a worker-supplied region appears in the rendered home frame."""
+    from rich.text import Text
+
+    state = CockpitState(tenant_name="Clonway")
+    host = _host_with_extras(
+        state=state,
+        regions=[Text("STAT-CARD-SENTINEL")],
+    )
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["q"]), screen=scr)
+    joined = "\n".join(_text(f) for f in scr.frames)
+    assert "STAT-CARD-SENTINEL" in joined
+
+
+def test_default_host_extras_are_noops(usage_to_tmp):
+    """A host that does NOT wire the new fields (default _FakeHost path) is
+    byte-identical to today: no extras spliced, no extra regions drawn, no key
+    interception. This is the proof that the worker family extracted before
+    these hooks landed stays unchanged."""
+    state = CockpitState(tenant_name="Clonway")
+    host = _FakeHost(state=state).as_host()
+    items = shell.selectables(state, host)
+    # Default extra_selectables returns []; items contain only pills/needs/shelves.
+    assert all(kind in ("pill", "need", "shelf") for kind, _ in items)
+    # Default extra_regions returns []; the screen renders the same as calling
+    # render_cockpit_screen with the same selection but no extra_regions.
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["q"]), screen=scr)
+    # Reproduce the home loop's render call (default_sel lands on the first shelf
+    # row when there are no pills/needs).
+    sel = items[shell.default_sel(items)]
+    legacy = _text(render.render_cockpit_screen(state, [], selection=sel))
+    rendered_home = _text(scr.frames[0])
+    assert legacy == rendered_home
