@@ -108,6 +108,32 @@ class Host:
     # hotkeys on every selectable, including a selected need.
     ack: Callable[[object], str | None] | None = None
     snooze: Callable[[object], str | None] | None = None
+    # Worker-contributed rows + regions + key handlers — the extension points that
+    # let a worker bolt an extra panel onto the cockpit home screen (e.g. xbook's
+    # statutory heads-up card) WITHOUT monkey-patching the framework. Three
+    # callbacks, each defaulted to a no-op so a worker that doesn't supply them is
+    # byte-identical:
+    #
+    # * ``extra_selectables(state)`` — additional arrow-navigable rows the worker
+    #   contributes (each a ``(tag, value)`` tuple under the worker's own tag).
+    #   Spliced into ``selectables`` AFTER needs-you and BEFORE shelves so the
+    #   visual ordering the worker controls (e.g. a statutory region sits above
+    #   the toolkit) matches the arrow-key navigation order.
+    # * ``extra_regions(state)`` — additional Rich renderables drawn between the
+    #   needs-you region and the toolkit by ``render_cockpit_screen``. Lets the
+    #   worker insert its own panel without re-implementing the screen composition.
+    # * ``handle_extra_key(state, selection, key)`` — first refusal on every
+    #   keypress in ``_home``. The worker inspects the current ``selection`` (which
+    #   may be one of its ``extra_selectables`` tuples) and dispatches the key.
+    #   Returning ``True`` tells the shell "I handled it — don't fall through to
+    #   the default dispatch". ``False`` lets the shell's existing logic fire.
+    extra_selectables: Callable[[CockpitState], list[tuple[str, object]]] = field(
+        default=lambda state: []
+    )
+    extra_regions: Callable[[CockpitState], list[RenderableType]] = field(default=lambda state: [])
+    handle_extra_key: Callable[[CockpitState, tuple[str, object] | None, str], bool] = field(
+        default=lambda state, sel, key: False
+    )
 
 
 def run_with_progress[T](
@@ -162,13 +188,22 @@ def _shelf_label(state: CockpitState, letter: str) -> str:
     return render.SHELVES[letter]
 
 
-def selectables(state: CockpitState) -> list[tuple[str, object]]:
+def selectables(state: CockpitState, host: Host | None = None) -> list[tuple[str, object]]:
     """Ordered list of arrow-navigable rows, top-down as they're drawn: pulse
-    pills first, then needs-you items, then the shelves actually drawn (the
-    fleet's ``state.shelves`` letters, or xbook's A–G when unset)."""
+    pills first, then needs-you items, then any worker-supplied extra rows
+    (``host.extra_selectables``), then the shelves actually drawn (the fleet's
+    ``state.shelves`` letters, or xbook's A–G when unset).
+
+    Extras land between needs-you and shelves so the cursor walks them in the
+    visual order the worker controls (an extra panel sits above the toolkit on
+    screen, so its rows are reachable by ↓ after the needs-you items). ``host``
+    is optional — callers that don't supply one (xbook tests pre-extension)
+    get the legacy three-tier list, byte-identical."""
+    extras = host.extra_selectables(state) if host is not None else []
     return (
         [("pill", i) for i in range(len(state.pills))]
         + [("need", i) for i in range(len(state.needs))]
+        + list(extras)
         + [("shelf", letter) for letter in _shelf_letters(state)]
     )
 
@@ -233,7 +268,7 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
     sel: int | None = None  # set on the first paint to the first actionable row
     while True:
         state = host.capture_state()
-        items = selectables(state)
+        items = selectables(state, host)
         # First paint: land the cursor on the first actionable row (needs-you,
         # else a pill, else the first shelf) so the ❯ shows from frame one.
         # Thereafter keep a valid numeric selection in bounds after a refresh.
@@ -242,11 +277,25 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         else:
             sel %= len(items)
         selection = items[sel]
-        screen.update(r.render_cockpit_screen(state, host.get_capabilities(), selection=selection))
+        screen.update(
+            r.render_cockpit_screen(
+                state,
+                host.get_capabilities(),
+                selection=selection,
+                extra_regions=host.extra_regions(state),
+            )
+        )
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
             return
+        # Worker first refusal — let the host's ``handle_extra_key`` claim any
+        # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
+        # BEFORE the default dispatch fires. Returning True means "I handled
+        # it; skip the framework's branches below". This is the extension point
+        # that lets a worker bolt on key dispatch for its own extra_selectables.
+        if host.handle_extra_key(state, selection, key):
+            continue
         if key == keys.UP:
             sel = (sel - 1) % len(items)
         elif key == keys.DOWN:
