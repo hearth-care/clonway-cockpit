@@ -13,6 +13,8 @@ action through it (no silent --confirm). ``make_walk_handler()`` returns a
 
 from __future__ import annotations
 
+import collections
+import inspect
 import threading
 import time
 from collections.abc import Callable
@@ -31,11 +33,12 @@ _PROGRESS_TICK = 0.12
 def animate_until_done[T](
     present: Callable[[RenderableType], None],
     label: str,
-    fn: Callable[[], T],
+    fn: Callable[[], T] | Callable[[Callable[[str], None]], T],
     *,
     tick: float = _PROGRESS_TICK,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    log_lines: int = 5,
 ) -> T:
     """Run a blocking ``fn`` (a sync) in a worker thread while animating the
     screen via ``present`` (``screen.update`` for the cockpit, ``ctx.present``
@@ -46,12 +49,44 @@ def animate_until_done[T](
     loop is unit-testable without real time.
 
     Lives in ``walk`` (not ``app``) so the sync-all walk can reuse it without an
-    ``app`` import cycle."""
+    ``app`` import cycle.
+
+    ``log_lines`` controls the ring-buffer depth (default 5). When ``fn``
+    accepts one positional argument, a ``log: Callable[[str], None]`` callback
+    is passed to it; each call appends to the buffer and the redraw loop renders
+    the snapshot as dim lines beneath the spinner head. Zero-arg ``fn`` still
+    works unchanged (arity check via ``inspect.signature``). Empty buffer →
+    the existing "this can take up to a minute" reassurance line."""
+    buf: collections.deque[str] = collections.deque(maxlen=log_lines)
+
+    # Inspect whether fn accepts a log callback (1 positional param) or not (0).
+    try:
+        sig = inspect.signature(fn)
+        _params = [
+            p
+            for p in sig.parameters.values()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+            and p.default is inspect.Parameter.empty
+        ]
+        _accepts_log = len(_params) >= 1
+    except (ValueError, TypeError):
+        _accepts_log = False
+
     holder: dict[str, object] = {}
+
+    def _log(line: str) -> None:
+        buf.append(line)
 
     def _worker() -> None:
         try:
-            holder["value"] = fn()
+            if _accepts_log:
+                holder["value"] = fn(_log)  # type: ignore[call-arg]
+            else:
+                holder["value"] = fn()  # type: ignore[call-arg]
         except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
             holder["error"] = e
 
@@ -64,7 +99,8 @@ def animate_until_done[T](
     while True:
         frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
         elapsed = int(clock() - started)
-        present(render.render_sync_progress(label, frame, elapsed))
+        lines = tuple(buf)  # CPython deque.append is atomic; snapshot is safe
+        present(render.render_sync_progress(label, frame, elapsed, lines=lines))
         i += 1
         thread.join(timeout=tick)
         if not thread.is_alive():

@@ -484,19 +484,32 @@ SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 def render_sync_progress(
-    label: str, frame: str = SPINNER_FRAMES[0], elapsed: int = 0, latest: str = ""
+    label: str,
+    frame: str = SPINNER_FRAMES[0],
+    elapsed: int = 0,
+    latest: str = "",
+    lines: tuple[str, ...] = (),
 ) -> RenderableType:
     """Animated 'working…' screen for a blocking sync — a spinner ``frame`` +
-    the ``label`` + ``elapsed`` seconds on one line, an optional dim
-    latest-activity line below (e.g. the current stage), then a calm reassurance
-    so a long pull never reads as hung. Framed via ``page()``; the cockpit loop
-    redraws it in place with a fresh ``frame``/``elapsed`` ~8×/second."""
+    the ``label`` + ``elapsed`` seconds on one line, then a dim activity region
+    below, then a calm reassurance so a long pull never reads as hung. Framed
+    via ``page()``; the cockpit loop redraws it in place with a fresh
+    ``frame``/``elapsed`` ~8×/second.
+
+    ``lines`` is a snapshot of the live-log ring buffer: when non-empty each
+    entry is rendered as a dim row beneath the spinner head, replacing the calm
+    reassurance (the buffer's activity IS the reassurance). ``latest`` is kept
+    for backwards compat with callers that haven't migrated to the buffer yet;
+    when both ``latest`` and ``lines`` are given, ``lines`` takes precedence."""
     head = Text("  ")
     head.append(f"{frame} ", style=ACCENT)
     head.append(label)
     head.append(f"   {elapsed}s", style=DIM)
     parts: list[RenderableType] = [Text(""), head]
-    if latest:
+    if lines:
+        for line in lines:
+            parts.append(Text(f"  {line}", style=DIM))
+    elif latest:
         parts.append(Text(f"  {latest}", style=DIM))
     else:
         parts.append(Text("  this can take up to a minute", style=DIM))
