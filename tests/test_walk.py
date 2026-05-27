@@ -343,3 +343,148 @@ def test_run_walk_screen_mode_drives_preflight_then_step():
     assert ran == ["step 2 of 2"]  # 1 step + preflight = total 2
     # preflight screen + result screen drawn.
     assert len(presented) == 2
+
+
+# --- animate_until_done log-panel tests ----------------------------------------
+
+
+def _instant_clock():
+    """A clock that returns 0, then 0 forever — tick=0 so the loop exits fast."""
+    return 0.0
+
+
+def _noop_sleep(_t):
+    pass
+
+
+def test_animate_passes_log_to_unary_worker():
+    """A worker fn that accepts one positional arg receives the log callback and
+    can append lines; the redraw snapshot carries them."""
+    presented: list = []
+
+    def worker(log):
+        log("stage · invoices 1/10")
+        log("stage · invoices 10/10")
+        return "done"
+
+    result = walk.animate_until_done(
+        presented.append,
+        "Syncing",
+        worker,
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+    )
+    assert result == "done"
+    # At least one rendered frame should contain the logged lines.
+    from rich.console import Console
+
+    def _text(r):
+        c = Console(record=True, width=120)
+        c.print(r)
+        return c.export_text()
+
+    # The final frame is drawn after the thread exits — check all frames.
+    all_text = "\n".join(_text(r) for r in presented)
+    assert "stage · invoices 10/10" in all_text
+
+
+def test_animate_runs_zero_arg_worker_unchanged():
+    """A zero-arg worker still works — backwards compat."""
+    presented: list = []
+
+    def worker():
+        return 42
+
+    result = walk.animate_until_done(
+        presented.append,
+        "Syncing",
+        worker,
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+    )
+    assert result == 42
+    assert len(presented) >= 1
+
+
+def test_animate_buffer_caps_at_log_lines():
+    """The ring buffer never grows beyond log_lines — only the most recent N
+    lines are visible, older ones are dropped."""
+    presented: list = []
+
+    def worker(log):
+        for i in range(10):
+            log(f"line {i}")
+        return "done"
+
+    walk.animate_until_done(
+        presented.append,
+        "Syncing",
+        worker,
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+        log_lines=3,
+    )
+    from rich.console import Console
+
+    def _text(r):
+        c = Console(record=True, width=120)
+        c.print(r)
+        return c.export_text()
+
+    # Check the final frame (last presented renderable).
+    final_text = _text(presented[-1])
+    # At most 3 lines in the buffer — lines 7, 8, 9 are the tail.
+    assert "line 9" in final_text
+    assert "line 0" not in final_text
+
+
+def test_animate_empty_log_renders_calm_reassurance():
+    """When no log lines have been emitted, the calm 'this can take up to a minute'
+    line is shown — unchanged from today's behaviour."""
+    presented: list = []
+
+    def worker():
+        return "done"
+
+    walk.animate_until_done(
+        presented.append,
+        "Syncing",
+        worker,
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+    )
+    from rich.console import Console
+
+    def _text(r):
+        c = Console(record=True, width=120)
+        c.print(r)
+        return c.export_text()
+
+    first_text = _text(presented[0])
+    assert "this can take up to a minute" in first_text
+
+
+def test_animate_reraises_worker_exception_with_logs():
+    """If the worker raises, animate_until_done re-raises on the main thread.
+    Any log lines emitted before the error are still in the buffer (not lost)."""
+    import pytest
+
+    presented: list = []
+
+    def worker(log):
+        log("stage · started")
+        raise ValueError("sync failed")
+
+    with pytest.raises(ValueError, match="sync failed"):
+        walk.animate_until_done(
+            presented.append,
+            "Syncing",
+            worker,
+            tick=0.0,
+            clock=_instant_clock,
+            sleep=_noop_sleep,
+        )

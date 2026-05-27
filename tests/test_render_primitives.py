@@ -857,3 +857,29 @@ def test_cockpit_screen_default_state_has_no_breadcrumb():
     # The only ▸ on the home screen is the legend opener — no crumb mode-line.
     crumb_lines = [ln for ln in out.splitlines() if "▸" in ln and "Press" not in ln]
     assert crumb_lines == []
+
+
+# --- render_sync_progress live-log panel (PR 1) --------------------------------
+
+
+def test_render_sync_progress_multi_lines_dim_and_stacked():
+    """When ``lines`` is non-empty, each entry is rendered as a separate dim row
+    beneath the spinner head; the calm reassurance is suppressed."""
+    lines = ("xero · invoices 100/200", "lloyds · rows 50/100")
+    out = _capture(render.render_sync_progress("Syncing", lines=lines))
+    assert "xero · invoices 100/200" in out
+    assert "lloyds · rows 50/100" in out
+    assert "this can take up to a minute" not in out
+
+
+def test_render_sync_progress_lines_suppresses_calm_default():
+    """``lines`` takes precedence over the calm-reassurance default (and over
+    ``latest`` for backwards compat) — the reassurance line must not appear when
+    lines are present."""
+    out = _capture(
+        render.render_sync_progress(
+            "Syncing", latest="old latest", lines=("new line 1",)
+        )
+    )
+    assert "new line 1" in out
+    assert "this can take up to a minute" not in out
