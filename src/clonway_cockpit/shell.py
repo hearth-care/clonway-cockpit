@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from rich.console import RenderableType
 
@@ -34,6 +34,52 @@ from clonway_cockpit.state import CockpitState
 # How long the cockpit sleeps between progress frames — ~8 redraws/second, fast
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
 _PROGRESS_TICK = walk._PROGRESS_TICK
+
+
+@dataclass
+class NavFrame:
+    """A single entry in the navigation back-stack.
+
+    ``key`` names the view ("home", "shelf:A", …) for debugging.
+    ``render`` is called to redisplay the view if we ever need to snapshot it;
+    in practice the shell's own loop re-renders on every iteration so this is
+    informational. ``restore_state`` is the mutable cursor snapshot captured at
+    the moment the user navigated *away* from this view — it's what gets
+    restored when the user presses Backspace to come back."""
+
+    key: str
+    restore_state: dict[str, Any]
+
+
+class _NavStack:
+    """A browser-style dual back/forward stack for the cockpit shell.
+
+    ``push`` records a new view (and clears the forward stack, matching browser
+    semantics). ``back`` pops the top of the back stack and returns the
+    ``NavFrame`` (or ``None`` when the stack is empty). ``clear_forward`` is
+    called on every new navigation so forward history doesn't survive a fresh
+    drill. The forward stack is kept for structural completeness; forward-key
+    binding is deferred to a follow-up PR."""
+
+    def __init__(self) -> None:
+        self.back: list[NavFrame] = []
+        self.fwd: list[NavFrame] = []
+
+    def push(self, frame: NavFrame) -> None:
+        """Record a frame and clear forward history (new navigation invalidates fwd)."""
+        self.back.append(frame)
+        self.fwd.clear()
+
+    def pop_back(self) -> NavFrame | None:
+        """Pop the top of the back stack; push it onto fwd. Returns None when empty."""
+        if not self.back:
+            return None
+        frame = self.back.pop()
+        self.fwd.append(frame)
+        return frame
+
+    def clear_forward(self) -> None:
+        self.fwd.clear()
 
 
 class Screen(Protocol):
@@ -269,13 +315,28 @@ def move_horizontal(items: list[tuple[str, object]], sel: int, key: str) -> int:
     return sel
 
 
-def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
-    sel: int | None = None  # set on the first paint to the first actionable row
+def _home(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    _nav: _NavStack | None = None,
+    _restore_sel: int | None = None,
+) -> None:
+    """The cockpit home loop.
+
+    ``_nav`` is the shared back/forward stack for this alt-screen session.
+    ``_restore_sel`` lets a pop-back restore the cursor to where the operator
+    was before they drilled forward. Both are framework-internal; callers
+    outside this module (``run_cockpit``) always get a fresh stack."""
+    nav = _nav if _nav is not None else _NavStack()
+    sel: int | None = _restore_sel  # restored from NavFrame on back-pop; else first paint
     while True:
         state = host.capture_state()
         items = selectables(state, host)
-        # First paint: land the cursor on the first actionable row (needs-you,
-        # else a pill, else the first shelf) so the ❯ shows from frame one.
+        # First paint (or restored): land the cursor on the first actionable row
+        # (needs-you, else a pill, else the first shelf) so the ❯ shows from
+        # frame one. On a back-pop, _restore_sel carries the previous selection.
         # Thereafter keep a valid numeric selection in bounds after a refresh.
         if sel is None:
             sel = default_sel(items)
@@ -292,7 +353,21 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         )
         key = read_key()
         low = key.lower() if len(key) == 1 else key
+        # ESC at home: with an empty back stack, quit (preserving today's behaviour).
+        # With frames on the stack the design punts ESC=quit for now — ESC at home
+        # still quits because home is the root; only Backspace pops back from nested
+        # views, and home itself has nowhere to pop to.
         if low in ("q", keys.ESC):
+            return
+        # Backspace at home: pop back if there is somewhere to go. At home with an
+        # empty stack it is a no-op (home IS the root).
+        if key == keys.BACKSPACE:
+            frame = nav.pop_back()
+            if frame is not None:
+                # Re-enter home with the snapshotted cursor.
+                _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
+            # Whether we popped or not, return from THIS home invocation — either
+            # we recursed into a restored home, or we're truly at root and a no-op.
             return
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
@@ -311,14 +386,19 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         elif key in (keys.LEFT, keys.RIGHT):
             sel = move_horizontal(items, sel, key)
         elif key == keys.ENTER:
+            # Snapshot the current home cursor before drilling forward.
+            nav.push(NavFrame(key="home", restore_state={"sel": sel}))
             _activate(host, items[sel], state, screen, read_key)
         elif low == "r":
             continue
         elif low == "?":
             _show(screen, r.render_help(state.help_lines), read_key)
         elif low == "/":
-            _filter(host, screen, read_key)
+            # Snapshot cursor before opening the filter (back returns here).
+            nav.push(NavFrame(key="home", restore_state={"sel": sel}))
+            _filter(host, screen, read_key, _nav=nav)
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
+            nav.push(NavFrame(key="home", restore_state={"sel": sel}))
             _activate(host, ("need", int(key) - 1), state, screen, read_key)
         elif isinstance(selection[1], int) and _ack_snooze_cb(host, selection, low) is not None:
             # Context-sensitive ack/snooze: ONLY when a needs-you item is selected
@@ -329,7 +409,9 @@ def _home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             # the shelf-A hotkey, byte-identical.
             _ack_snooze_need(host, state.needs[selection[1]], low, screen, read_key)
         elif low.isalpha() and low.upper() in _shelf_letters(state):
-            _shelf(host, low.upper(), screen, read_key, title=_shelf_label(state, low.upper()))
+            # Snapshot cursor before opening a shelf (back returns here).
+            nav.push(NavFrame(key="home", restore_state={"sel": sel}))
+            _shelf(host, low.upper(), screen, read_key, title=_shelf_label(state, low.upper()), _nav=nav)
         # any other key: ignore — the highlight is the guide
 
 
@@ -412,6 +494,7 @@ def _shelf(
     read_key: Callable[[], str],
     *,
     title: str | None = None,
+    _nav: _NavStack | None = None,
 ) -> None:
     specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
@@ -421,7 +504,7 @@ def _shelf(
     # every worker-shelf is single-spec, so this removes a detour on every drill;
     # xbook's multi-spec shelves still get the menu (the branch below).
     if len(specs) == 1:
-        _open_capability(host, specs[0].key, screen, read_key)
+        _open_capability(host, specs[0].key, screen, read_key, _nav=_nav)
         return
     # The menu title names the worker (fleet roster) or xbook's shelf taxonomy.
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
@@ -442,6 +525,11 @@ def _shelf(
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
             return
+        # Backspace in shelf menu = go back (pop the stack frame that got us here).
+        if key == keys.BACKSPACE:
+            if _nav is not None:
+                _nav.pop_back()
+            return
         if key == keys.UP:
             sel = (sel - 1) % (n + 1)
         elif key == keys.DOWN:
@@ -449,10 +537,10 @@ def _shelf(
         elif key == keys.ENTER:
             if sel == n:  # the Back row
                 return
-            _open_capability(host, specs[sel].key, screen, read_key)
+            _open_capability(host, specs[sel].key, screen, read_key, _nav=_nav)
             return
         elif key.isdigit() and 1 <= int(key) <= n:
-            _open_capability(host, specs[int(key) - 1].key, screen, read_key)
+            _open_capability(host, specs[int(key) - 1].key, screen, read_key, _nav=_nav)
             return
 
 
@@ -480,6 +568,7 @@ def _open_capability(
     read_key: Callable[[], str],
     *,
     focus: str | None = None,
+    _nav: _NavStack | None = None,
 ) -> None:
     spec = host.get_capability(key)
     if spec is None:
@@ -592,11 +681,20 @@ class _FilterMatch:
     activate: Callable[[Screen, Callable[[], str]], None]
 
 
-def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
+def _filter(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    _nav: _NavStack | None = None,
+) -> None:
     """Type-to-filter the things on screen — capabilities AND needs-you items — by
     name; ↑↓ moves, Enter drills, Esc always cancels. ``q`` also cancels when the
     term is empty (consistency with every other screen); once a term is typed, ``q``
-    is a normal search char so a term containing 'q' stays searchable."""
+    is a normal search char so a term containing 'q' stays searchable.
+
+    Backspace deletes a char when ``term != ""``. Backspace on an empty term pops
+    the back stack (matching the F2 precedent: empty-term q quits back home)."""
     state = host.capture_state()
     term, sel = "", 0
     while True:
@@ -627,7 +725,14 @@ def _filter(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         elif key == keys.DOWN and matches:
             sel = (sel + 1) % len(matches)
         elif key == keys.BACKSPACE:
-            term, sel = term[:-1], 0
+            if term:
+                # Delete the last char — normal text-editing Backspace.
+                term, sel = term[:-1], 0
+            else:
+                # Empty term + Backspace = pop back (same pattern as q-on-empty).
+                if _nav is not None:
+                    _nav.pop_back()
+                return
         elif len(key) == 1 and key.isprintable():
             term, sel = term + key, 0
 
