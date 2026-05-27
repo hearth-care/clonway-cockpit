@@ -877,9 +877,7 @@ def test_render_sync_progress_lines_suppresses_calm_default():
     ``latest`` for backwards compat) — the reassurance line must not appear when
     lines are present."""
     out = _capture(
-        render.render_sync_progress(
-            "Syncing", latest="old latest", lines=("new line 1",)
-        )
+        render.render_sync_progress("Syncing", latest="old latest", lines=("new line 1",))
     )
     assert "new line 1" in out
     assert "this can take up to a minute" not in out
