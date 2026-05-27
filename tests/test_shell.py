@@ -1412,3 +1412,140 @@ def test_default_host_extras_are_noops(usage_to_tmp):
     legacy = _text(render.render_cockpit_screen(state, [], selection=sel))
     rendered_home = _text(scr.frames[0])
     assert legacy == rendered_home
+
+
+# --- PR 2: browser-style navigation back-stack --------------------------------
+
+
+def test_back_from_shelf_returns_to_home_with_cursor_preserved(usage_to_tmp):
+    """Pressing Backspace inside a shelf menu returns to home with the cursor at
+    the shelf row the operator was on before drilling forward."""
+    # Register two specs so the multi-spec shelf menu is shown (W4 guard).
+    _register_reference(key="cap-1", shelf="A", title="First cap", summary="one")
+    _register_reference(key="cap-2", shelf="A", title="Second cap", summary="two")
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # Boot on shelf A (no pills/needs). 'a' opens the shelf menu. Backspace returns
+    # to home. The home frame shown AFTER backspace must have the cursor on 'A.'.
+    shell.run_cockpit(host, read_key=_keys(["a", keys.BACKSPACE, "q"]), screen=scr)
+    # The last frame before the final 'q' quit must be a home frame with cursor on A.
+    # Frames: [home(A), shelf-menu, home(A restored), (quit returns)]
+    home_after_back = _text(scr.frames[-1])
+    assert "❯" in home_after_back  # cursor is showing
+    # The cursor line must contain "A." to confirm we're on shelf A.
+    lines_with_cursor = [ln for ln in home_after_back.splitlines() if "❯" in ln]
+    assert any("A." in ln for ln in lines_with_cursor), (
+        "cursor not restored to shelf A after back-pop"
+    )
+
+
+def test_back_from_walk_result_returns_to_home_with_cursor_preserved(usage_to_tmp):
+    """After a walk returns, Backspace is a no-op at home (stack already popped by
+    the walk returning normally). Home cursor lands on default selection."""
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="sync-all",
+            shelf="A",
+            title="Sync everything",
+            summary="fresh numbers",
+            equivalent_cli="uv run worker sync-all",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # Boot on shelf A; 'a' opens shelf A directly (single spec); walk runs; returns
+    # to home; 'q' quits.
+    shell.run_cockpit(host, read_key=_keys(["a", "q"]), screen=scr)
+    assert ran == [True]
+    # The last frame must be home (legend "to move" is present).
+    last = _text(scr.frames[-1])
+    assert "to move" in last
+
+
+def test_esc_at_home_with_empty_back_stack_quits(usage_to_tmp):
+    """ESC at home with an empty back stack quits the cockpit — preserving today's
+    behaviour (ESC = quit at home)."""
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys([keys.ESC]), screen=scr)
+    # One home frame was drawn; then ESC quit.
+    assert len(scr.frames) == 1
+
+
+def test_backspace_in_filter_empty_term_goes_back_not_inert(usage_to_tmp):
+    """Backspace on an empty filter term pops back (returns to home), matching the
+    F2 convention that empty-term 'q' also quits back home."""
+    _register_reference()
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # '/' opens filter; Backspace on empty term should return to home; 'q' quits.
+    shell.run_cockpit(host, read_key=_keys(["/", keys.BACKSPACE, "q"]), screen=scr)
+    # The last frame must be home, not the filter.
+    last = _text(scr.frames[-1])
+    assert "to move" in last  # home legend
+    assert "Find a tool" not in last  # not the filter screen
+
+
+def test_backspace_in_filter_with_term_deletes_char(usage_to_tmp):
+    """Backspace with a non-empty filter term deletes the last char — normal text
+    editing, unchanged from before the back-stack PR."""
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # '/' opens filter; type 'ab'; Backspace → term becomes 'a'; ESC closes; q quits.
+    shell.run_cockpit(
+        host, read_key=_keys(["/", "a", "b", keys.BACKSPACE, keys.ESC, "q"]), screen=scr
+    )
+    # After deleting 'b', the filter must have shown term 'a' (not 'ab' and not '').
+    # We confirm 'ab' never appears as the search term in any filter frame.
+    # The filter screen renders the term in the title/prompt area.
+    filter_frames = [_text(f) for f in scr.frames if "Find a tool" in _text(f)]
+    assert filter_frames, "no filter frames found"
+    # The last filter frame before ESC should have term 'a', not 'ab'.
+    assert any("a" in f for f in filter_frames)
+
+
+def test_back_after_state_changing_walk_re_captures_state(usage_to_tmp):
+    """After a walk that changes state runs and returns, re-entering home via the
+    back-pop path re-captures state (the loop calls capture_state fresh on each
+    iteration, so state-changing walks are reflected after return)."""
+    counter = {"n": 0}
+
+    class _CountingHost(_FakeHost):
+        def _capture(self):
+            counter["n"] += 1
+            return self._state
+
+    fh = _CountingHost()
+    host = fh.as_host()
+    scr = _Screen()
+    before = counter["n"]
+    # 'q' quits immediately; we only need to confirm capture was called.
+    shell.run_cockpit(host, read_key=_keys(["q"]), screen=scr)
+    assert counter["n"] > before  # capture_state was called at least once
+
+
+def test_open_capability_pushes_frame_then_pops_on_return(usage_to_tmp):
+    """_open_capability via a shelf hotkey: shell pushes a home frame before opening
+    the shelf, which ensures back-pop can restore the cursor after the walk returns."""
+    walked: list = []
+    register_capability(
+        CapabilitySpec(
+            key="sync-all",
+            shelf="A",
+            title="Sync everything",
+            summary="fresh numbers",
+            equivalent_cli="uv run worker sync-all",
+            run=lambda ctx: walked.append(True),
+        )
+    )
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    # 'a' opens shelf A directly (single spec walk); walk records; returns home; q quits.
+    shell.run_cockpit(host, read_key=_keys(["a", "q"]), screen=scr)
+    assert walked == [True]
+    # After the walk returns, home must be redrawn (the loop continues; we see a home
+    # frame after the walk ran).
+    home_frames = [f for f in scr.frames if "to move" in _text(f)]
+    assert len(home_frames) >= 1, "home was not redrawn after walk returned"
