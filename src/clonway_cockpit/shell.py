@@ -411,7 +411,14 @@ def _home(
         elif low.isalpha() and low.upper() in _shelf_letters(state):
             # Snapshot cursor before opening a shelf (back returns here).
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
-            _shelf(host, low.upper(), screen, read_key, title=_shelf_label(state, low.upper()), _nav=nav)
+            _shelf(
+                host,
+                low.upper(),
+                screen,
+                read_key,
+                title=_shelf_label(state, low.upper()),
+                _nav=nav,
+            )
         # any other key: ignore — the highlight is the guide
 
 
