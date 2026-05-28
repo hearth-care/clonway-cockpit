@@ -213,9 +213,16 @@ def run_cockpit(host: Host, *, read_key: Callable[[], str] = keys.read_key, scre
     Fires ``host.on_open`` (catalog registration + signal emit) once, then runs
     the home loop. The alt-screen lifecycle and the ShellOut re-entry loop stay in
     the worker's thin wrapper (they need the worker's console + shell-out table);
-    this entry point is the screen-bound core the tests drive directly."""
+    this entry point is the screen-bound core the tests drive directly.
+
+    The home loop runs inside ``keys.raw_mode()`` so the terminal is put in raw/
+    no-echo mode ONCE for the whole interactive session and restored once on exit
+    — never flipped back to cooked+echo between keystrokes (the old per-keypress
+    toggle let arrow-key escape sequences echo to the screen during a slow redraw).
+    The context manager is a no-op when stdin isn't a tty (tests, pipes)."""
     host.on_open()
-    _home(host, screen, read_key)
+    with keys.raw_mode():
+        _home(host, screen, read_key)
 
 
 def _shelf_letters(state: CockpitState) -> list[str]:
@@ -331,28 +338,38 @@ def _home(
     outside this module (``run_cockpit``) always get a fresh stack."""
     nav = _nav if _nav is not None else _NavStack()
     sel: int | None = _restore_sel  # restored from NavFrame on back-pop; else first paint
+
+    # Capture state ONCE on entry, not once per keypress. A cursor move (arrow)
+    # only changes the highlight, so it re-renders from this cached snapshot and
+    # never re-runs the heavy capture_state(); only an action that can CHANGE state
+    # (a drill that returns, ack/snooze, an explicit 'r' refresh) re-captures. This
+    # is the fix for the per-keypress latency — arrowing is now a cheap repaint.
+    state = host.capture_state()
+    items = selectables(state, host)
+    # First paint (or restored): land the cursor on the first actionable row
+    # (needs-you, else a pill, else the first shelf) so the ❯ shows from frame one.
+    # On a back-pop, _restore_sel carries the previous selection.
+    sel = default_sel(items) if sel is None else sel % len(items)
+    dirty = True  # a frame is pending whenever the cursor moved or state changed
     while True:
-        state = host.capture_state()
-        items = selectables(state, host)
-        # First paint (or restored): land the cursor on the first actionable row
-        # (needs-you, else a pill, else the first shelf) so the ❯ shows from
-        # frame one. On a back-pop, _restore_sel carries the previous selection.
-        # Thereafter keep a valid numeric selection in bounds after a refresh.
-        if sel is None:
-            sel = default_sel(items)
-        else:
-            sel %= len(items)
-        selection = items[sel]
-        screen.update(
-            r.render_cockpit_screen(
-                state,
-                host.get_capabilities(),
-                selection=selection,
-                extra_regions=host.extra_regions(state),
+        # Render only when something changed AND no more input is queued. A held
+        # arrow's key-repeat leaves bytes pending (keys.pending()), so the loop
+        # applies each move but defers the repaint until the burst drains —
+        # coalescing N moves into ONE frame. pending() is False off a held raw
+        # session, so tests / non-interactive paths repaint on every change.
+        if dirty and not keys.pending():
+            screen.update(
+                r.render_cockpit_screen(
+                    state,
+                    host.get_capabilities(),
+                    selection=items[sel],
+                    extra_regions=host.extra_regions(state),
+                )
             )
-        )
+            dirty = False
         key = read_key()
         low = key.lower() if len(key) == 1 else key
+        selection = items[sel]
         # ESC at home: with an empty back stack, quit (preserving today's behaviour).
         # With frames on the stack the design punts ESC=quit for now — ESC at home
         # still quits because home is the root; only Backspace pops back from nested
@@ -375,22 +392,32 @@ def _home(
         # threaded in so a worker key that drills into a capability can drive
         # the alt-screen the same way the framework's own _activate does.
         # Returning True means "I handled it; skip the framework's branches
-        # below". This is the extension point that lets a worker bolt on key
-        # dispatch for its own extra_selectables.
+        # below". A worker key may have drilled + acted, so re-capture afterwards.
         if host.handle_extra_key(state, selection, key, screen, read_key):
+            state, items, sel = _recapture(host, sel)
+            dirty = True
             continue
+        # Cursor moves: update the highlight only — no re-capture. Each is a cheap
+        # repaint; a burst coalesces via the pending() gate above.
         if key == keys.UP:
             sel = (sel - 1) % len(items)
-        elif key == keys.DOWN:
+            dirty = True
+            continue
+        if key == keys.DOWN:
             sel = (sel + 1) % len(items)
-        elif key in (keys.LEFT, keys.RIGHT):
+            dirty = True
+            continue
+        if key in (keys.LEFT, keys.RIGHT):
             sel = move_horizontal(items, sel, key)
-        elif key == keys.ENTER:
+            dirty = True
+            continue
+        # Actions below can change state — they all re-capture + repaint afterwards.
+        if key == keys.ENTER:
             # Snapshot the current home cursor before drilling forward.
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
-            _activate(host, items[sel], state, screen, read_key)
+            _activate(host, selection, state, screen, read_key)
         elif low == "r":
-            continue
+            pass  # explicit refresh — fall through to the re-capture below
         elif low == "?":
             _show(screen, r.render_help(state.help_lines), read_key)
         elif low == "/":
@@ -419,7 +446,24 @@ def _home(
                 title=_shelf_label(state, low.upper()),
                 _nav=nav,
             )
-        # any other key: ignore — the highlight is the guide
+        else:
+            # Any other key: inert — the highlight is the guide. No state change,
+            # so neither re-capture nor repaint (the screen already shows the truth).
+            continue
+        # An action ran (or 'r'): re-capture so the redraw reflects any change
+        # (acked item drops, a walk that touched state, fresh numbers after 'r').
+        state, items, sel = _recapture(host, sel)
+        dirty = True
+
+
+def _recapture(host: Host, sel: int) -> tuple[CockpitState, list[tuple[str, object]], int]:
+    """Re-snapshot the worker state after an action and re-derive the navigable
+    rows, clamping the cursor into the (possibly shorter) new list. The single
+    place the home loop re-runs ``host.capture_state`` — kept off the cursor-move
+    path so arrowing stays a cheap repaint."""
+    state = host.capture_state()
+    items = selectables(state, host)
+    return state, items, sel % len(items)
 
 
 def _ack_snooze_cb(
@@ -606,41 +650,79 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
     Every runnable fix is READ-ONLY w.r.t. the worker's books and NO-LOGIN (the
     sync fixes reuse the existing token; the lock fix only unlinks a local file)."""
     sel = 0
+    # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
+    # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
+    # just re-highlight from the cached report, the same per-keypress-work fix as
+    # the home loop.
+    try:
+        report = host.doctor_build_report()
+    except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
+        _show(screen, host.doctor_unconfigured_renderable(), read_key)
+        return
+    dirty = True
     while True:
-        try:
-            report = host.doctor_build_report()
-        except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
-            _show(screen, host.doctor_unconfigured_renderable(), read_key)
-            return
         probes = host.doctor_build_probes(report)
         fixes = host.doctor_fixes_for(probes)
         runnable = [f for f in fixes if f.run is not None]
         if runnable:
             sel %= len(runnable)
-        screen.update(
-            r.render_doctor(
-                probes,
-                fixes,
-                selected=sel if runnable else None,
-                usage=host.usage.load(),  # best-effort; {} on any failure
-                specs=host.get_capabilities(),
-                app_label=host.app_label,
+        # Render only when something changed AND no more input is queued — coalesces
+        # held-arrow repeat into one repaint (pending() is False off a raw session).
+        if dirty and not keys.pending():
+            screen.update(
+                r.render_doctor(
+                    probes,
+                    fixes,
+                    selected=sel if runnable else None,
+                    usage=host.usage.load(),  # best-effort; {} on any failure
+                    specs=host.get_capabilities(),
+                    app_label=host.app_label,
+                )
             )
-        )
+            dirty = False
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
             return
         if not runnable:
-            continue  # nothing to run — any non-quit key just refreshes
+            # Nothing to run — any non-quit key just refreshes the probes.
+            report = _rebuild_doctor_report(host, screen, read_key)
+            if report is None:
+                return
+            dirty = True
+            continue
         if key == keys.UP:
             sel = (sel - 1) % len(runnable)
-        elif key == keys.DOWN:
+            dirty = True
+            continue
+        if key == keys.DOWN:
             sel = (sel + 1) % len(runnable)
-        elif key.isdigit() and 1 <= int(key) <= len(runnable):
+            dirty = True
+            continue
+        if key.isdigit() and 1 <= int(key) <= len(runnable):
             _run_doctor_fix(host, runnable[int(key) - 1], screen, read_key)
         elif key == keys.ENTER:
             _run_doctor_fix(host, runnable[sel], screen, read_key)
+        else:
+            continue  # inert key — no repaint
+        # A fix ran → rebuild the report so the probes reflect the change.
+        report = _rebuild_doctor_report(host, screen, read_key)
+        if report is None:
+            return
+        dirty = True
+
+
+def _rebuild_doctor_report(
+    host: Host, screen: Screen, read_key: Callable[[], str]
+) -> object | None:
+    """Re-run the worker's status report after a Doctor fix (or a refresh). Returns
+    the fresh report, or ``None`` after showing the unconfigured hint — in which case
+    the caller returns out of the Doctor loop (it degraded mid-session)."""
+    try:
+        return host.doctor_build_report()
+    except Exception:  # noqa: BLE001 — became unconfigured/offline → setup hint, don't crash
+        _show(screen, host.doctor_unconfigured_renderable(), read_key)
+        return None
 
 
 def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]) -> None:

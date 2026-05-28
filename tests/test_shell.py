@@ -435,6 +435,48 @@ def test_first_paint_falls_back_to_first_shelf(usage_to_tmp):
     assert "❯" in boot.split("toolkit")[1]
 
 
+def test_home_does_not_recapture_state_on_cursor_moves(usage_to_tmp):
+    """The core latency fix: arrow navigation moves the cursor only — it must NOT
+    re-capture application state. capture_state runs once on entry; a run of arrows
+    adds zero captures (was: one heavy capture + full repaint per keypress)."""
+    fh = _FakeHost(state=CockpitState(tenant_name="Clonway", pills=_PILLS))
+    scr = _Screen()
+    shell.run_cockpit(
+        fh.as_host(),
+        read_key=_keys([keys.DOWN, keys.UP, keys.RIGHT, keys.DOWN, "q"]),
+        screen=scr,
+    )
+    assert fh.capture_calls == 1  # one boot capture; the four arrows re-capture nothing
+
+
+def test_r_key_explicitly_refreshes_state(usage_to_tmp):
+    """'r' is a manual refresh — it re-captures state (so freshly-synced numbers
+    show) even though the cursor didn't move."""
+    fh = _FakeHost()
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["r", "q"]), screen=scr)
+    assert fh.capture_calls == 2  # boot + the explicit refresh
+
+
+def test_arrow_key_repeat_coalesces_into_a_single_repaint(usage_to_tmp, monkeypatch):
+    """A held arrow's key-repeat must collapse to ONE repaint: while more input is
+    immediately pending (keys.pending() True), the loop applies each move but
+    suppresses the intermediate frames, repainting once when the burst drains."""
+    fh = _FakeHost(state=CockpitState(tenant_name="Clonway", pills=_PILLS))
+    scr = _Screen()
+    seq = [keys.DOWN, keys.DOWN, keys.DOWN, "q"]
+
+    def _rk():
+        return seq.pop(0) if seq else "q"
+
+    # Model a held arrow: input stays "pending" while DOWNs remain queued ahead.
+    monkeypatch.setattr(keys, "pending", lambda timeout=0.0: bool(seq) and seq[0] != "q")
+    shell.run_cockpit(fh.as_host(), read_key=_rk, screen=scr)
+    # Three moves collapse to a single rendered frame (without coalescing: four).
+    assert len(scr.frames) == 1
+    assert fh.capture_calls == 1  # and still no per-move re-capture
+
+
 def test_q_quits_immediately(usage_to_tmp):
     needs = (NeedsItem("Sync the books", "never synced", "warn", "sync-all"),)
     host = _FakeHost(state=CockpitState(tenant_name="Clonway", needs=needs)).as_host()
@@ -449,6 +491,29 @@ def test_run_cockpit_fires_on_open(usage_to_tmp):
     shell.run_cockpit(fh.as_host(), read_key=_keys(["q"]), screen=scr)
     assert fh.open_calls == 1
     assert scr.frames
+
+
+def test_run_cockpit_holds_raw_mode_for_the_whole_session(usage_to_tmp, monkeypatch):
+    """The session enters raw mode ONCE around the home loop and exits it once —
+    so the terminal is never flipped back to cooked+echo between keystrokes (the
+    cause of escape sequences echoing to the screen during a slow redraw)."""
+    from contextlib import contextmanager
+
+    events: list[str] = []
+
+    @contextmanager
+    def _recording_raw():
+        events.append("enter")
+        try:
+            yield
+        finally:
+            events.append("exit")
+
+    monkeypatch.setattr(keys, "raw_mode", _recording_raw)
+    host = _FakeHost().as_host()
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["q"]), screen=scr)
+    assert events == ["enter", "exit"]  # entered once, restored once
 
 
 # --- pill activation + shelves + open-capability ------------------------------
@@ -859,6 +924,28 @@ def test_doctor_runs_the_selected_runnable_fix_on_enter(usage_to_tmp):
     assert ran == ["xero"]
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Synced" in joined
+
+
+def test_doctor_does_not_rebuild_report_on_cursor_moves(usage_to_tmp):
+    """Doctor arrows move over the fixes without rebuilding the (heavy) status
+    report — build once on entry, rebuild only after a fix actually runs. Same
+    per-keypress-work fix as the home loop."""
+    builds = {"n": 0}
+    probes = [
+        Probe("auth", "ok", "ok", None),
+        Probe("b", "warn", "x", Fix("Sync now", "cli", run=lambda: "ok")),
+        Probe("c", "warn", "y", Fix("Other", "cli2", run=lambda: "ok")),
+    ]
+
+    class _CountingReportHost(_FakeHost):
+        def _build_report(self):
+            builds["n"] += 1
+            return object()
+
+    host = _CountingReportHost(probes=probes).as_host()
+    scr = _Screen()
+    shell._doctor(host, scr, _keys([keys.DOWN, keys.UP, keys.DOWN, "q"]))
+    assert builds["n"] == 1  # one build on entry; the arrows rebuild nothing
 
 
 def test_doctor_display_only_fix_is_not_runnable(usage_to_tmp):
