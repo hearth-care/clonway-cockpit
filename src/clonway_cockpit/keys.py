@@ -21,6 +21,7 @@ import sys
 import termios
 import tty
 from contextlib import contextmanager, suppress
+from typing import Any
 
 UP = "up"
 DOWN = "down"
@@ -34,14 +35,15 @@ _ARROWS = {"[A": UP, "[B": DOWN, "[C": RIGHT, "[D": LEFT}
 
 # The fd + saved cooked attrs while a ``raw_mode()`` session is active; both None
 # otherwise. This is what lets ``read_key`` skip the per-keypress mode toggle and
-# ``pending`` know there is a raw fd to poll.
-_held: dict[str, object | None] = {"fd": None, "old": None}
+# ``pending`` know there is a raw fd to poll. ``_held_old`` is a ``termios`` attr
+# list (``tcgetattr``'s return), typed for ``tcsetattr`` to accept it back.
+_held_fd: int | None = None
+_held_old: list[Any] | None = None
 
 
 def _session_fd() -> int | None:
     """The fd of the active raw-mode session, or ``None`` when none is held."""
-    fd = _held["fd"]
-    return fd if isinstance(fd, int) else None
+    return _held_fd
 
 
 @contextmanager
@@ -55,6 +57,7 @@ def raw_mode():
     no tcgetattr/setraw/tcsetattr per keypress, so escape sequences never echo
     between keys. Idempotent against nesting is not needed — the cockpit enters it
     exactly once per session."""
+    global _held_fd, _held_old
     if not sys.stdin.isatty():
         # Non-interactive stdin (a pipe, pytest's captured stdin, Cloud Run): there
         # is no terminal to put in raw mode. Yield untouched so read_key's standalone
@@ -78,14 +81,14 @@ def raw_mode():
 
     try:
         tty.setraw(fd)
-        _held["fd"], _held["old"] = fd, old
+        _held_fd, _held_old = fd, old
         # Not the main thread → signal handlers can't be installed; the finally still
         # restores via the context manager, so this is best-effort.
         with suppress(ValueError):
             signal.signal(signal.SIGTERM, _on_sigterm)
         yield
     finally:
-        _held["fd"], _held["old"] = None, None
+        _held_fd, _held_old = None, None
         with suppress(ValueError, TypeError):
             signal.signal(signal.SIGTERM, prev_sigterm)
         _restore()
@@ -101,8 +104,8 @@ def cooked_mode():
     if fd is None:
         yield  # no session → already cooked, nothing to toggle
         return
-    old = _held["old"]
-    termios.tcsetattr(fd, termios.TCSAFLUSH, old)
+    assert _held_old is not None  # a held session always has saved cooked attrs
+    termios.tcsetattr(fd, termios.TCSAFLUSH, _held_old)
     try:
         yield
     finally:
