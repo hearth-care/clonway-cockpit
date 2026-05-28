@@ -544,6 +544,68 @@ def test_render_doctor_omits_usage_section_when_none():
     assert "what you reach for" not in out
 
 
+def test_render_doctor_display_only_fixes_show_back_only_footer():
+    """L9 — when all fixes are display-only (run=None), ↑↓ and ⏎ are no-ops so
+    the footer must NOT advertise them; only 'q back' should be shown."""
+    from clonway_cockpit.doctor import Fix, Probe
+
+    probes = [
+        Probe(
+            "reconcile · gap",
+            "warn",
+            "42 unmatched",
+            Fix("List the gap", "uv run xbook gap", run=None),
+        ),
+    ]
+    fixes = [probes[0].fix]
+    out = _capture(render.render_doctor(probes, fixes, app_label="xbook"))
+    # The fix IS shown (display-only row).
+    assert "List the gap" in out
+    assert "run in a terminal" in out
+    # Footer must be back-only — no move or run affordances.
+    # "move" must not appear (it only lives in the _doctor_footer, not the body).
+    assert "move" not in out
+    # "⏎ run" is the specific footer affordance; "run" also appears in chip text
+    # ("uv run xbook gap") and the tag ("run in a terminal"), so check for the
+    # exact footer token that the shell loop reacts to.
+    assert "⏎" not in out
+    assert "q" in out and "back" in out
+
+
+def test_render_doctor_completion_pct_clamped_at_100():
+    """L10 — when applied > opened the completion % must be clamped at 100 and
+    never render a nonsensical value like 520% or 258%."""
+    usage = {
+        "schedule-bills": {"open": 5, "applied": 26, "cancelled": 0, "last": _now_iso()},
+        "payroll-clear": {"open": 7, "applied": 15, "cancelled": 0, "last": _now_iso()},
+    }
+    specs = [
+        CapabilitySpec(
+            key="schedule-bills",
+            shelf="C",
+            title="Schedule bills",
+            summary="plan + apply",
+            equivalent_cli="uv run xbook plan",
+        ),
+        CapabilitySpec(
+            key="payroll-clear",
+            shelf="C",
+            title="Clear payroll",
+            summary="post pay run",
+            equivalent_cli="uv run xbook payroll clear",
+        ),
+    ]
+    out = _capture(render.render_usage_section(usage, specs))
+    # Completion section is shown (both walks have opens > 0).
+    assert "completion" in out
+    # No pct value should exceed 100%.
+    import re
+
+    pcts = [int(m) for m in re.findall(r"(\d+)%", out)]
+    assert pcts, "expected at least one % value in completion section"
+    assert all(p <= 100 for p in pcts), f"completion % exceeded 100: {pcts}"
+
+
 def _now_iso():
     from datetime import datetime
 

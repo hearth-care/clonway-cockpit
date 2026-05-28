@@ -663,7 +663,13 @@ def render_doctor(
                 )
         parts.append(ftable)
         parts.append(Text(""))
-        parts.append(_doctor_footer())
+        # Show the full move/run footer only when at least one fix is runnable.
+        # Display-only fixes (run=None) make ↑↓ and ⏎ no-ops, so advertising them
+        # misleads the operator — fall back to the back-only footer in that case.
+        if any(f.run is not None for f in fixes):
+            parts.append(_doctor_footer())
+        else:
+            parts.append(_doctor_back_only_footer())
     else:
         # A read-only Doctor (no runnable fixes — e.g. the Fleet Doctor) still needs
         # an exit cue, or the screen is a cul-de-sac. Show only "q back" — there's no
@@ -839,7 +845,7 @@ def render_usage_section(usage: dict, specs: list[CapabilitySpec]) -> Renderable
         applied = applied_val if isinstance(applied_val, int) else 0
         if opened <= 0:
             continue
-        pct = round((applied / opened) * 100)
+        pct = min(100, round((applied / opened) * 100))
         line = Text("    ")
         line.append(f"{title:<26}", style="")
         line.append(f"{opened} opened · {applied} applied · {pct}%", style=DIM)
