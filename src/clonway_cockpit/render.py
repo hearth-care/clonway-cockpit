@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from rich import box
 from rich.align import Align
-from rich.console import Group, RenderableType
+from rich.console import Console, ConsoleOptions, Group, RenderableType, RenderResult
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -86,22 +86,37 @@ SHELVES: dict[str, str] = {
 }
 
 
-_PANEL_WIDTH = 96  # a fixed, comfortable window width so the cockpit keeps the
-# reference's proportions instead of floating, left-anchored, in a huge terminal
+_PANEL_WIDTH = 96  # floor/reference width — the cockpit's minimum comfortable window
+_PANEL_MAX_WIDTH = 140  # cap — grow into a wide terminal up to here, then stay centred
+# (beyond ~140 cols a monospace wall of text gets hard to scan; the window stays
+# centred so it still reads as a contained app, not text floating in a sea of black)
+
+
+class _Page:
+    """Frame a screen as a centred window that grows with the terminal up to
+    ``_PANEL_MAX_WIDTH``, so the cockpit uses the available real estate without
+    becoming an unreadably-wide wall of text. Sizes to the RENDERING console's
+    width via the Rich console protocol — deterministic under a fixed-width test
+    console, wide on a real terminal."""
+
+    def __init__(self, body: RenderableType) -> None:
+        self.body = body
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        width = min(options.max_width, _PANEL_MAX_WIDTH)
+        window = Panel(
+            self.body,
+            box=box.ROUNDED,
+            border_style=DIM,
+            width=width,
+            padding=(1, 3),
+        )
+        yield Align(window, align="center", vertical="middle")
 
 
 def page(body: RenderableType) -> RenderableType:
-    """Frame a screen as a fixed-width window centred in the terminal — so it
-    reads as a contained app (reference proportions), not bare text lost in a
-    sea of black on a maximised terminal."""
-    window = Panel(
-        body,
-        box=box.ROUNDED,
-        border_style=DIM,
-        width=_PANEL_WIDTH,
-        padding=(1, 3),
-    )
-    return Align(window, align="center", vertical="middle")
+    """Frame a screen as a centred, terminal-adaptive window — see :class:`_Page`."""
+    return _Page(body)
 
 
 _CRUMB_SEP = " ▸ "  # the cross-deck breadcrumb separator (U+25B8 — not an emoji)
