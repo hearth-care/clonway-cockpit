@@ -25,7 +25,7 @@ from typing import Any, Protocol
 
 from rich.console import RenderableType
 
-from clonway_cockpit import keys, render, walk
+from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
@@ -632,7 +632,24 @@ def _open_capability(
         _doctor(host, screen, read_key)
         return
     if spec.run is not None:
-        spec.run(host.build_walk_ctx(screen, read_key, focus=focus))
+        try:
+            spec.run(host.build_walk_ctx(screen, read_key, focus=focus))
+        except shellout.ShellOut:
+            # Control flow (leave the alt-screen), NOT an error — re-raise so the
+            # worker's run_cockpit catches it and runs the child command.
+            raise
+        except Exception as e:  # noqa: BLE001 — a walk crash must NOT kill the cockpit
+            # An unguarded raise here propagated all the way out (run_cockpit only
+            # catches ShellOut) and dumped a traceback over the restored terminal,
+            # taking the whole cockpit down. Surface the crash as a clean result
+            # frame and return to the home loop instead.
+            _show(
+                screen,
+                r.render_walk_result(
+                    spec.title, ok=False, message=f"{spec.title} hit an error — {e}"
+                ),
+                read_key,
+            )
         return
     # reference-only: no handler, just the equivalent-CLI card
     _show(screen, r.render_capability_card(spec), read_key)

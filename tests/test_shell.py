@@ -1636,3 +1636,54 @@ def test_open_capability_pushes_frame_then_pops_on_return(usage_to_tmp):
     # frame after the walk ran).
     home_frames = [f for f in scr.frames if "to move" in _text(f)]
     assert len(home_frames) >= 1, "home was not redrawn after walk returned"
+
+
+def test_open_capability_guards_a_crashing_walk(usage_to_tmp):
+    """A walk whose run() raises must NOT propagate out of the open chokepoint —
+    an unguarded raise crashes the whole cockpit (a worker's run_cockpit only
+    catches ShellOut). The crash must render a clean error frame instead."""
+    host = _FakeHost().as_host()
+    screen = _Screen()
+
+    def _boom(ctx):
+        raise RuntimeError("kaboom-from-walk")
+
+    register_capability(
+        CapabilitySpec(
+            key="crashy",
+            shelf="A",
+            title="Crashy walk",
+            summary="x",
+            equivalent_cli="uv run worker crashy",
+            run=_boom,
+        )
+    )
+    shell._open_capability(host, "crashy", screen, _keys([]))  # must NOT raise
+    txt = "\n".join(_text(f) for f in screen.frames)
+    assert "Crashy walk" in txt
+    assert "kaboom-from-walk" in txt
+
+
+def test_open_capability_reraises_shellout(usage_to_tmp):
+    """ShellOut is control flow (leave the alt-screen), not an error — it must
+    still propagate so run_cockpit can catch it and run the child command."""
+    from clonway_cockpit import shellout
+
+    host = _FakeHost().as_host()
+    screen = _Screen()
+
+    def _shell_out(ctx):
+        raise shellout.ShellOut("reauth", argv=("worker", "auth", "login"))
+
+    register_capability(
+        CapabilitySpec(
+            key="reauth",
+            shelf="A",
+            title="Re-auth",
+            summary="x",
+            equivalent_cli="uv run worker reauth",
+            run=_shell_out,
+        )
+    )
+    with pytest.raises(shellout.ShellOut):
+        shell._open_capability(host, "reauth", screen, _keys([]))
