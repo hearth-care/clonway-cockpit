@@ -943,3 +943,24 @@ def test_render_sync_progress_lines_suppresses_calm_default():
     )
     assert "new line 1" in out
     assert "this can take up to a minute" not in out
+
+
+def test_render_doctor_completion_applied_clamped_to_opened():
+    """applied > opened is a telemetry inconsistency (an apply recorded without a
+    matching open). The completion line must not read 'X opened · Y applied' with
+    Y > X — clamp the displayed applied to opened so it reads coherently."""
+    usage = {
+        "schedule-bills": {"open": 5, "applied": 26, "cancelled": 0, "last": _now_iso()},
+    }
+    specs = [
+        CapabilitySpec(
+            key="schedule-bills",
+            shelf="C",
+            title="Schedule bills",
+            summary="plan + apply",
+            equivalent_cli="uv run xbook plan",
+        ),
+    ]
+    out = _capture(render.render_usage_section(usage, specs))
+    assert "5 opened · 5 applied" in out
+    assert "26 applied" not in out
