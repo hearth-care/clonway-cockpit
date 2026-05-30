@@ -46,6 +46,24 @@ def _session_fd() -> int | None:
     return _held_fd
 
 
+def _enter_raw(fd: int) -> None:
+    """Put ``fd`` in raw INPUT mode but keep OUTPUT post-processing (OPOST) ON.
+
+    ``tty.setraw`` clears OPOST — *all* output post-processing, including the
+    ONLCR ``\\n`` -> ``\\r\\n`` translation. Rich renders each frame as full-width
+    lines joined by bare ``\\n`` and relies on the terminal to add the carriage
+    return; with OPOST off every line drops a row without returning to column 0,
+    so the frame staircases/wraps and the alt-screen decays to garble (the
+    cockpit's "double-spaced then black"). So we re-enable OPOST after setraw: raw
+    INPUT (no echo, no canonical, ISIG off so read_key's ``\\x03`` handling stands)
+    but cooked OUTPUT. Used on initial ``raw_mode`` entry and whenever
+    ``cooked_mode`` re-arms raw after a typed prompt."""
+    tty.setraw(fd)
+    mode = termios.tcgetattr(fd)
+    mode[tty.OFLAG] |= termios.OPOST
+    termios.tcsetattr(fd, termios.TCSANOW, mode)
+
+
 @contextmanager
 def raw_mode():
     """Hold the terminal in raw/no-echo mode for the whole cockpit session.
@@ -80,7 +98,7 @@ def raw_mode():
         os.kill(os.getpid(), signal.SIGTERM)  # re-raise with the original disposition
 
     try:
-        tty.setraw(fd)
+        _enter_raw(fd)
         _held_fd, _held_old = fd, old
         # Not the main thread → signal handlers can't be installed; the finally still
         # restores via the context manager, so this is best-effort.
@@ -109,7 +127,9 @@ def cooked_mode():
     try:
         yield
     finally:
-        tty.setraw(fd)
+        # Re-arm raw the same way the session entered it — keeping OPOST on — so a
+        # render after a typed prompt isn't garbled by a bare setraw dropping OPOST.
+        _enter_raw(fd)
 
 
 def pending(timeout: float = 0.0) -> bool:
