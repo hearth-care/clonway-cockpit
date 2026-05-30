@@ -860,6 +860,11 @@ def render_usage_section(usage: dict, specs: list[CapabilitySpec]) -> Renderable
         applied = applied_val if isinstance(applied_val, int) else 0
         if opened <= 0:
             continue
+        # Telemetry can record an apply without a matching open (re-entry, a reset
+        # between sessions), making applied > opened — which would render an
+        # incoherent "5 opened · 26 applied". Clamp the displayed applied to opened
+        # so the line reads sensibly (the pct is then naturally ≤ 100).
+        applied = min(applied, opened)
         pct = min(100, round((applied / opened) * 100))
         line = Text("    ")
         line.append(f"{title:<26}", style="")
