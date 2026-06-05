@@ -30,6 +30,49 @@ from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 _PROGRESS_TICK = 0.12
 
 
+def _run_animated[T](
+    present: Callable[[RenderableType], None],
+    fn: Callable[..., T],
+    render_frame: Callable[[str, int], RenderableType],
+    *,
+    worker_arg: object | None,
+    pass_arg: bool,
+    tick: float,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+) -> T:
+    """Run ``fn`` in a daemon worker thread while animating via ``present``.
+    ``render_frame(frame, elapsed)`` builds each frame. When ``pass_arg`` is True,
+    ``fn`` is called with ``worker_arg`` (the log callback or the StageReporter);
+    otherwise zero-arg. Re-raises a worker exception on the main thread after the
+    loop, so callers' result/error screens still work."""
+    holder: dict[str, object] = {}
+
+    def _worker() -> None:
+        try:
+            holder["value"] = fn(worker_arg) if pass_arg else fn()
+        except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
+            holder["error"] = e
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    started = clock()
+    thread.start()
+    i = 0
+    while True:
+        frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
+        elapsed = int(clock() - started)
+        present(render_frame(frame, elapsed))
+        i += 1
+        thread.join(timeout=tick)
+        if not thread.is_alive():
+            break
+        sleep(tick)
+
+    if "error" in holder:
+        raise holder["error"]  # type: ignore[misc]
+    return holder["value"]  # type: ignore[return-value]
+
+
 def animate_until_done[T](
     present: Callable[[RenderableType], None],
     label: str,
@@ -76,40 +119,21 @@ def animate_until_done[T](
     except (ValueError, TypeError):
         _accepts_log = False
 
-    holder: dict[str, object] = {}
-
     def _log(line: str) -> None:
         buf.append(line)
 
-    def _worker() -> None:
-        try:
-            if _accepts_log:
-                holder["value"] = fn(_log)  # type: ignore[call-arg]
-            else:
-                holder["value"] = fn()  # type: ignore[call-arg]
-        except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
-            holder["error"] = e
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    started = clock()
-    thread.start()
-    i = 0
-    # Draw at least one animated frame before the first join so even an instant
-    # fn shows the progress screen once (and a slow fn animates every tick).
-    while True:
-        frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
-        elapsed = int(clock() - started)
-        lines = tuple(buf)  # CPython deque.append is atomic; snapshot is safe
-        present(render.render_sync_progress(label, frame, elapsed, lines=lines))
-        i += 1
-        thread.join(timeout=tick)
-        if not thread.is_alive():
-            break
-        sleep(tick)
-
-    if "error" in holder:
-        raise holder["error"]  # type: ignore[misc]
-    return holder["value"]  # type: ignore[return-value]
+    return _run_animated(
+        present,
+        fn,
+        lambda frame, elapsed: render.render_sync_progress(
+            label, frame, elapsed, lines=tuple(buf)
+        ),
+        worker_arg=_log,
+        pass_arg=_accepts_log,
+        tick=tick,
+        clock=clock,
+        sleep=sleep,
+    )
 
 
 @dataclass(frozen=True)
