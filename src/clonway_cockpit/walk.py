@@ -125,9 +125,7 @@ def animate_until_done[T](
     return _run_animated(
         present,
         fn,
-        lambda frame, elapsed: render.render_sync_progress(
-            label, frame, elapsed, lines=tuple(buf)
-        ),
+        lambda frame, elapsed: render.render_sync_progress(label, frame, elapsed, lines=tuple(buf)),
         worker_arg=_log,
         pass_arg=_accepts_log,
         tick=tick,

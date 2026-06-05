@@ -195,12 +195,18 @@ def test_raw_mode_keeps_output_post_processing_on(monkeypatch):
 
     master, slave = pty.openpty()
     monkeypatch.setattr(
-        keys.sys, "stdin", type("S", (), {"isatty": staticmethod(lambda: True), "fileno": staticmethod(lambda: slave)})()
+        keys.sys,
+        "stdin",
+        type(
+            "S", (), {"isatty": staticmethod(lambda: True), "fileno": staticmethod(lambda: slave)}
+        )(),
     )
     try:
         with keys.raw_mode():
             mode = termios.tcgetattr(slave)
-            assert mode[tty.OFLAG] & termios.OPOST, "OPOST off → Rich frames lose \\n→\\r\\n and the alt-screen garbles"
+            assert mode[tty.OFLAG] & termios.OPOST, (
+                "OPOST off → Rich frames lose \\n→\\r\\n and the alt-screen garbles"
+            )
             # The input side must still be raw: canonical + echo off so read_key
             # gets single keypresses with no echo.
             assert not (mode[tty.LFLAG] & termios.ICANON)
