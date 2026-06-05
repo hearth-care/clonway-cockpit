@@ -556,9 +556,13 @@ def render_staged_progress(
     head.append(label)
     head.append(f"   {elapsed}s", style=DIM)
     parts: list[RenderableType] = [Text(""), head]
-    for st in stages:
+    for i, st in enumerate(stages):
         glyph = frame if st.status == "active" else _STAGE_GLYPH.get(st.status, "·")
+        # Tree connector so the stages read as children of the spinner head, not
+        # as a flat sibling list — └─ on the last row, ├─ above it.
+        connector = "└─ " if i == len(stages) - 1 else "├─ "
         row = Text("  ")
+        row.append(connector, style=DIM)
         row.append(f"{glyph} ", style=_STAGE_STYLE.get(st.status, DIM))
         row.append(f"{st.label:<22}")
         if st.detail:
