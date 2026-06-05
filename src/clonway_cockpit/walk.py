@@ -30,6 +30,10 @@ from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 _PROGRESS_TICK = 0.12
 
 
+class Cancelled(Exception):
+    """The operator pressed q/esc to abort an animated operation."""
+
+
 def _run_animated[T](
     present: Callable[[RenderableType], None],
     fn: Callable[..., T],
@@ -40,12 +44,17 @@ def _run_animated[T](
     tick: float,
     clock: Callable[[], float],
     sleep: Callable[[float], None],
+    poll_cancel: Callable[[], bool] | None = None,
 ) -> T:
     """Run ``fn`` in a daemon worker thread while animating via ``present``.
     ``render_frame(frame, elapsed)`` builds each frame. When ``pass_arg`` is True,
     ``fn`` is called with ``worker_arg`` (the log callback or the StageReporter);
     otherwise zero-arg. Re-raises a worker exception on the main thread after the
-    loop, so callers' result/error screens still work."""
+    loop, so callers' result/error screens still work.
+
+    When ``poll_cancel`` is supplied, it is called each tick (instead of
+    ``sleep``); if it returns True the loop raises ``Cancelled`` immediately.
+    The daemon worker is abandoned on cancel — the caller returns to the cockpit."""
     holder: dict[str, object] = {}
 
     def _worker() -> None:
@@ -66,7 +75,11 @@ def _run_animated[T](
         thread.join(timeout=tick)
         if not thread.is_alive():
             break
-        sleep(tick)
+        if poll_cancel is not None:
+            if poll_cancel():
+                raise Cancelled
+        else:
+            sleep(tick)
 
     if "error" in holder:
         raise holder["error"]  # type: ignore[misc]
@@ -142,6 +155,7 @@ def animate_staged[T](
     stages: list[tuple[str, str]],
     hint: str = "",
     hint_after_s: int = 60,
+    cancellable: bool = False,
     tick: float = _PROGRESS_TICK,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
@@ -150,19 +164,42 @@ def animate_staged[T](
     called with a :class:`StageReporter` (built from ``stages``) it drives as it
     works; each frame re-renders ``render_staged_progress`` from the reporter's
     snapshot. ``hint`` shows once elapsed ≥ ``hint_after_s``. Re-raises a worker
-    exception after the loop (same contract as ``animate_until_done``)."""
+    exception after the loop (same contract as ``animate_until_done``).
+
+    When ``cancellable=True``, the loop polls for ``q``/``esc`` each tick and
+    raises ``Cancelled`` if the operator presses either — returning them to the
+    cockpit. Default False preserves existing behaviour (no key polling)."""
     reporter = StageReporter(stages)
+
+    poll = None
+    controls = ""
+    if cancellable:
+        controls = "q cancel"
+
+        def poll() -> bool:
+            if keys.pending(tick):
+                k = keys.read_key()
+                return (k.lower() if len(k) == 1 else k) in ("q", keys.ESC)
+            return False
+
     return _run_animated(
         present,
         fn,
         lambda frame, elapsed: render.render_staged_progress(
-            label, reporter.snapshot(), frame, elapsed, hint=hint, hint_after_s=hint_after_s
+            label,
+            reporter.snapshot(),
+            frame,
+            elapsed,
+            hint=hint,
+            hint_after_s=hint_after_s,
+            controls=controls,
         ),
         worker_arg=reporter,
         pass_arg=True,
         tick=tick,
         clock=clock,
         sleep=sleep,
+        poll_cancel=poll,
     )
 
 

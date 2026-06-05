@@ -544,17 +544,23 @@ def render_staged_progress(
     *,
     hint: str = "",
     hint_after_s: int = 60,
+    controls: str = "",
 ) -> RenderableType:
     """Staged 'working…' screen: a spinner ``frame`` + ``label`` + ``elapsed`` on
     the head line, then one row per stage — ``✓`` done / the live ``frame`` active /
     ``·`` pending / ``⚠`` skipped, label + dim detail. Shows ``hint`` once
     ``elapsed >= hint_after_s`` so a long sync never reads as hung. Reuses the
     sync-progress head + the preflight ✓-row style; no new glyph/colour. Framed
-    via ``page()``; the loop redraws with a fresh ``frame``/``elapsed``."""
+    via ``page()``; the loop redraws with a fresh ``frame``/``elapsed``.
+
+    When ``controls`` is set (e.g. ``"q cancel"``), it is appended dim to the
+    head line so the operator knows how to abort."""
     head = Text("  ")
     head.append(f"{frame} ", style=ACCENT)
     head.append(label)
     head.append(f"   {elapsed}s", style=DIM)
+    if controls:
+        head.append(f"   {controls}", style=DIM)
     parts: list[RenderableType] = [Text(""), head]
     for i, st in enumerate(stages):
         glyph = frame if st.status == "active" else _STAGE_GLYPH.get(st.status, "·")

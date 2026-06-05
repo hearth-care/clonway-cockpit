@@ -1008,3 +1008,18 @@ def test_render_staged_progress_shows_hint_past_threshold():
         )
     )
     assert "rate-limited, still working" in out
+
+
+def test_render_staged_progress_shows_controls_hint():
+    from clonway_cockpit.walk import Stage
+
+    out = _capture(
+        render.render_staged_progress(
+            "Syncing Xero…",
+            [Stage("a", "Accounts", "active")],
+            render.SPINNER_FRAMES[0],
+            5,
+            controls="q cancel",
+        )
+    )
+    assert "q cancel" in out
