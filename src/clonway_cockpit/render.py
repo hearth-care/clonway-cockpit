@@ -532,6 +532,45 @@ def render_sync_progress(
     return page(Group(*parts))
 
 
+_STAGE_GLYPH = {"done": "✓", "pending": "·", "skipped": "⚠"}
+_STAGE_STYLE = {"done": _DOT["ok"], "active": ACCENT, "pending": DIM, "skipped": ACCENT}
+
+
+def render_staged_progress(
+    label: str,
+    stages: Sequence,
+    frame: str = SPINNER_FRAMES[0],
+    elapsed: int = 0,
+    *,
+    hint: str = "",
+    hint_after_s: int = 60,
+) -> RenderableType:
+    """Staged 'working…' screen: a spinner ``frame`` + ``label`` + ``elapsed`` on
+    the head line, then one row per stage — ``✓`` done / the live ``frame`` active /
+    ``·`` pending / ``⚠`` skipped, label + dim detail. Shows ``hint`` once
+    ``elapsed >= hint_after_s`` so a long sync never reads as hung. Reuses the
+    sync-progress head + the preflight ✓-row style; no new glyph/colour. Framed
+    via ``page()``; the loop redraws with a fresh ``frame``/``elapsed``."""
+    head = Text("  ")
+    head.append(f"{frame} ", style=ACCENT)
+    head.append(label)
+    head.append(f"   {elapsed}s", style=DIM)
+    parts: list[RenderableType] = [Text(""), head]
+    for st in stages:
+        glyph = frame if st.status == "active" else _STAGE_GLYPH.get(st.status, "·")
+        row = Text("  ")
+        row.append(f"{glyph} ", style=_STAGE_STYLE.get(st.status, DIM))
+        row.append(f"{st.label:<22}")
+        if st.detail:
+            row.append(st.detail, style=DIM)
+        parts.append(row)
+    if hint and elapsed >= hint_after_s:
+        parts.append(Text(""))
+        parts.append(Text(f"  {hint}", style=DIM))
+    parts.append(Text(""))
+    return page(Group(*parts))
+
+
 def render_walk_result(
     title: str, *, ok: bool, message: str, links: list[tuple[str, str]] | None = None
 ) -> RenderableType:

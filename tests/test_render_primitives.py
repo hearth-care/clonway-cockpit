@@ -964,3 +964,38 @@ def test_render_doctor_completion_applied_clamped_to_opened():
     out = _capture(render.render_usage_section(usage, specs))
     assert "5 opened · 5 applied" in out
     assert "26 applied" not in out
+
+
+def test_render_staged_progress_states_and_hint():
+    from clonway_cockpit.walk import Stage
+
+    stages = [
+        Stage("accounts", "Accounts", "done", "120"),
+        Stage("contacts", "Contacts", "active", "page 7 · 1,400"),
+        Stage("pnl", "P&L", "pending"),
+        Stage("payroll", "Payroll", "skipped", "skipped"),
+    ]
+    out = _capture(
+        render.render_staged_progress(
+            "Syncing Xero…", stages, render.SPINNER_FRAMES[0], 12,
+            hint="rate-limited, still working", hint_after_s=60,
+        )
+    )
+    assert "Syncing Xero…" in out and "12s" in out
+    assert "✓" in out and "Accounts" in out and "120" in out
+    assert "Contacts" in out and "page 7 · 1,400" in out
+    assert "·" in out and "P&L" in out          # pending glyph
+    assert "⚠" in out and "Payroll" in out      # skipped glyph
+    assert "rate-limited, still working" not in out   # elapsed 12 < hint_after_s
+
+
+def test_render_staged_progress_shows_hint_past_threshold():
+    from clonway_cockpit.walk import Stage
+
+    out = _capture(
+        render.render_staged_progress(
+            "Syncing Xero…", [Stage("accounts", "Accounts", "active")],
+            render.SPINNER_FRAMES[0], 75, hint="rate-limited, still working", hint_after_s=60,
+        )
+    )
+    assert "rate-limited, still working" in out
