@@ -990,6 +990,7 @@ def test_render_staged_progress_states_and_hint():
     assert "Contacts" in out and "page 7 · 1,400" in out
     assert "·" in out and "P&L" in out  # pending glyph
     assert "⚠" in out and "Payroll" in out  # skipped glyph
+    assert "├─" in out and "└─" in out  # stages nest under the head as a tree
     assert "rate-limited, still working" not in out  # elapsed 12 < hint_after_s
 
 
