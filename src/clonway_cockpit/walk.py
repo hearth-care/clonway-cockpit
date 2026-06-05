@@ -136,6 +136,38 @@ def animate_until_done[T](
     )
 
 
+def animate_staged[T](
+    present: Callable[[RenderableType], None],
+    label: str,
+    fn: Callable[[StageReporter], T],
+    *,
+    stages: list[tuple[str, str]],
+    hint: str = "",
+    hint_after_s: int = 60,
+    tick: float = _PROGRESS_TICK,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> T:
+    """Like ``animate_until_done`` but renders a ticking STAGE CHECKLIST. ``fn`` is
+    called with a :class:`StageReporter` (built from ``stages``) it drives as it
+    works; each frame re-renders ``render_staged_progress`` from the reporter's
+    snapshot. ``hint`` shows once elapsed ≥ ``hint_after_s``. Re-raises a worker
+    exception after the loop (same contract as ``animate_until_done``)."""
+    reporter = StageReporter(stages)
+    return _run_animated(
+        present,
+        fn,
+        lambda frame, elapsed: render.render_staged_progress(
+            label, reporter.snapshot(), frame, elapsed, hint=hint, hint_after_s=hint_after_s
+        ),
+        worker_arg=reporter,
+        pass_arg=True,
+        tick=tick,
+        clock=clock,
+        sleep=sleep,
+    )
+
+
 @dataclass(frozen=True)
 class StepResult:
     ok: bool

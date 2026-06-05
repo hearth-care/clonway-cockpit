@@ -518,3 +518,56 @@ def test_stage_reporter_transitions():
     # unknown keys are no-ops (never raise)
     r.start("nope")
     r.done("nope")
+
+
+def test_animate_staged_drives_reporter_and_renders():
+    presented: list = []
+
+    def worker(reporter):
+        reporter.start("accounts")
+        reporter.done("accounts", "120")
+        reporter.start("pnl")
+        reporter.update("pnl", "month 3/12")
+        return "ok"
+
+    result = walk.animate_staged(
+        presented.append,
+        "Syncing Xero…",
+        worker,
+        stages=[("accounts", "Accounts"), ("pnl", "P&L")],
+        hint="still working",
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+    )
+    assert result == "ok"
+
+    from rich.console import Console
+
+    def _text(r):
+        c = Console(record=True, width=120)
+        c.print(r)
+        return c.export_text()
+
+    all_text = "\n".join(_text(r) for r in presented)
+    assert "Accounts" in all_text and "120" in all_text
+    assert "P&L" in all_text
+
+
+def test_animate_staged_reraises_worker_exception():
+    import pytest
+
+    def worker(reporter):
+        reporter.start("accounts")
+        raise ValueError("sync failed")
+
+    with pytest.raises(ValueError, match="sync failed"):
+        walk.animate_staged(
+            lambda r: None,
+            "Syncing Xero…",
+            worker,
+            stages=[("accounts", "Accounts")],
+            tick=0.0,
+            clock=_instant_clock,
+            sleep=_noop_sleep,
+        )
