@@ -149,6 +149,54 @@ class Step:
     run: Callable[[WizardContext, dict], StepResult]
 
 
+@dataclass
+class Stage:
+    """One stage in a staged-progress run. ``status`` ∈ pending|active|done|skipped."""
+
+    key: str
+    label: str
+    status: str = "pending"
+    detail: str = ""
+
+
+class StageReporter:
+    """Drives an ordered list of stages from inside a worker fn; the redraw loop
+    reads ``snapshot()``. Mutators are no-ops for unknown keys so callers never
+    have to guard. Thread-safe by construction: the worker mutates, the loop only
+    reads ``snapshot()`` (an independent copy)."""
+
+    def __init__(self, stages: list[tuple[str, str]]) -> None:
+        self._stages = [Stage(key=k, label=lbl) for k, lbl in stages]
+        self._by_key = {s.key: s for s in self._stages}
+
+    def start(self, key: str) -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "active"
+
+    def update(self, key: str, detail: str) -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.detail = detail
+
+    def done(self, key: str, detail: str = "") -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "done"
+            if detail:
+                s.detail = detail
+
+    def skip(self, key: str, detail: str = "") -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "skipped"
+            if detail:
+                s.detail = detail
+
+    def snapshot(self) -> list[Stage]:
+        return [Stage(s.key, s.label, s.status, s.detail) for s in self._stages]
+
+
 def _present(ctx: WizardContext, renderable: RenderableType) -> None:
     """Draw one full screen via the cockpit's ``screen.update`` when bound, else
     fall back to ``console.print`` (console-mode callers / tests)."""

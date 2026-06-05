@@ -488,3 +488,33 @@ def test_animate_reraises_worker_exception_with_logs():
             clock=_instant_clock,
             sleep=_noop_sleep,
         )
+
+
+def test_stage_reporter_transitions():
+    from clonway_cockpit.walk import StageReporter
+
+    r = StageReporter([("accounts", "Accounts"), ("contacts", "Contacts")])
+    snap = r.snapshot()
+    assert [s.status for s in snap] == ["pending", "pending"]
+
+    r.start("accounts")
+    r.update("accounts", "page 1 · 100")
+    assert r.snapshot()[0].status == "active"
+    assert r.snapshot()[0].detail == "page 1 · 100"
+
+    r.done("accounts", "120")
+    assert r.snapshot()[0].status == "done"
+    assert r.snapshot()[0].detail == "120"
+
+    r.skip("contacts", "skipped")
+    assert r.snapshot()[1].status == "skipped"
+    assert r.snapshot()[1].detail == "skipped"
+
+    # snapshot is an independent copy — mutating the reporter doesn't change a prior snapshot
+    snap2 = r.snapshot()
+    r.done("contacts")
+    assert snap2[1].status == "skipped"
+
+    # unknown keys are no-ops (never raise)
+    r.start("nope")
+    r.done("nope")
