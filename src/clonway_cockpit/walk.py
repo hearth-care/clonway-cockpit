@@ -30,6 +30,49 @@ from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 _PROGRESS_TICK = 0.12
 
 
+def _run_animated[T](
+    present: Callable[[RenderableType], None],
+    fn: Callable[..., T],
+    render_frame: Callable[[str, int], RenderableType],
+    *,
+    worker_arg: object | None,
+    pass_arg: bool,
+    tick: float,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+) -> T:
+    """Run ``fn`` in a daemon worker thread while animating via ``present``.
+    ``render_frame(frame, elapsed)`` builds each frame. When ``pass_arg`` is True,
+    ``fn`` is called with ``worker_arg`` (the log callback or the StageReporter);
+    otherwise zero-arg. Re-raises a worker exception on the main thread after the
+    loop, so callers' result/error screens still work."""
+    holder: dict[str, object] = {}
+
+    def _worker() -> None:
+        try:
+            holder["value"] = fn(worker_arg) if pass_arg else fn()
+        except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
+            holder["error"] = e
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    started = clock()
+    thread.start()
+    i = 0
+    while True:
+        frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
+        elapsed = int(clock() - started)
+        present(render_frame(frame, elapsed))
+        i += 1
+        thread.join(timeout=tick)
+        if not thread.is_alive():
+            break
+        sleep(tick)
+
+    if "error" in holder:
+        raise holder["error"]  # type: ignore[misc]
+    return holder["value"]  # type: ignore[return-value]
+
+
 def animate_until_done[T](
     present: Callable[[RenderableType], None],
     label: str,
@@ -76,40 +119,51 @@ def animate_until_done[T](
     except (ValueError, TypeError):
         _accepts_log = False
 
-    holder: dict[str, object] = {}
-
     def _log(line: str) -> None:
         buf.append(line)
 
-    def _worker() -> None:
-        try:
-            if _accepts_log:
-                holder["value"] = fn(_log)  # type: ignore[call-arg]
-            else:
-                holder["value"] = fn()  # type: ignore[call-arg]
-        except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
-            holder["error"] = e
+    return _run_animated(
+        present,
+        fn,
+        lambda frame, elapsed: render.render_sync_progress(label, frame, elapsed, lines=tuple(buf)),
+        worker_arg=_log,
+        pass_arg=_accepts_log,
+        tick=tick,
+        clock=clock,
+        sleep=sleep,
+    )
 
-    thread = threading.Thread(target=_worker, daemon=True)
-    started = clock()
-    thread.start()
-    i = 0
-    # Draw at least one animated frame before the first join so even an instant
-    # fn shows the progress screen once (and a slow fn animates every tick).
-    while True:
-        frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
-        elapsed = int(clock() - started)
-        lines = tuple(buf)  # CPython deque.append is atomic; snapshot is safe
-        present(render.render_sync_progress(label, frame, elapsed, lines=lines))
-        i += 1
-        thread.join(timeout=tick)
-        if not thread.is_alive():
-            break
-        sleep(tick)
 
-    if "error" in holder:
-        raise holder["error"]  # type: ignore[misc]
-    return holder["value"]  # type: ignore[return-value]
+def animate_staged[T](
+    present: Callable[[RenderableType], None],
+    label: str,
+    fn: Callable[[StageReporter], T],
+    *,
+    stages: list[tuple[str, str]],
+    hint: str = "",
+    hint_after_s: int = 60,
+    tick: float = _PROGRESS_TICK,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> T:
+    """Like ``animate_until_done`` but renders a ticking STAGE CHECKLIST. ``fn`` is
+    called with a :class:`StageReporter` (built from ``stages``) it drives as it
+    works; each frame re-renders ``render_staged_progress`` from the reporter's
+    snapshot. ``hint`` shows once elapsed ≥ ``hint_after_s``. Re-raises a worker
+    exception after the loop (same contract as ``animate_until_done``)."""
+    reporter = StageReporter(stages)
+    return _run_animated(
+        present,
+        fn,
+        lambda frame, elapsed: render.render_staged_progress(
+            label, reporter.snapshot(), frame, elapsed, hint=hint, hint_after_s=hint_after_s
+        ),
+        worker_arg=reporter,
+        pass_arg=True,
+        tick=tick,
+        clock=clock,
+        sleep=sleep,
+    )
 
 
 @dataclass(frozen=True)
@@ -147,6 +201,54 @@ class Precondition:
 class Step:
     label: str
     run: Callable[[WizardContext, dict], StepResult]
+
+
+@dataclass
+class Stage:
+    """One stage in a staged-progress run. ``status`` ∈ pending|active|done|skipped."""
+
+    key: str
+    label: str
+    status: str = "pending"
+    detail: str = ""
+
+
+class StageReporter:
+    """Drives an ordered list of stages from inside a worker fn; the redraw loop
+    reads ``snapshot()``. Mutators are no-ops for unknown keys so callers never
+    have to guard. Thread-safe by construction: the worker mutates, the loop only
+    reads ``snapshot()`` (an independent copy)."""
+
+    def __init__(self, stages: list[tuple[str, str]]) -> None:
+        self._stages = [Stage(key=k, label=lbl) for k, lbl in stages]
+        self._by_key = {s.key: s for s in self._stages}
+
+    def start(self, key: str) -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "active"
+
+    def update(self, key: str, detail: str) -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.detail = detail
+
+    def done(self, key: str, detail: str = "") -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "done"
+            if detail:
+                s.detail = detail
+
+    def skip(self, key: str, detail: str = "") -> None:
+        s = self._by_key.get(key)
+        if s is not None:
+            s.status = "skipped"
+            if detail:
+                s.detail = detail
+
+    def snapshot(self) -> list[Stage]:
+        return [Stage(s.key, s.label, s.status, s.detail) for s in self._stages]
 
 
 def _present(ctx: WizardContext, renderable: RenderableType) -> None:
