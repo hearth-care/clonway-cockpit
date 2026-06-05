@@ -1,3 +1,4 @@
+import pytest
 from rich.console import Console
 
 from clonway_cockpit import keys, walk
@@ -555,8 +556,6 @@ def test_animate_staged_drives_reporter_and_renders():
 
 
 def test_animate_staged_reraises_worker_exception():
-    import pytest
-
     def worker(reporter):
         reporter.start("accounts")
         raise ValueError("sync failed")
@@ -571,3 +570,69 @@ def test_animate_staged_reraises_worker_exception():
             clock=_instant_clock,
             sleep=_noop_sleep,
         )
+
+
+def test_run_animated_poll_cancel_raises(monkeypatch):
+    import threading
+
+    release = threading.Event()
+
+    def worker(_arg):
+        release.wait(timeout=2)  # stay alive until the test releases it
+        return "done"
+
+    with pytest.raises(walk.Cancelled):
+        walk._run_animated(
+            lambda r: None,
+            worker,
+            lambda frame, elapsed: "",
+            worker_arg=None,
+            pass_arg=True,
+            tick=0.0,
+            clock=_instant_clock,
+            sleep=_noop_sleep,
+            poll_cancel=lambda: True,  # user "pressed q"
+        )
+    release.set()
+
+
+def test_animate_staged_cancellable_q_raises(monkeypatch):
+    import threading
+
+    release = threading.Event()
+    monkeypatch.setattr(walk.keys, "pending", lambda timeout=0.0: True)
+    monkeypatch.setattr(walk.keys, "read_key", lambda: "q")
+
+    def worker(reporter):
+        release.wait(timeout=2)
+        return "done"
+
+    with pytest.raises(walk.Cancelled):
+        walk.animate_staged(
+            lambda r: None,
+            "Syncing Xero…",
+            worker,
+            stages=[("a", "A")],
+            cancellable=True,
+            tick=0.0,
+            clock=_instant_clock,
+            sleep=_noop_sleep,
+        )
+    release.set()
+
+
+def test_animate_staged_not_cancellable_by_default(monkeypatch):
+    # default (cancellable=False) must NOT read keys — proves no behaviour change
+    monkeypatch.setattr(
+        walk.keys, "pending", lambda timeout=0.0: (_ for _ in ()).throw(AssertionError("polled"))
+    )
+    result = walk.animate_staged(
+        lambda r: None,
+        "Syncing",
+        lambda rep: "ok",
+        stages=[("a", "A")],
+        tick=0.0,
+        clock=_instant_clock,
+        sleep=_noop_sleep,
+    )
+    assert result == "ok"
