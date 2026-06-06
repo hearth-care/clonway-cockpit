@@ -121,3 +121,47 @@ def test_menu_model_back_selected():
     options = [("1", "Loans", "term loans")]
     m = render.model_menu("X", options, selected=1)  # index == len(options) → Back
     assert m.selection == "back"
+
+
+# --- Task 5: walk preflight ----------------------------------------------------
+
+
+def test_preflight_model_parity():
+    from clonway_cockpit.registry import BlastRadius
+    from clonway_cockpit.walk import Precondition
+
+    br = BlastRadius(
+        summary="Posts a bill payment batch",
+        details=("Creates 3 spend-money transactions", "Does NOT email anyone"),
+        reversible="Reversible: void the batch in Xero",
+    )
+    preconds = [
+        Precondition("Xero connected", True, "token fresh"),
+        Precondition("No stale lock", False, "lock held"),
+    ]
+    kw = dict(
+        title="Schedule bills",
+        blast_radius=br,
+        preconditions=preconds,
+        equivalent_cli="xbook bills schedule",
+        progress="step 1 of 4",
+        ready=False,
+        remedy=None,
+    )
+    m = render.model_preflight(**kw)
+    txt = _text(render.render_preflight(**kw))
+
+    assert m.kind == "walk.preflight"
+    assert m.title == "Schedule bills"
+    pre = next(reg for reg in m.regions if reg.role == "preconditions")
+    assert [(row.label, row.enabled) for row in pre.rows] == [
+        ("Xero connected", True),
+        ("No stale lock", False),
+    ]
+    for row in pre.rows:
+        assert row.label in txt
+    changes = next(reg for reg in m.regions if reg.role == "changes")
+    assert [row.label for row in changes.rows] == list(br.details)
+    assert m.meta["equivalent_cli"] == "xbook bills schedule"
+    assert m.meta["ready"] is False
+    assert m.meta["progress"] == "step 1 of 4"

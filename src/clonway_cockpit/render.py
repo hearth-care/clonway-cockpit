@@ -1204,3 +1204,54 @@ def model_menu(
         actions=["up", "down", "enter", "q"] + [key for key, _, _ in options],
         meta={"label": label},
     )
+
+
+def model_preflight(
+    *,
+    title: str,
+    blast_radius: BlastRadius,
+    preconditions: list,
+    equivalent_cli: str,
+    progress: str = "",
+    ready: bool = True,
+    remedy=None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_preflight`. Mirrors its keyword inputs.
+
+    ``remedy`` is left unannotated (a ``walk.Remedy`` or None) to match
+    ``render_preflight``'s signature exactly and keep the same mypy posture."""
+    changes = [MRow(id=f"change:{i}", label=d) for i, d in enumerate(blast_radius.details)]
+    precond_rows = [
+        MRow(
+            id=f"precond:{i}",
+            label=p.label,
+            fields=[MField("ok", str(p.ok), "status"), MField("detail", p.detail)],
+            enabled=p.ok,
+        )
+        for i, p in enumerate(preconditions)
+    ]
+    if ready:
+        actions = ["enter", "y", "n"]
+    elif remedy is not None:
+        actions = [remedy.key, "back"]
+    else:
+        actions = ["any"]
+    meta: dict = {
+        "equivalent_cli": equivalent_cli,
+        "progress": progress,
+        "ready": ready,
+        "blast_radius_summary": blast_radius.summary,
+        "reversible": blast_radius.reversible,
+        "remedy": {"key": remedy.key, "label": remedy.label} if remedy is not None else None,
+    }
+    return ScreenModel(
+        kind="walk.preflight",
+        title=title,
+        regions=[
+            MRegion("what_this_does", "what this does", text=blast_radius.summary),
+            MRegion("changes", "what changes", rows=changes, text=blast_radius.reversible or None),
+            MRegion("preconditions", "preconditions", rows=precond_rows),
+        ],
+        actions=actions,
+        meta=meta,
+    )

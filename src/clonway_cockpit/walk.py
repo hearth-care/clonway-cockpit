@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from rich.console import RenderableType
 
 from clonway_cockpit import keys, render
+from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 
 # How long the loop sleeps between progress frames — ~8 redraws/second, fast
@@ -294,6 +295,12 @@ def _present(ctx: WizardContext, renderable: RenderableType) -> None:
     (ctx.present or ctx.console.print)(renderable)
 
 
+def _emit(ctx: WizardContext, model: ScreenModel) -> None:
+    """Publish a screen's semantic model to the cockpit observer, if one is bound."""
+    if ctx.on_screen is not None:
+        ctx.on_screen(model)
+
+
 def _await(ctx: WizardContext) -> None:
     """Let the operator read a terminal screen before returning (cockpit only)."""
     if ctx.read_key is not None:
@@ -338,6 +345,18 @@ def preflight(
     _present(
         ctx,
         render.render_preflight(
+            title=title,
+            blast_radius=blast_radius,
+            preconditions=preconditions,
+            equivalent_cli=equivalent_cli,
+            progress=progress,
+            ready=ready,
+            remedy=remedy,
+        ),
+    )
+    _emit(
+        ctx,
+        render.model_preflight(
             title=title,
             blast_radius=blast_radius,
             preconditions=preconditions,
