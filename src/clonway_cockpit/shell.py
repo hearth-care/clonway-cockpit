@@ -656,14 +656,11 @@ def _open_capability(
             # An unguarded raise here propagated all the way out (run_cockpit only
             # catches ShellOut) and dumped a traceback over the restored terminal,
             # taking the whole cockpit down. Surface the crash as a clean result
-            # frame and return to the home loop instead.
-            _show(
-                screen,
-                r.render_walk_result(
-                    spec.title, ok=False, message=f"{spec.title} hit an error — {e}"
-                ),
-                read_key,
-            )
+            # frame and return to the home loop instead. Emit the matching model so an
+            # agent driving the walk sees the failure too (not just the human screen).
+            crash_msg = f"{spec.title} hit an error — {e}"
+            host.on_screen(r.model_walk_result(spec.title, ok=False, message=crash_msg))
+            _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return
     # reference-only: no handler, just the equivalent-CLI card
     _show(screen, r.render_capability_card(spec), read_key)

@@ -165,6 +165,10 @@ def test_preflight_model_parity():
     assert m.meta["equivalent_cli"] == "xbook bills schedule"
     assert m.meta["ready"] is False
     assert m.meta["progress"] == "step 1 of 4"
+    # Cross-check the prose regions agree with what render actually shows.
+    assert br.summary in txt
+    assert br.reversible in txt
+    assert m.meta["blast_radius_summary"] == br.summary
 
 
 # --- Task 6: walk result -------------------------------------------------------
@@ -190,5 +194,7 @@ def test_walk_result_model_parity():
 
 def test_walk_result_model_failure():
     m = render.model_walk_result(title="X", ok=False, message="boom")
+    txt = _text(render.render_walk_result(title="X", ok=False, message="boom"))
     assert m.meta["ok"] is False
     assert m.meta["links"] == []
+    assert "boom" in txt  # the model's message agrees with the rendered failure screen

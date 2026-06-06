@@ -81,3 +81,26 @@ def test_driver_drives_into_a_walk_preflight():
     assert pre.title == "Demo"
     assert pre.to_dict()["kind"] == "walk.preflight"  # JSON-serialisable
     clear_capabilities()
+
+
+def _raise_boom(ctx):
+    raise RuntimeError("kaboom")
+
+
+def test_driver_emits_result_on_walk_crash():
+    """A walk that raises is caught by the shell's chokepoint, which shows a failure
+    result — the agent must see the matching walk.result(ok=False) model too."""
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="crash", shelf="C", title="Crashy", summary="s", equivalent_cli="x", run=_raise_boom
+        )
+    )
+    # Open shelf C (single spec → runs the walk, which crashes), dismiss the result, quit.
+    d = CockpitDriver(_host(CockpitState(tenant_name="Clonway")), keys=["c", "x", "q"])
+    stream = d.run()
+    results = [s for s in stream if s.kind == "walk.result"]
+    assert results, [s.kind for s in stream]
+    assert results[-1].meta["ok"] is False
+    assert "Crashy hit an error" in results[-1].meta["message"]
+    clear_capabilities()
