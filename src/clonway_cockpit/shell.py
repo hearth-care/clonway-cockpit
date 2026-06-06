@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from rich.console import RenderableType
@@ -28,6 +28,7 @@ from rich.console import RenderableType
 from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
+from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
 
@@ -185,6 +186,11 @@ class Host:
         [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
         bool,
     ] = field(default=lambda state, sel, key, screen, read_key: False)
+    # Observer the shell calls with the ScreenModel for every screen it draws (home,
+    # shelf menu) and threads into each walk's WizardContext so walk screens emit too.
+    # Default no-op so existing Host constructions are byte-identical and the live
+    # cockpit pays nothing.
+    on_screen: Callable[[ScreenModel], None] = field(default=lambda model: None)
 
 
 def run_with_progress[T](
@@ -632,8 +638,10 @@ def _open_capability(
         _doctor(host, screen, read_key)
         return
     if spec.run is not None:
+        ctx = host.build_walk_ctx(screen, read_key, focus=focus)
+        ctx = replace(ctx, on_screen=host.on_screen)
         try:
-            spec.run(host.build_walk_ctx(screen, read_key, focus=focus))
+            spec.run(ctx)
         except shellout.ShellOut:
             # Control flow (leave the alt-screen), NOT an error — re-raise so the
             # worker's run_cockpit catches it and runs the child command.
