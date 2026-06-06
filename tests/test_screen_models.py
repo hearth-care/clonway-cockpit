@@ -96,3 +96,28 @@ def test_home_model_emitted_via_run_cockpit():
     shell.run_cockpit(host, read_key=_keys(["q"]), screen=_Screen())
     assert captured, "no home model emitted"
     assert captured[0].kind == "home"
+
+
+# --- Task 4: shelf menu --------------------------------------------------------
+
+
+def test_menu_model_parity():
+    title = "Compliance & reports"
+    options = [("1", "Loans", "term loans"), ("2", "Insurance", "policies")]
+    m = render.model_menu(title, options, selected=1)
+    txt = _text(render.render_menu(title, options, selected=1))
+
+    assert m.kind == "shelf_menu"
+    assert m.title == title
+    rows = m.regions[0].rows
+    assert [row.id for row in rows] == ["option:1", "option:2", "back"]
+    for row in rows:
+        assert row.label in txt
+    assert m.selection == "option:2"
+    assert _cursored_line_has(txt, "Insurance")
+
+
+def test_menu_model_back_selected():
+    options = [("1", "Loans", "term loans")]
+    m = render.model_menu("X", options, selected=1)  # index == len(options) → Back
+    assert m.selection == "back"

@@ -1171,3 +1171,36 @@ def model_cockpit_screen(
         actions=_home_actions(state),
         meta=meta,
     )
+
+
+def model_menu(
+    title: str,
+    options: list[tuple[str, str, str]],
+    *,
+    label: str = "browse",
+    selected: int | None = None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_menu`. ``options`` is ``(key, title, summary)``;
+    a trailing ``back`` row mirrors the rendered Back option. ``selected`` indexes the
+    options, or ``len(options)`` for the Back row (matching the render)."""
+    rows = [
+        MRow(
+            id=f"option:{key}",
+            label=otitle,
+            fields=[MField("summary", summary)],
+            selected=selected == i,
+        )
+        for i, (key, otitle, summary) in enumerate(options)
+    ]
+    rows.append(MRow(id="back", label="Back", selected=selected == len(options)))
+    sel_id: str | None = None
+    if selected is not None:
+        sel_id = "back" if selected == len(options) else f"option:{options[selected][0]}"
+    return ScreenModel(
+        kind="shelf_menu",
+        title=title,
+        regions=[MRegion("menu", label, rows=rows)],
+        selection=sel_id,
+        actions=["up", "down", "enter", "q"] + [key for key, _, _ in options],
+        meta={"label": label},
+    )

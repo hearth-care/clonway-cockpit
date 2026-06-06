@@ -583,6 +583,7 @@ def _shelf(
         options = [(str(i), s.title, s.summary) for i, s in enumerate(specs, 1)]
         opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
         screen.update(r.render_menu(menu_title, options, selected=sel, opens=opens, peak=peak))
+        host.on_screen(r.model_menu(menu_title, options, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
