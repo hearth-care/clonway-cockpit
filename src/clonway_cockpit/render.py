@@ -1255,3 +1255,21 @@ def model_preflight(
         actions=actions,
         meta=meta,
     )
+
+
+def model_walk_result(
+    title: str,
+    *,
+    ok: bool,
+    message: str,
+    links: list[tuple[str, str]] | None = None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_walk_result`."""
+    link_dicts = [{"label": lbl, "url": url} for lbl, url in (links or [])]
+    return ScreenModel(
+        kind="walk.result",
+        title=title,
+        regions=[MRegion("result", "", text=message)],
+        actions=["any"],
+        meta={"ok": ok, "message": message, "links": link_dicts},
+    )

@@ -165,3 +165,30 @@ def test_preflight_model_parity():
     assert m.meta["equivalent_cli"] == "xbook bills schedule"
     assert m.meta["ready"] is False
     assert m.meta["progress"] == "step 1 of 4"
+
+
+# --- Task 6: walk result -------------------------------------------------------
+
+
+def test_walk_result_model_parity():
+    kw = dict(
+        title="Schedule bills",
+        ok=True,
+        message="Posted 3 bills\nBatch ref BP-204",
+        links=[("Bill BP-204", "https://go.xero.com/bp204")],
+    )
+    m = render.model_walk_result(**kw)
+    txt = _text(render.render_walk_result(**kw))
+
+    assert m.kind == "walk.result"
+    assert m.title == "Schedule bills"
+    assert m.meta["ok"] is True
+    assert m.meta["message"] == "Posted 3 bills\nBatch ref BP-204"
+    assert m.meta["links"] == [{"label": "Bill BP-204", "url": "https://go.xero.com/bp204"}]
+    assert "Posted 3 bills" in txt
+
+
+def test_walk_result_model_failure():
+    m = render.model_walk_result(title="X", ok=False, message="boom")
+    assert m.meta["ok"] is False
+    assert m.meta["links"] == []

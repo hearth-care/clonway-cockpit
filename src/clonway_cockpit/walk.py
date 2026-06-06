@@ -438,11 +438,21 @@ def run_walk(
         bag.update(result.data)
         if not result.ok:
             _present(ctx, render.render_walk_result(title, ok=False, message=result.message))
+            _emit(ctx, render.model_walk_result(title, ok=False, message=result.message))
             _await(ctx)
             return
     _present(
         ctx,
         render.render_walk_result(
+            title,
+            ok=True,
+            message=bag.get("summary") or "Done.",
+            links=bag.get("result_links"),
+        ),
+    )
+    _emit(
+        ctx,
+        render.model_walk_result(
             title,
             ok=True,
             message=bag.get("summary") or "Done.",
