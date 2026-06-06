@@ -364,13 +364,18 @@ def _home(
         # coalescing N moves into ONE frame. pending() is False off a held raw
         # session, so tests / non-interactive paths repaint on every change.
         if dirty and not keys.pending():
+            caps = host.get_capabilities()
+            extra = host.extra_regions(state)
             screen.update(
                 r.render_cockpit_screen(
                     state,
-                    host.get_capabilities(),
+                    caps,
                     selection=items[sel],
-                    extra_regions=host.extra_regions(state),
+                    extra_regions=extra,
                 )
+            )
+            host.on_screen(
+                r.model_cockpit_screen(state, caps, selection=items[sel], extra_regions=extra)
             )
             dirty = False
         key = read_key()

@@ -24,6 +24,10 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from clonway_cockpit.model import Field as MField
+from clonway_cockpit.model import Region as MRegion
+from clonway_cockpit.model import Row as MRow
+from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import BlastRadius, CapabilitySpec
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 
@@ -1080,4 +1084,90 @@ def render_cockpit_screen(
             Rule(style=DIM),
             _legend(state),
         )
+    )
+
+
+def _selection_id(selection: tuple[str, object] | None) -> str | None:
+    """Map the shell's ``(kind, ref)`` selection tuple to a stable Row id."""
+    if not selection:
+        return None
+    kind, ref = selection
+    return f"{kind}:{ref}"
+
+
+def _home_actions(state: CockpitState) -> list[str]:
+    """The keys the home loop honours — a deterministic, stable hint list."""
+    letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
+    acts = ["up", "down", "left", "right", "enter", "/", "?", "r", "q", "backspace"]
+    acts += [letter.lower() for letter in letters]
+    acts += [str(i + 1) for i in range(min(9, len(state.needs)))]
+    return acts
+
+
+def model_cockpit_screen(
+    state: CockpitState,
+    specs: list[CapabilitySpec],
+    *,
+    selection: tuple[str, object] | None = None,
+    extra_regions: list[RenderableType] | None = None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_cockpit_screen`. Same inputs; structured out.
+
+    Worker ``extra_regions`` are arbitrary Rich renderables (worker-owned), so they are
+    not semanticised here — their count is recorded in ``meta`` and they become
+    structured when the worker adopts the model (M3)."""
+    present = {s.shelf for s in specs}
+    shelf_map = state.shelves or SHELVES
+    sel_id = _selection_id(selection)
+    pulse_rows = [
+        MRow(
+            id=f"pill:{i}",
+            label=p.label,
+            fields=[
+                MField("status", p.status, "status"),
+                MField("detail", p.detail),
+                MField("level", p.level, "status"),
+            ],
+            selected=sel_id == f"pill:{i}",
+        )
+        for i, p in enumerate(state.pills)
+    ]
+    needs_rows = [
+        MRow(
+            id=f"need:{i}",
+            label=n.title,
+            fields=[MField("detail", n.detail), MField("level", n.level, "status")],
+            selected=sel_id == f"need:{i}",
+        )
+        for i, n in enumerate(state.needs)
+    ]
+    toolkit_rows = [
+        MRow(
+            id=f"shelf:{letter}",
+            label=shelf_map[letter],
+            enabled=letter in present,
+            selected=sel_id == f"shelf:{letter}",
+        )
+        for letter in shelf_map
+    ]
+    meta: dict = {
+        "app_label": state.app_label,
+        "tenant_name": state.tenant_name,
+        "date_label": state.date_label,
+        "time_label": state.time_label,
+        "extra_regions": len(extra_regions or []),
+    }
+    if state.breadcrumb:
+        meta["breadcrumb"] = list(state.breadcrumb)
+    return ScreenModel(
+        kind="home",
+        title=state.app_label,
+        regions=[
+            MRegion("pulse", "pulse", rows=pulse_rows),
+            MRegion("needs", "needs you", rows=needs_rows),
+            MRegion("toolkit", state.toolkit_label, rows=toolkit_rows),
+        ],
+        selection=sel_id,
+        actions=_home_actions(state),
+        meta=meta,
     )
