@@ -13,6 +13,8 @@ keys match the existing framework test harness exactly.
 
 from __future__ import annotations
 
+import json
+import sys
 from collections.abc import Iterable
 from dataclasses import replace
 
@@ -54,3 +56,56 @@ class CockpitDriver:
     @property
     def last(self) -> ScreenModel:
         return self._stream[-1]
+
+
+def serve_stdio(host: shell.Host, *, stdin=sys.stdin, stdout=sys.stdout) -> None:  # noqa: ANN001
+    """Drive the real cockpit over line-delimited JSON on stdin/stdout — the
+    subprocess transport an external agent process uses to launch + drive the
+    cockpit. A thin pump over ``shell.run_cockpit``: each draw writes the screen's
+    ``ScreenModel.to_dict()`` as a JSON line to stdout; each loop ``read_key`` blocks
+    reading one JSON message from stdin. Runs in agent mode (``Host.agent_mode``), so
+    every walk's write gate is dry-run — the agent can drive any flow but never posts.
+
+    Protocol (one JSON object per line):
+      agent -> app : {"key": "<k>"} | {"cmd": "snapshot"} | {"cmd": "quit"}
+      app -> agent : <ScreenModel.to_dict()>  |  {"error": "<reason>"}
+    Stdin EOF unwinds the cockpit (treated as quit)."""
+    last: list[ScreenModel | None] = [None]
+
+    def _write(obj: dict) -> None:
+        stdout.write(json.dumps(obj) + "\n")
+        stdout.flush()
+
+    def on_screen(model: ScreenModel) -> None:
+        last[0] = model
+        _write(model.to_dict())
+
+    def read_key() -> str:
+        while True:
+            raw = stdin.readline()
+            if raw == "":  # EOF → unwind the cockpit
+                return "q"
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except (ValueError, TypeError):
+                _write({"error": "invalid json"})
+                continue
+            if not isinstance(msg, dict):
+                _write({"error": "expected a JSON object"})
+                continue
+            if "key" in msg:
+                return str(msg["key"])
+            cmd = msg.get("cmd")
+            if cmd == "snapshot":
+                if last[0] is not None:
+                    _write(last[0].to_dict())
+                continue
+            if cmd == "quit":
+                return "q"
+            _write({"error": f"unknown message: {msg}"})
+
+    agent_host = replace(host, on_screen=on_screen, agent_mode=True)
+    shell.run_cockpit(agent_host, read_key=read_key, screen=_NullScreen())
