@@ -515,6 +515,7 @@ def _ack_snooze_need(
     assert cb is not None  # guarded by _ack_snooze_cb before we get here
     verb = "Acknowledged" if low == "a" else "Snoozed"
     message = cb(need) or verb
+    host.on_screen(r.model_note(verb, message))
     _show(screen, r.render_note(verb, message), read_key)
 
 
@@ -546,6 +547,7 @@ def _activate_need(host: Host, need, screen: Screen, read_key: Callable[[], str]
         # threaded into the walk's WizardContext so it opens scoped to that subset.
         _open_capability(host, need.capability_key, screen, read_key, focus=need.focus)
     else:
+        host.on_screen(r.model_note(need.title, need.detail))
         _show(screen, r.render_note(need.title, need.detail), read_key)
 
 

@@ -1,0 +1,46 @@
+"""Emit tests for the M1-rest draw sites: drive the real shell/walk path with scripted
+keys and a no-op screen, then assert the new model lands in the recorded stream."""
+
+from __future__ import annotations
+
+from clonway_cockpit import render, shell, usage
+from clonway_cockpit.agent import CockpitDriver
+from clonway_cockpit.model import ScreenModel
+from clonway_cockpit.state import CockpitState, NeedsItem
+
+
+def _host(state: CockpitState, **over) -> shell.Host:
+    base = dict(
+        capture_state=lambda: state,
+        build_walk_ctx=lambda *a, **k: None,
+        activate_pill=lambda *a, **k: None,
+        doctor_build_report=lambda: object(),
+        doctor_build_probes=lambda rep: [],
+        doctor_fixes_for=lambda p: [],
+        doctor_unconfigured_renderable=lambda: render.render_note("x", "y"),
+        usage=usage,
+        on_open=lambda: None,
+    )
+    base.update(over)
+    return shell.Host(**base)
+
+
+def _kinds(stream: list[ScreenModel]) -> list[str]:
+    return [m.kind for m in stream]
+
+
+# --- Task 1: note emit ---------------------------------------------------------
+
+
+def test_note_emitted_when_opening_a_plain_need():
+    # A need with no capability_key drills to a note (its title/detail). Land the
+    # cursor on it (it is the only actionable row) and press enter.
+    state = CockpitState(
+        tenant_name="Clonway",
+        needs=(NeedsItem("Read me", "just a note", "warn", ""),),
+    )
+    driver = CockpitDriver(_host(state), keys=["enter", "x", "q"])  # enter need → any key → quit
+    stream = driver.run()
+    notes = [m for m in stream if m.kind == "note"]
+    assert notes, f"no note emitted; saw {_kinds(stream)}"
+    assert notes[0].title == "Read me"

@@ -1273,3 +1273,14 @@ def model_walk_result(
         actions=["any"],
         meta={"ok": ok, "message": message, "links": link_dicts},
     )
+
+
+def model_note(title: str, detail: str) -> ScreenModel:
+    """The semantic twin of :func:`render_note` — a titled prose leaf, any key returns."""
+    return ScreenModel(
+        kind="note",
+        title=title,
+        regions=[MRegion("prose", "", text=detail)],
+        actions=["any"],
+        meta={"detail": detail},
+    )
