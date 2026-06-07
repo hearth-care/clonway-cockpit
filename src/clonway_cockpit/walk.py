@@ -455,6 +455,11 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     if ctx.read_key is not None:
         k = ctx.read_key()
         if ctx.dry_run:
+            # Emit an observable so an agent can assert the gate was reached and held
+            # (the human render is unchanged — this frame only reaches an observer).
+            _emit(
+                ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"})
+            )
             return False
         return k in (keys.ENTER, "a", "A")
     return ctx.confirm_fn(prompt)
