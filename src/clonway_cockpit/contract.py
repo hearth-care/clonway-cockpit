@@ -14,26 +14,45 @@ checks, used together in a consumer's CI:
 
 from __future__ import annotations
 
+import ast
 import inspect
-from collections.abc import Iterable
+import textwrap
+from collections.abc import Callable, Iterable
 from types import ModuleType
 
 
+def _calls_page(fn: Callable[..., object]) -> bool:
+    """True if ``fn``'s body contains a call to a function named ``page`` — detected via the
+    AST (a real ``page(...)`` Call node), NOT a substring scan, so the literal ``page(`` in a
+    comment, docstring, or string can't false-positive a sub-component into a page-framer."""
+    try:
+        src = textwrap.dedent(inspect.getsource(fn))
+    except OSError:  # pragma: no cover — source is always available in-tree
+        return False
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:  # pragma: no cover — defensive
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            f = node.func
+            if (isinstance(f, ast.Name) and f.id == "page") or (
+                isinstance(f, ast.Attribute) and f.attr == "page"
+            ):
+                return True
+    return False
+
+
 def page_framing_renders(render_ns: ModuleType) -> set[str]:
-    """Public ``render_*`` in ``render_ns`` whose source calls ``page(`` — i.e. it frames a
-    full screen, as opposed to a sub-component (``render_header``, ``render_pulse``) or a
-    helper. Same heuristic the original framework contract test used."""
-    out: set[str] = set()
-    for name, fn in inspect.getmembers(render_ns, inspect.isfunction):
-        if not name.startswith("render_"):
-            continue
-        try:
-            src = inspect.getsource(fn)
-        except OSError:  # pragma: no cover — source is always available in-tree
-            continue
-        if "page(" in src:
-            out.add(name)
-    return out
+    """Public ``render_*`` in ``render_ns`` that call ``page(...)`` — i.e. they frame a full
+    screen, as opposed to a sub-component (``render_header``, ``render_pulse``) or a helper.
+    Detection is AST-based (see :func:`_calls_page`), so ``page(`` appearing only in a comment
+    or string does not count."""
+    return {
+        name
+        for name, fn in inspect.getmembers(render_ns, inspect.isfunction)
+        if name.startswith("render_") and _calls_page(fn)
+    }
 
 
 def model_twin(render_name: str) -> str:

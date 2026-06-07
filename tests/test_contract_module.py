@@ -18,6 +18,25 @@ def test_page_framing_renders_finds_screens_not_subcomponents():
     assert "render_pulse" not in found
 
 
+def test_page_framing_ignores_page_in_comments_and_strings():
+    # FBA hardening: AST detection, not a substring scan — `page(` in a docstring/comment/
+    # string must NOT mark a sub-component as a page-framer.
+    ns = types.ModuleType("fake")
+
+    def render_real():
+        page("x")  # noqa: F821 — a real call → page-framing
+
+    def render_decoy():
+        """This helper does not call page() — only mentions page( in prose."""
+        return "page("  # a string literal, not a call
+
+    ns.render_real = render_real
+    ns.render_decoy = render_decoy
+    found = contract.page_framing_renders(ns)
+    assert "render_real" in found
+    assert "render_decoy" not in found
+
+
 def test_model_twin_naming():
     assert contract.model_twin("render_help") == "model_help"
     assert contract.model_twin("render_cockpit_screen") == "model_cockpit_screen"

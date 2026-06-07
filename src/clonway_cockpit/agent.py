@@ -327,11 +327,24 @@ class CockpitClient:
         return out
 
     def quit(self) -> None:
+        """End the session: send ``quit``, then ensure a spawned child actually exits. A child
+        that ignores ``quit``/EOF is escalated terminate → kill so it is never orphaned (FBA
+        hardening — previously a stuck worker survived the 5s ``wait`` with no signal sent)."""
         with contextlib.suppress(Exception):
             self._send({"cmd": "quit"})
-        if self._proc is not None:
+        if self._proc is None:
+            return
+        try:
+            self._proc.wait(timeout=5)
+            return
+        except Exception:  # noqa: BLE001 — timeout or already-dead; escalate to a signal
+            pass
+        for signal_fn in (self._proc.terminate, self._proc.kill):
             with contextlib.suppress(Exception):
+                signal_fn()
                 self._proc.wait(timeout=5)
+                if self._proc.poll() is not None:
+                    return
 
     def __enter__(self) -> CockpitClient:
         return self

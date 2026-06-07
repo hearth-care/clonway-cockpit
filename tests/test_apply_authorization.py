@@ -157,3 +157,18 @@ def test_human_confirm_apply_still_posts_on_apply_key():
         read_key=lambda: "a",
     )
     assert walk.confirm_apply(ctx, equivalent_cli="x") is True
+
+
+def test_dry_run_is_authoritative_even_with_no_read_key():
+    # FBA hardening: dry_run must decline regardless of read_key/confirm_fn. Previously a
+    # read_key=None ctx fell through to confirm_fn BEFORE the dry_run check and could post.
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(),
+        input_fn=lambda prompt, default: "",
+        confirm_fn=lambda prompt: True,  # an affirmative confirm_fn must NOT override dry-run
+        read_key=None,
+        dry_run=True,
+    )
+    assert walk.confirm_apply(ctx, equivalent_cli="x") is False
