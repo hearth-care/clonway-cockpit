@@ -18,6 +18,7 @@ stdlib — never a worker package."""
 
 from __future__ import annotations
 
+import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -235,6 +236,17 @@ def run_cockpit(host: Host, *, read_key: Callable[[], str] = keys.read_key, scre
         _home(host, screen, read_key)
 
 
+def _safe_emit(host: Host, model: ScreenModel) -> None:
+    """Publish a screen model to ``host.on_screen`` best-effort. The observer is
+    worker/agent-supplied (a recorder, later the M2 stdio pump); a buggy one must
+    NEVER take down the human cockpit — same fail-open posture as ``usage.record``.
+    This also stops the walk-crash guard in ``_open_capability`` from double-faulting
+    when its own result-model re-emit raises."""
+    # Best-effort: the agent feed must never crash the human session.
+    with contextlib.suppress(Exception):
+        host.on_screen(model)
+
+
 def _shelf_letters(state: CockpitState) -> list[str]:
     """The shelf letters the shell navigates — the letters it actually DRAWS. When
     a worker supplies ``state.shelves`` (the Fleet Cockpit's roster), navigate
@@ -378,8 +390,8 @@ def _home(
                     extra_regions=extra,
                 )
             )
-            host.on_screen(
-                r.model_cockpit_screen(state, caps, selection=items[sel], extra_regions=extra)
+            _safe_emit(
+                host, r.model_cockpit_screen(state, caps, selection=items[sel], extra_regions=extra)
             )
             dirty = False
         key = read_key()
@@ -434,7 +446,7 @@ def _home(
         elif low == "r":
             pass  # explicit refresh — fall through to the re-capture below
         elif low == "?":
-            host.on_screen(r.model_help(state.help_lines))
+            _safe_emit(host, r.model_help(state.help_lines))
             _show(screen, r.render_help(state.help_lines), read_key)
         elif low == "/":
             # Snapshot cursor before opening the filter (back returns here).
@@ -520,7 +532,7 @@ def _ack_snooze_need(
     assert cb is not None  # guarded by _ack_snooze_cb before we get here
     verb = "Acknowledged" if low == "a" else "Snoozed"
     message = cb(need) or verb
-    host.on_screen(r.model_note(verb, message))
+    _safe_emit(host, r.model_note(verb, message))
     _show(screen, r.render_note(verb, message), read_key)
 
 
@@ -552,7 +564,7 @@ def _activate_need(host: Host, need, screen: Screen, read_key: Callable[[], str]
         # threaded into the walk's WizardContext so it opens scoped to that subset.
         _open_capability(host, need.capability_key, screen, read_key, focus=need.focus)
     else:
-        host.on_screen(r.model_note(need.title, need.detail))
+        _safe_emit(host, r.model_note(need.title, need.detail))
         _show(screen, r.render_note(need.title, need.detail), read_key)
 
 
@@ -590,7 +602,7 @@ def _shelf(
         options = [(str(i), s.title, s.summary) for i, s in enumerate(specs, 1)]
         opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
         screen.update(r.render_menu(menu_title, options, selected=sel, opens=opens, peak=peak))
-        host.on_screen(r.model_menu(menu_title, options, selected=sel))
+        _safe_emit(host, r.model_menu(menu_title, options, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
@@ -666,11 +678,11 @@ def _open_capability(
             # frame and return to the home loop instead. Emit the matching model so an
             # agent driving the walk sees the failure too (not just the human screen).
             crash_msg = f"{spec.title} hit an error — {e}"
-            host.on_screen(r.model_walk_result(spec.title, ok=False, message=crash_msg))
+            _safe_emit(host, r.model_walk_result(spec.title, ok=False, message=crash_msg))
             _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return
     # reference-only: no handler, just the equivalent-CLI card
-    host.on_screen(r.model_capability_card(spec))
+    _safe_emit(host, r.model_capability_card(spec))
     _show(screen, r.render_capability_card(spec), read_key)
 
 
@@ -694,7 +706,7 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         report = host.doctor_build_report()
     except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
-        host.on_screen(r.model_unstructured(unconfigured, title="Doctor"))
+        _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))
         _show(screen, unconfigured, read_key)
         return
     dirty = True
@@ -720,7 +732,8 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     app_label=host.app_label,
                 )
             )
-            host.on_screen(
+            _safe_emit(
+                host,
                 r.model_doctor(
                     probes,
                     fixes,
@@ -728,7 +741,7 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     usage=usage_arg,
                     specs=specs_arg,
                     app_label=host.app_label,
-                )
+                ),
             )
             dirty = False
         key = read_key()
@@ -773,7 +786,7 @@ def _rebuild_doctor_report(
         return host.doctor_build_report()
     except Exception:  # noqa: BLE001 — became unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
-        host.on_screen(r.model_unstructured(unconfigured, title="Doctor"))
+        _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))
         _show(screen, unconfigured, read_key)
         return None
 
@@ -785,7 +798,7 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
     result waits for a key; the caller's loop then re-builds so the probes
     refresh."""
     if fix.confirm:
-        host.on_screen(r.model_doctor_confirm(fix))
+        _safe_emit(host, r.model_doctor_confirm(fix))
         screen.update(r.render_doctor_confirm(fix))
         if read_key() not in (keys.ENTER, "y", "Y"):
             return  # cancelled — the fix did NOT run
@@ -797,13 +810,13 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
         if fix.title == "Sync now":
             msg = run_with_progress(screen, f"{fix.title}…", fix.run, emit=host.on_screen)
         else:
-            host.on_screen(r.model_walk_progress(f"{fix.title}…"))
+            _safe_emit(host, r.model_walk_progress(f"{fix.title}…"))
             screen.update(r.render_walk_progress(f"{fix.title}…"))
             msg = fix.run()
         ok = True
     except Exception as e:  # noqa: BLE001 — surface any failure as a clean result
         msg, ok = str(e), False
-    host.on_screen(r.model_walk_result("Doctor", ok=ok, message=msg))
+    _safe_emit(host, r.model_walk_result("Doctor", ok=ok, message=msg))
     screen.update(r.render_walk_result("Doctor", ok=ok, message=msg))
     read_key()
 
@@ -854,13 +867,14 @@ def _filter(
                 title=state.filter_title,
             )
         )
-        host.on_screen(
+        _safe_emit(
+            host,
             r.model_filter(
                 term,
                 matches,
                 selected=(sel if matches else None),
                 title=state.filter_title,
-            )
+            ),
         )
         key = read_key()
         if key == keys.ESC:

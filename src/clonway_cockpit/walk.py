@@ -14,6 +14,7 @@ action through it (no silent --confirm). ``make_walk_handler()`` returns a
 from __future__ import annotations
 
 import collections
+import contextlib
 import inspect
 import threading
 import time
@@ -71,23 +72,33 @@ def _run_animated[T](
         except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
             holder["error"] = e
 
+    last_sig: str | None = None
+
+    def _maybe_emit(elapsed: int) -> None:
+        """Emit the progress model on SEMANTIC change only (ignoring the per-second
+        elapsed tick), best-effort. Captures ``last_sig`` via ``nonlocal``."""
+        nonlocal last_sig
+        if emit is None or model_frame is None:
+            return
+        model = model_frame(elapsed)
+        d = model.to_dict()
+        d["meta"] = {k: v for k, v in d["meta"].items() if k != "elapsed"}
+        sig = repr(d)
+        if sig != last_sig:
+            last_sig = sig
+            # Best-effort: the agent feed must never crash the progress run.
+            with contextlib.suppress(Exception):
+                emit(model)
+
     thread = threading.Thread(target=_worker, daemon=True)
     started = clock()
     thread.start()
     i = 0
-    last_sig: str | None = None
     while True:
         frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
         elapsed = int(clock() - started)
         present(render_frame(frame, elapsed))
-        if emit is not None and model_frame is not None:
-            model = model_frame(elapsed)
-            d = model.to_dict()
-            d["meta"] = {k: v for k, v in d["meta"].items() if k != "elapsed"}
-            sig = repr(d)
-            if sig != last_sig:
-                emit(model)
-                last_sig = sig
+        _maybe_emit(elapsed)
         i += 1
         thread.join(timeout=tick)
         if not thread.is_alive():
@@ -97,6 +108,11 @@ def _run_animated[T](
                 raise Cancelled
         else:
             sleep(tick)
+
+    # The worker can flip a final stage to done / append a last log line inside the
+    # last join window, AFTER the loop's emit. Emit once more (deduped) so the agent
+    # feed always carries the terminal snapshot, not a stale next-to-last one.
+    _maybe_emit(int(clock() - started))
 
     if "error" in holder:
         raise holder["error"]  # type: ignore[misc]
@@ -326,9 +342,12 @@ def _present(ctx: WizardContext, renderable: RenderableType) -> None:
 
 
 def _emit(ctx: WizardContext, model: ScreenModel) -> None:
-    """Publish a screen's semantic model to the cockpit observer, if one is bound."""
+    """Publish a screen's semantic model to the cockpit observer, if one is bound.
+    Best-effort: a worker/agent observer that raises must never crash a walk."""
     if ctx.on_screen is not None:
-        ctx.on_screen(model)
+        # Best-effort: an observer that raises must never crash a walk.
+        with contextlib.suppress(Exception):
+            ctx.on_screen(model)
 
 
 def _await(ctx: WizardContext) -> None:

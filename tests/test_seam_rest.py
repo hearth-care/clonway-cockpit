@@ -226,6 +226,93 @@ def test_sync_progress_emits_through_run_with_progress():
     assert syncs[0].meta["label"] == "Syncing"
 
 
+def test_staged_progress_emits_terminal_snapshot():
+    # The worker can flip the last stage to done inside the final join window, after
+    # the loop's emit — the post-loop emit must still surface the all-done snapshot.
+    from clonway_cockpit import walk
+
+    emitted: list[ScreenModel] = []
+
+    def fn(reporter):
+        reporter.start("fetch")
+        reporter.done("fetch")
+        reporter.start("post")
+        reporter.done("post")
+        return "done"
+
+    walk.animate_staged(
+        present=lambda frame: None,
+        label="L",
+        fn=fn,
+        stages=[("fetch", "Fetch"), ("post", "Post")],
+        emit=emitted.append,
+        clock=lambda: 0.0,
+        sleep=lambda s: None,
+        tick=0.0,
+    )
+    assert emitted, "no progress models emitted"
+    assert all(s["status"] == "done" for s in emitted[-1].meta["stages"]), emitted[-1].meta[
+        "stages"
+    ]
+
+
+# --- Audit fix #1: a raising observer never crashes the cockpit ----------------
+
+
+def _scripted(seq):  # noqa: ANN001, ANN202 — returns "q" once the script is exhausted
+    buf = list(seq)
+    return lambda: buf.pop(0) if buf else "q"
+
+
+def _boom(model) -> None:  # noqa: ANN001
+    raise RuntimeError("observer blew up")
+
+
+def test_raising_observer_does_not_crash_the_cockpit():
+    state = CockpitState(
+        tenant_name="Clonway",
+        needs=(NeedsItem("Read me", "just a note", "warn", ""),),
+    )
+    host = _host(state, on_screen=_boom)
+    # Drive home (emits) → open the note (emits) → any key → quit. Must not raise.
+    shell.run_cockpit(host, read_key=_scripted(["enter", "x", "q"]), screen=_NullScreenForTest())
+
+
+def test_raising_observer_does_not_defeat_the_walk_crash_guard():
+    def crashing_run(ctx) -> None:  # noqa: ANN001
+        raise ValueError("walk exploded")
+
+    def build_ctx(screen, read_key, *, focus=None):  # noqa: ANN001, ANN202
+        return WizardContext(
+            state={},
+            client=None,
+            console=Console(),
+            input_fn=lambda prompt, default: "",
+            confirm_fn=lambda prompt: False,
+            present=screen.update,
+            read_key=read_key,
+            focus=focus,
+        )
+
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="sb",
+            shelf="C",
+            title="Schedule bills",
+            summary="s",
+            equivalent_cli="x",
+            run=crashing_run,
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")
+    host = _host(state, on_screen=_boom, build_walk_ctx=build_ctx)
+    # Open shelf C (single spec) → walk crashes → crash guard re-emits a result model
+    # (which raises in the observer) → must still be swallowed; any key → quit.
+    shell.run_cockpit(host, read_key=_scripted(["c", "x", "q"]), screen=_NullScreenForTest())
+    clear_capabilities()
+
+
 # --- Task 9: unstructured emit -------------------------------------------------
 
 
