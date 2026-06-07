@@ -203,3 +203,52 @@ def test_filter_model_no_match():
     assert m.regions[0].rows == []
     assert m.selection is None
     assert m.meta["term"] == "zzz"
+
+
+# --- Task 7: progress ----------------------------------------------------------
+
+
+def test_walk_progress_model_parity():
+    kw = dict(message="Posting batch…", progress="step 3 of 4")
+    m = render.model_walk_progress(**kw)
+    txt = _text(render.render_walk_progress(**kw))
+    assert m.kind == "walk.progress"
+    assert m.regions[0].text == "Posting batch…"
+    assert "Posting batch…" in txt
+    assert m.meta["message"] == "Posting batch…"
+    assert m.meta["progress"] == "step 3 of 4"
+
+
+def test_sync_progress_model_parity():
+    lines = ("Fetching invoices", "Reconciling")
+    m = render.model_sync_progress("Syncing Xero", lines=lines, elapsed=12)
+    txt = _text(render.render_sync_progress("Syncing Xero", lines=lines, elapsed=12))
+    assert m.kind == "walk.progress"
+    assert m.meta["label"] == "Syncing Xero"
+    assert m.meta["elapsed"] == 12
+    assert [row.label for row in m.regions[0].rows] == list(lines)
+    for line in lines:
+        assert line in txt
+    assert "Syncing Xero" in txt
+
+
+def test_staged_progress_model_parity():
+    from clonway_cockpit.walk import StageReporter
+
+    reporter = StageReporter([("fetch", "Fetch data"), ("post", "Post batch")])
+    reporter.done("fetch", "12 rows")
+    reporter.start("post")
+    stages = reporter.snapshot()
+    m = render.model_staged_progress("Schedule bills", stages, elapsed=5, controls="q cancel")
+    txt = _text(
+        render.render_staged_progress("Schedule bills", stages, elapsed=5, controls="q cancel")
+    )
+    assert m.kind == "walk.progress"
+    rows = m.regions[0].rows
+    assert [row.id for row in rows] == ["stage:fetch", "stage:post"]
+    assert [row.label for row in rows] == ["Fetch data", "Post batch"]
+    for row in rows:
+        assert row.label in txt
+    assert m.meta["stages"][0]["status"] == "done"
+    assert m.meta["stages"][1]["status"] == "active"
+    assert m.actions == ["q"]  # cancellable

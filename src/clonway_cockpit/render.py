@@ -1445,3 +1445,70 @@ def model_filter(
         actions=["up", "down", "enter", "esc", "backspace"],
         meta={"term": term},
     )
+
+
+def model_walk_progress(message: str, progress: str = "") -> ScreenModel:
+    """The semantic twin of :func:`render_walk_progress` — a transient 'working…'
+    leaf with no operator input."""
+    return ScreenModel(
+        kind="walk.progress",
+        title="",
+        regions=[MRegion("prose", "", text=message)],
+        actions=[],
+        meta={"message": message, "progress": progress},
+    )
+
+
+def model_sync_progress(
+    label: str,
+    *,
+    latest: str = "",
+    lines: tuple[str, ...] = (),
+    elapsed: int = 0,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_sync_progress`. The spinner ``frame`` is
+    cosmetic and omitted; ``elapsed`` and the live-log ``lines`` carry the meaning."""
+    rows = [MRow(id=f"log:{i}", label=ln) for i, ln in enumerate(lines)]
+    return ScreenModel(
+        kind="walk.progress",
+        title="",
+        regions=[MRegion("activity", label, rows=rows)],
+        actions=[],
+        meta={"label": label, "elapsed": elapsed, "latest": latest},
+    )
+
+
+def model_staged_progress(
+    label: str,
+    stages: Sequence,
+    *,
+    hint: str = "",
+    elapsed: int = 0,
+    controls: str = "",
+) -> ScreenModel:
+    """The semantic twin of :func:`render_staged_progress` — one row per stage with
+    its status; ``controls`` (e.g. ``"q cancel"``) makes ``q`` an action."""
+    rows = [
+        MRow(
+            id=f"stage:{st.key}",
+            label=st.label,
+            fields=[MField("status", st.status, "status"), MField("detail", st.detail)],
+        )
+        for st in stages
+    ]
+    return ScreenModel(
+        kind="walk.progress",
+        title="",
+        regions=[MRegion("stages", label, rows=rows)],
+        actions=["q"] if controls else [],
+        meta={
+            "label": label,
+            "elapsed": elapsed,
+            "hint": hint,
+            "controls": controls,
+            "stages": [
+                {"key": s.key, "label": s.label, "status": s.status, "detail": s.detail}
+                for s in stages
+            ],
+        },
+    )
