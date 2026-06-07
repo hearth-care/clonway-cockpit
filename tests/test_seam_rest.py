@@ -122,3 +122,32 @@ def test_remedy_confirm_emitted_in_preflight():
     confirms = [m for m in captured if m.kind == "confirm"]
     assert confirms, f"no remedy confirm emitted; saw {[m.kind for m in captured]}"
     assert confirms[0].meta["confirm_of"] == "remedy"
+
+
+# --- Task 5: doctor emit -------------------------------------------------------
+
+
+def test_doctor_emitted_when_opening_doctor():
+    from clonway_cockpit.doctor import Probe
+
+    probes = [Probe("Xero auth", "ok", "token fresh", None)]
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="doctor", shelf="G", title="Doctor", summary="health", equivalent_cli="x"
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")
+    host = _host(
+        state,
+        doctor_build_report=lambda: object(),
+        doctor_build_probes=lambda rep: probes,
+        doctor_fixes_for=lambda p: [],
+    )
+    # Shelf G has one spec (doctor) → opens directly; q exits doctor, q quits home.
+    driver = CockpitDriver(host, keys=["g", "q", "q"])
+    stream = driver.run()
+    clear_capabilities()
+    docs = [m for m in stream if m.kind == "doctor"]
+    assert docs, f"no doctor model emitted; saw {_kinds(stream)}"
+    assert docs[0].meta["ok"] is True

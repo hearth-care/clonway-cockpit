@@ -701,13 +701,26 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         # Render only when something changed AND no more input is queued — coalesces
         # held-arrow repeat into one repaint (pending() is False off a raw session).
         if dirty and not keys.pending():
+            sel_arg = sel if runnable else None
+            usage_arg = host.usage.load()  # best-effort; {} on any failure
+            specs_arg = host.get_capabilities()
             screen.update(
                 r.render_doctor(
                     probes,
                     fixes,
-                    selected=sel if runnable else None,
-                    usage=host.usage.load(),  # best-effort; {} on any failure
-                    specs=host.get_capabilities(),
+                    selected=sel_arg,
+                    usage=usage_arg,
+                    specs=specs_arg,
+                    app_label=host.app_label,
+                )
+            )
+            host.on_screen(
+                r.model_doctor(
+                    probes,
+                    fixes,
+                    selected=sel_arg,
+                    usage=usage_arg,
+                    specs=specs_arg,
                     app_label=host.app_label,
                 )
             )
@@ -764,6 +777,7 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
     result waits for a key; the caller's loop then re-builds so the probes
     refresh."""
     if fix.confirm:
+        host.on_screen(r.model_doctor_confirm(fix))
         screen.update(r.render_doctor_confirm(fix))
         if read_key() not in (keys.ENTER, "y", "Y"):
             return  # cancelled — the fix did NOT run

@@ -1341,3 +1341,76 @@ def model_doctor_confirm(fix) -> ScreenModel:  # noqa: ANN001 — mirrors render
         actions=["enter", "y"],
         meta={"confirm_of": "doctor_fix", "cmd": fix.cmd},
     )
+
+
+def model_doctor(
+    probes: list[Probe],
+    fixes: list[Fix],
+    *,
+    selected: int | None = None,
+    usage: dict | None = None,
+    specs: list[CapabilitySpec] | None = None,
+    app_label: str = "xbook",
+) -> ScreenModel:
+    """The semantic twin of :func:`render_doctor`. ``selected`` indexes the RUNNABLE
+    fixes (those with a ``run``), matching the render. The read-only "what you reach
+    for" usage block is telemetry display, not navigable structure, so it is not
+    semanticised here (its presence is flagged in ``meta``)."""
+    probe_rows = [
+        MRow(
+            id=f"probe:{i}",
+            label=p.name,
+            fields=[MField("level", p.level, "status"), MField("detail", p.detail)],
+        )
+        for i, p in enumerate(probes)
+    ]
+    fix_rows: list[MRow] = []
+    run_i = 0
+    for i, f in enumerate(fixes):
+        if f.run is not None:
+            fix_rows.append(
+                MRow(
+                    id=f"fix:{run_i}",
+                    label=f.title,
+                    fields=[MField("cmd", f.cmd)],
+                    selected=selected == run_i,
+                    enabled=True,
+                )
+            )
+            run_i += 1
+        else:
+            fix_rows.append(
+                MRow(
+                    id=f"fix:display:{i}",
+                    label=f.title,
+                    fields=[MField("cmd", f.cmd), MField("note", f.note)],
+                    enabled=False,
+                )
+            )
+    warns = sum(1 for p in probes if p.level == "warn")
+    errs = sum(1 for p in probes if p.level == "error")
+    if run_i > 0:
+        actions = ["up", "down", "enter", "q"] + [str(n + 1) for n in range(run_i)]
+        sel_id = f"fix:{selected}" if selected is not None else None
+    else:
+        actions = ["q"]
+        sel_id = None
+    meta: dict = {
+        "app_label": app_label,
+        "warnings": warns,
+        "errors": errs,
+        "ok": warns == 0 and errs == 0,
+    }
+    if usage:
+        meta["usage_present"] = True
+    return ScreenModel(
+        kind="doctor",
+        title=f"{app_label} doctor",
+        regions=[
+            MRegion("probes", "probes", rows=probe_rows),
+            MRegion("fixes", "fixes", rows=fix_rows),
+        ],
+        selection=sel_id,
+        actions=actions,
+        meta=meta,
+    )

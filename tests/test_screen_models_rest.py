@@ -123,3 +123,50 @@ def test_doctor_confirm_model_parity():
     assert m.meta["cmd"] == "xbook unlock"
     assert "xbook unlock" in txt
     assert m.actions == ["enter", "y"]
+
+
+# --- Task 5: doctor ------------------------------------------------------------
+
+
+def test_doctor_model_parity_and_selection():
+    from clonway_cockpit.doctor import Fix, Probe
+
+    probes = [
+        Probe("Xero auth", "ok", "token fresh", None),
+        Probe("Apply lock", "warn", "stale lock present", None),
+    ]
+    fixes = [
+        Fix(title="Remove stale lock", cmd="xbook unlock", run=lambda: "ok"),
+        Fix(title="Re-auth browser", cmd="xbook auth", run=None),  # display-only
+    ]
+    kw = dict(probes=probes, fixes=fixes, selected=0, app_label="xbook")
+    m = render.model_doctor(**kw)
+    txt = _text(render.render_doctor(**kw))
+
+    assert m.kind == "doctor"
+    assert m.title == "xbook doctor"
+    probe_reg = next(reg for reg in m.regions if reg.role == "probes")
+    assert [row.label for row in probe_reg.rows] == ["Xero auth", "Apply lock"]
+    for row in probe_reg.rows:
+        assert row.label in txt
+    fix_reg = next(reg for reg in m.regions if reg.role == "fixes")
+    assert [row.label for row in fix_reg.rows] == ["Remove stale lock", "Re-auth browser"]
+    runnable = next(row for row in fix_reg.rows if row.id == "fix:0")
+    assert runnable.enabled and runnable.selected
+    display_only = next(row for row in fix_reg.rows if row.label == "Re-auth browser")
+    assert not display_only.enabled
+    assert m.selection == "fix:0"
+    assert _cursored_line_has(txt, "Remove stale lock")
+    assert m.meta == {"app_label": "xbook", "warnings": 1, "errors": 0, "ok": False}
+    assert m.actions[:4] == ["up", "down", "enter", "q"]
+
+
+def test_doctor_model_no_runnable_fixes_is_back_only():
+    from clonway_cockpit.doctor import Fix, Probe
+
+    probes = [Probe("All green", "ok", "fine", None)]
+    fixes = [Fix(title="Re-auth browser", cmd="xbook auth", run=None)]
+    m = render.model_doctor(probes=probes, fixes=fixes, selected=None)
+    assert m.selection is None
+    assert m.actions == ["q"]
+    assert m.meta["ok"] is True
