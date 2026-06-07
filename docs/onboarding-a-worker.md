@@ -299,3 +299,20 @@ deadline-aware with the rest of the fleet.
 - [ ] Flag wired (`<WORKER>_EMIT_SIGNALS`, default OFF) + go-live scheduler entry
 - [ ] Codename in `xops/bridge/workers.py` ROSTER (+ alias if names differ)
 - [ ] Local verify: `<WORKER>_EMIT_SIGNALS=1 uv run <worker> signals scan` → `emitted N`
+
+---
+
+## Agent channel — inherited, not wired by hand
+
+A worker scaffolded from the template (S8/C6) is **born agent-navigable**: it ships
+`{{worker}} --agent-stdio` (serves the same cockpit to an agent over line-delimited JSON),
+an agent-mode-aware `_host()`, and the enforced gate (`tests/test_cockpit_contract.py` runs
+`clonway_cockpit.contract.assert_render_model_parity` + `assert_drives_clean` in CI). You do
+not write any of this — it comes from the template.
+
+As the worker grows bespoke screens, the rule is simple and CI-enforced: **every page-framing
+`render_*` ships a `model_*` twin, and you drive/verify via `--agent-stdio` /
+`CockpitClient` / `CockpitDriver` — never scrape `export_text()`.** Money/write paths go
+through the dry-run + guarded-apply gate. Full protocol + the wiring recipe (incl. the ambient
+`_AGENT_MODE` variant for a worker that rebuilds its host) live in
+[`docs/agent-screen-model.md`](agent-screen-model.md).

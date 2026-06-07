@@ -82,6 +82,7 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
     expected = {
         "pyproject.toml",
         "README.md",
+        "CLAUDE.md",  # born carrying the agent-navigability convention
         "Dockerfile",  # job shape → Dockerfile present
         ".github/workflows/ci.yml",
         "src/xgenlayout/__init__.py",
@@ -94,6 +95,7 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
         "tests/test_signals_build.py",
         "tests/test_signals_emit.py",
         "tests/test_cockpit_render.py",
+        "tests/test_cockpit_contract.py",  # the inherited agent-navigability gate
         "tests/test_safety.py",
     }
     present = {p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file()}
@@ -200,3 +202,37 @@ def test_ac_c6_2_emit_flag_guarded_writes_latest(tmp_path: Path, monkeypatch) ->
         assert worker_emit.scan_and_emit(now=_NOW) == ()
         assert "signals/xgenemit/latest.jsonl" in store
         assert store["signals/xgenemit/latest.jsonl"] == ""
+
+
+# --- AC-C6-4 — the generated worker is born agent-navigable -----------------
+
+
+def test_ac_c6_4_generated_worker_serves_agent_and_drives_clean(tmp_path: Path) -> None:
+    from clonway_cockpit import contract
+
+    dst = _generate(tmp_path, worker_id="xgenagent")
+    with _importable(dst, "xgenagent"):
+        cockpit = importlib.import_module("xgenagent.cli.cockpit")
+
+        # serve_agent + an agent-mode-aware host exist out of the box.
+        assert hasattr(cockpit, "serve_agent")
+        host = cockpit._host(agent_mode=True)
+        assert host.agent_mode is True
+
+        # Parity holds for the scaffold, and the home screen drives clean (no unstructured).
+        contract.assert_render_model_parity(cockpit)
+        stream = contract.assert_drives_clean(host, ["q"])
+        assert stream[0].kind == "home"
+
+
+def test_ac_c6_4_cli_registers_agent_flags(tmp_path: Path) -> None:
+    import inspect as _inspect
+
+    dst = _generate(tmp_path, worker_id="xgenflags")
+    with _importable(dst, "xgenflags"):
+        cli = importlib.import_module("xgenflags.cli")
+        # The Typer callback declares the agent-channel flags (source-text check is the
+        # reliable cross-Typer-version assertion).
+        src = _inspect.getsource(cli._root)
+        assert "--agent-stdio" in src
+        assert "--allow-apply" in src

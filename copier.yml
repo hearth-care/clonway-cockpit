@@ -38,6 +38,7 @@ _message_after_copy: |
     3. uv run {{ worker_id }} signals scan        # -> "disabled" (flag off by default)
     4. {{ emit_flag }}=1 uv run {{ worker_id }} signals scan  # -> "emitted 0" (no horizon yet)
     5. uv run pytest -q && uv run ruff check .     # green out of the box
+    6. {{ worker_id }} --agent-stdio   # drive the SAME cockpit as an agent (JSON stdin/stdout)
 
   THEN fill in the real domain horizon in src/{{ package_name }}/signals/build.py
   (the @scan_horizon stub currently returns ()). Its test is marked xfail until

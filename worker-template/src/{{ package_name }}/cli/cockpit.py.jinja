@@ -189,7 +189,15 @@ def _on_open() -> None:
         signals_emit.scan_and_emit()
 
 
-def _host() -> shell.Host:
+def _host(*, agent_mode: bool = False) -> shell.Host:
+    """Build {{ worker_id }}'s cockpit Host. ``agent_mode`` (set by ``serve_agent``) threads
+    the dry-run + guarded-apply posture through every walk so an agent driving the real
+    cockpit can navigate any flow but never posts off the explicit gate.
+
+    {{ worker_id }} does not rebuild its host mid-loop, so a parameter is enough — no ambient
+    flag needed. A worker that re-invokes ``_host()`` inside its own callbacks should read an
+    ambient ``_AGENT_MODE`` here instead (see clonway-cockpit docs/agent-screen-model.md →
+    'Wiring a worker to the agent channel')."""
     return shell.Host(
         capture_state=capture_state,
         build_walk_ctx=build_walk_ctx,
@@ -201,6 +209,7 @@ def _host() -> shell.Host:
         usage=usage,
         on_open=_on_open,
         app_label=_APP_LABEL,
+        agent_mode=agent_mode,
     )
 
 
@@ -218,3 +227,12 @@ def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
     host.on_open()
     with console.screen() as scr:
         shell._home(host, scr, read_key)
+
+
+def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:
+    """Serve {{ worker_id }}'s cockpit to an agent over line-delimited JSON on stdin/stdout —
+    the SAME cockpit a human drives, in agent mode (dry-run; ``allow_apply`` opts into the
+    guarded-apply token handshake). Reached via ``{{ worker_id }} --agent-stdio``."""
+    from clonway_cockpit.agent import serve_agent_stdio
+
+    serve_agent_stdio(_host(agent_mode=True), stdin=stdin, stdout=stdout, allow_apply=allow_apply)
