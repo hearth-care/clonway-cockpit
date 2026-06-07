@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from rich.console import RenderableType
@@ -28,6 +28,7 @@ from rich.console import RenderableType
 from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
+from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
 
@@ -185,6 +186,11 @@ class Host:
         [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
         bool,
     ] = field(default=lambda state, sel, key, screen, read_key: False)
+    # Observer the shell calls with the ScreenModel for every screen it draws (home,
+    # shelf menu) and threads into each walk's WizardContext so walk screens emit too.
+    # Default no-op so existing Host constructions are byte-identical and the live
+    # cockpit pays nothing.
+    on_screen: Callable[[ScreenModel], None] = field(default=lambda model: None)
 
 
 def run_with_progress[T](
@@ -358,13 +364,18 @@ def _home(
         # coalescing N moves into ONE frame. pending() is False off a held raw
         # session, so tests / non-interactive paths repaint on every change.
         if dirty and not keys.pending():
+            caps = host.get_capabilities()
+            extra = host.extra_regions(state)
             screen.update(
                 r.render_cockpit_screen(
                     state,
-                    host.get_capabilities(),
+                    caps,
                     selection=items[sel],
-                    extra_regions=host.extra_regions(state),
+                    extra_regions=extra,
                 )
+            )
+            host.on_screen(
+                r.model_cockpit_screen(state, caps, selection=items[sel], extra_regions=extra)
             )
             dirty = False
         key = read_key()
@@ -572,6 +583,7 @@ def _shelf(
         options = [(str(i), s.title, s.summary) for i, s in enumerate(specs, 1)]
         opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
         screen.update(r.render_menu(menu_title, options, selected=sel, opens=opens, peak=peak))
+        host.on_screen(r.model_menu(menu_title, options, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         if low in ("q", keys.ESC):
@@ -632,8 +644,10 @@ def _open_capability(
         _doctor(host, screen, read_key)
         return
     if spec.run is not None:
+        ctx = host.build_walk_ctx(screen, read_key, focus=focus)
+        ctx = replace(ctx, on_screen=host.on_screen)
         try:
-            spec.run(host.build_walk_ctx(screen, read_key, focus=focus))
+            spec.run(ctx)
         except shellout.ShellOut:
             # Control flow (leave the alt-screen), NOT an error — re-raise so the
             # worker's run_cockpit catches it and runs the child command.
@@ -642,14 +656,11 @@ def _open_capability(
             # An unguarded raise here propagated all the way out (run_cockpit only
             # catches ShellOut) and dumped a traceback over the restored terminal,
             # taking the whole cockpit down. Surface the crash as a clean result
-            # frame and return to the home loop instead.
-            _show(
-                screen,
-                r.render_walk_result(
-                    spec.title, ok=False, message=f"{spec.title} hit an error — {e}"
-                ),
-                read_key,
-            )
+            # frame and return to the home loop instead. Emit the matching model so an
+            # agent driving the walk sees the failure too (not just the human screen).
+            crash_msg = f"{spec.title} hit an error — {e}"
+            host.on_screen(r.model_walk_result(spec.title, ok=False, message=crash_msg))
+            _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return
     # reference-only: no handler, just the equivalent-CLI card
     _show(screen, r.render_capability_card(spec), read_key)

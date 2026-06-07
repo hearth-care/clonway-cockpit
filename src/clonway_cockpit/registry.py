@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from rich.console import Console, RenderableType
 
+from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.prompts import ConfirmFn, InputFn
 
 
@@ -36,6 +37,9 @@ class WizardContext:
     # focus="overdue", so the plan/review/apply cover just the overdue bills, not
     # every authorised bill). None = no focus = the full capability.
     focus: str | None = None
+    # Optional observer the cockpit threads in so a walk's screens are emitted as
+    # ScreenModels (for the agent driver). None = not emitting (console/test callers).
+    on_screen: Callable[[ScreenModel], None] | None = None
 
 
 Handler = Callable[[WizardContext], None]
