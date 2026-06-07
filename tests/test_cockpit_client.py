@@ -129,6 +129,38 @@ def test_apply_approve_posts_once():
         clear_capabilities()
 
 
+def test_quit_escalates_terminate_then_kill_for_a_stuck_child():
+    """FBA hardening: a child that ignores quit/EOF must not be orphaned — quit() escalates
+    terminate → kill. Uses a fake proc so the test is fast and asserts the escalation path."""
+    import io
+    import subprocess
+
+    class _StuckProc:
+        def __init__(self) -> None:
+            self.terminated = False
+            self.killed = False
+
+        def wait(self, timeout=None):  # noqa: ANN001
+            if not self.killed:
+                raise subprocess.TimeoutExpired("stuck", timeout)  # ignores quit + terminate
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+
+        def poll(self):
+            return 0 if self.killed else None
+
+    proc = _StuckProc()
+    client = agent.CockpitClient(stdin=io.StringIO(""), stdout=io.StringIO(), proc=proc)
+    client.quit()
+    assert proc.terminated is True
+    assert proc.killed is True  # escalated all the way — never orphaned
+
+
 def test_apply_decline_zero_posts():
     clear_capabilities()
     mock = _MockClient()

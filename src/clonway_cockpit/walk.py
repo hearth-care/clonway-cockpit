@@ -476,8 +476,10 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
       an ``applied``/``declined`` frame as the on-the-wire audit.
     * **pure dry-run** (default) — read one message for cadence, emit ``declined`` and
       never post. An agent drives any walk end-to-end but cannot write."""
-    if ctx.read_key is None:
-        return ctx.confirm_fn(prompt)
+    # Dry-run is checked FIRST and is authoritative — agent mode can NEVER post, regardless
+    # of read_key/confirm_fn (FBA hardening: previously a read_key=None + dry_run ctx fell
+    # through to confirm_fn and could post; not reachable via the agent channel, which always
+    # sets read_key, but closed defensively so dry_run is the single source of truth).
     if ctx.dry_run:
         if ctx.authorize_apply is not None:
             token = _next_gate_token()
@@ -505,11 +507,14 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
                 ),
             )
             return False
-        # Pure dry-run: read one message for cadence, then decline. Emit an observable
-        # so an agent can assert the gate was reached and held.
-        ctx.read_key()
+        # Pure dry-run: read one message for cadence (only if interactive), then decline.
+        # Emit an observable so an agent can assert the gate was reached and held.
+        if ctx.read_key is not None:
+            ctx.read_key()
         _emit(ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"}))
         return False
+    if ctx.read_key is None:
+        return ctx.confirm_fn(prompt)
     k = ctx.read_key()
     return k in (keys.ENTER, "a", "A")
 
