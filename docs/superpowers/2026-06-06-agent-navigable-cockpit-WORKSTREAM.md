@@ -115,5 +115,49 @@ This workstream was scoped and built in a single session driven through a multi-
 
 - Design spec: `docs/superpowers/specs/2026-06-06-agent-navigable-cockpit-design.md`
 - M1 plan: `docs/superpowers/plans/2026-06-06-agent-navigable-cockpit-m1.md`
-- `Row.id` contract: `docs/agent-screen-model.md`
+- `Row.id` contract + the full agent protocol (stdio + apply handshake): `docs/agent-screen-model.md`
 - This PR: hearth-care/clonway-cockpit #28
+
+---
+
+## FINAL STATUS — 2026-06-07 (M1-rest → M4 + consumers shipped)
+
+The whole roadmap is now merged across the three repos. **`xbook --agent-stdio` launches the
+real cockpit and an external agent ("Ryan") drives it over line-delimited JSON, in dry-run.**
+
+| Milestone | What shipped | PR |
+|---|---|---|
+| **M1** | `ScreenModel` + seam + `CockpitDriver` + home/menu/preflight/result models | clonway-cockpit #28 |
+| **M1-rest** | model+parity+emit for every remaining framework primitive (card, note, help, 2× confirm, doctor, filter, 3× progress), `unstructured` fallback, contract test | clonway-cockpit #29 |
+| **M2 framework** | `agent.serve_stdio` stdio JSON pump + framework dry-run gate (`Host.agent_mode`→`ctx.dry_run`→`confirm_apply` declines) | clonway-cockpit #30 |
+| **M4 framework** | apply-authorization handshake — opt-in `serve_stdio(allow_apply=True)` token gate; default stays dry-run | clonway-cockpit #31 |
+| **M2 consumer — xbook** | `xbook --agent-stdio` + ambient `_AGENT_MODE` (covers the statutory host-rebuild) + rev bump → 8421ef8 | Auto-Bookkeeper #642 |
+| **M2 consumer — xops** | `xops bridge --agent-stdio` (read-only fleet snapshots) + rev bump → b3fa7e0 | Auto-Orchestrator #158 |
+| **M3 (kickoff)** | `model_schedule_review` — the flagship posting walk's gate review is agent-navigable (window rows + full per-bill `meta.bills`); establishes the worker-screen pattern | Auto-Bookkeeper #643 |
+
+Each substantial framework feature was run through the Final Boss Audit; the M1-rest audit
+caught a CRITICAL (a rogue `Console` printing to real stdout that would corrupt the agent's
+JSON channel) the in-process tests structurally couldn't, and the M2/M4 audits confirmed the
+write gate is un-bypassable.
+
+### What an agent gets today (the contract surface)
+home · shelf_menu · walk.preflight · walk.progress · walk.result · card · note · help ·
+confirm · doctor · filter · `unstructured` fallback · **walk.gate** (dry-run declined /
+M4 awaiting_apply→applied) · **walk.review** (schedule-bills). Full protocol in
+`docs/agent-screen-model.md`.
+
+### Remaining incremental backlog (not blocking; do as agents need to verify each)
+- **M3 worker screens** — the other ~53 `_screens.py` screens + lens modules. Highest next
+  value: the other three posting-walk reviews (`render_payroll_review`, apply-remittance,
+  raise-invoices) — same `model_* + parity + walk._emit` pattern as `model_schedule_review`.
+  Then shelf reports (gap report, dd anomalies, payroll dashboards, cashflow/occupancy
+  lenses). Add an **xbook-side contract test** once a batch is migrated (mirrors
+  clonway-cockpit's `tests/test_contract.py`).
+- **Worker `obs` logging of applied gates** (M4 left the audit as the on-the-wire
+  `walk.gate` frames; an authoritative `obs.event` per applied gate is the follow-on).
+- **Broader agent-mode side-effect gating** — `activate_pill` (bank sync / re-auth) and
+  Doctor `fix.run()` still run in agent mode (read-only by framework contract). Gate them
+  behind `agent_mode` if autonomous driving should avoid those side effects too.
+- **xbook guarded-apply wiring** — to enable real (human-signed-off) posts via M4, xbook's
+  `serve_agent` passes `allow_apply=True` and routes the gate token for sign-off. Off by
+  default (safe).
