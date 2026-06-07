@@ -146,18 +146,22 @@ confirm · doctor · filter · `unstructured` fallback · **walk.gate** (dry-run
 M4 awaiting_apply→applied) · **walk.review** (schedule-bills). Full protocol in
 `docs/agent-screen-model.md`.
 
-### Remaining incremental backlog (not blocking; do as agents need to verify each)
-- **M3 worker screens** — the other ~53 `_screens.py` screens + lens modules. Highest next
-  value: the other three posting-walk reviews (`render_payroll_review`, apply-remittance,
-  raise-invoices) — same `model_* + parity + walk._emit` pattern as `model_schedule_review`.
-  Then shelf reports (gap report, dd anomalies, payroll dashboards, cashflow/occupancy
-  lenses). Add an **xbook-side contract test** once a batch is migrated (mirrors
-  clonway-cockpit's `tests/test_contract.py`).
-- **Worker `obs` logging of applied gates** (M4 left the audit as the on-the-wire
-  `walk.gate` frames; an authoritative `obs.event` per applied gate is the follow-on).
-- **Broader agent-mode side-effect gating** — `activate_pill` (bank sync / re-auth) and
-  Doctor `fix.run()` still run in agent mode (read-only by framework contract). Gate them
-  behind `agent_mode` if autonomous driving should avoid those side effects too.
-- **xbook guarded-apply wiring** — to enable real (human-signed-off) posts via M4, xbook's
-  `serve_agent` passes `allow_apply=True` and routes the gate token for sign-off. Off by
-  default (safe).
+### Backlog — DONE 2026-06-07 (cleared via a divide-and-conquer fan-out)
+All four items below are shipped + merged:
+- **M3 worker screens** ✅ — all four posting-walk **reviews** modelled (`walk.review`):
+  schedule-bills (xbook #643), payroll-clear / apply-remittance / raise-invoices (xbook #644)
+  + a posting-review contract test. **Bills** screens (inbox/drill/settle/approve, #646),
+  **cashflow + occupancy** lenses (#648), **payroll lens + workforce rota** (#647) — each
+  `model_* + parity + walk._emit` (read-only lenses use a prose region + structured `meta`
+  where rows aren't stable). Done as 1 reviews stream + 3 parallel per-module subagents.
+- **Worker `obs` logging of applied gates** ✅ — framework `serve_stdio(on_apply=…)` hook
+  (clonway #33) + xbook `serve_agent` binds `obs.event("cockpit.gate.applied", …)` (xbook #645).
+- **Agent-mode side-effect gating** ✅ — in `agent_mode` the shell skips `activate_pill` and
+  Doctor `fix.run()`, emitting a `note` instead (clonway #33).
+- **xbook guarded-apply wiring** ✅ — `xbook --agent-stdio --allow-apply` → `serve_agent(allow_apply=True)`
+  → framework token handshake; default off (never posts) (xbook #645).
+
+The only thing genuinely left is migrating the *remaining read-only shelf reports* in
+`_screens.py` (gap report, dd anomalies, payroll dashboards, etc.) — but those are served
+adequately by the `unstructured` fallback today; migrate per-screen as an agent needs to
+deeply assert a specific one.
