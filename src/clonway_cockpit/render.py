@@ -1414,3 +1414,34 @@ def model_doctor(
         actions=actions,
         meta=meta,
     )
+
+
+def model_filter(
+    term: str,
+    matches: Sequence[_FilterRow],
+    *,
+    selected: int | None = None,
+    title: str | None = None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_filter`. Lists the (capped at 9) matches —
+    capabilities and/or needs — each a row keyed ``match:<i>``; mirrors the rendered
+    cap/back behaviour. ``selected`` indexes the shown matches."""
+    shown = list(matches[:9])
+    rows = [
+        MRow(
+            id=f"match:{i}",
+            label=s.title,
+            fields=[MField("summary", s.summary)],
+            selected=selected == i,
+        )
+        for i, s in enumerate(shown)
+    ]
+    sel_id = f"match:{selected}" if selected is not None and shown else None
+    return ScreenModel(
+        kind="filter",
+        title=title or "Find a tool",
+        regions=[MRegion("matches", "", rows=rows)],
+        selection=sel_id,
+        actions=["up", "down", "enter", "esc", "backspace"],
+        meta={"term": term},
+    )

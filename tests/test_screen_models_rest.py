@@ -170,3 +170,36 @@ def test_doctor_model_no_runnable_fixes_is_back_only():
     assert m.selection is None
     assert m.actions == ["q"]
     assert m.meta["ok"] is True
+
+
+# --- Task 6: filter ------------------------------------------------------------
+
+
+class _M:  # minimal _FilterRow: a title + a summary
+    def __init__(self, title: str, summary: str) -> None:
+        self.title = title
+        self.summary = summary
+
+
+def test_filter_model_parity_and_selection():
+    matches = [_M("Schedule bills", "plan a batch"), _M("Clear payroll", "run payroll")]
+    kw = dict(term="cl", matches=matches, selected=1, title="Find a tool")
+    m = render.model_filter(**kw)
+    txt = _text(render.render_filter(**kw))
+
+    assert m.kind == "filter"
+    assert m.title == "Find a tool"
+    rows = m.regions[0].rows
+    assert [row.id for row in rows] == ["match:0", "match:1"]
+    for row in rows:
+        assert row.label in txt
+    assert m.selection == "match:1"
+    assert _cursored_line_has(txt, "Clear payroll")
+    assert m.meta["term"] == "cl"
+
+
+def test_filter_model_no_match():
+    m = render.model_filter("zzz", [], selected=None)
+    assert m.regions[0].rows == []
+    assert m.selection is None
+    assert m.meta["term"] == "zzz"

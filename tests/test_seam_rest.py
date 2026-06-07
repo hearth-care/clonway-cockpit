@@ -151,3 +151,24 @@ def test_doctor_emitted_when_opening_doctor():
     docs = [m for m in stream if m.kind == "doctor"]
     assert docs, f"no doctor model emitted; saw {_kinds(stream)}"
     assert docs[0].meta["ok"] is True
+
+
+# --- Task 6: filter emit -------------------------------------------------------
+
+
+def test_filter_emitted_on_slash():
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="sb", shelf="C", title="Schedule bills", summary="plan", equivalent_cli="x"
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")
+    # / opens the filter; type "s"; esc closes filter; q quits home.
+    driver = CockpitDriver(_host(state), keys=["/", "s", "esc", "q"])
+    stream = driver.run()
+    clear_capabilities()
+    filters = [m for m in stream if m.kind == "filter"]
+    assert filters, f"no filter emitted; saw {_kinds(stream)}"
+    # After typing 's', the registered capability matched.
+    assert any(row.label == "Schedule bills" for f in filters for row in f.regions[0].rows)

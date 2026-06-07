@@ -844,6 +844,14 @@ def _filter(
                 title=state.filter_title,
             )
         )
+        host.on_screen(
+            r.model_filter(
+                term,
+                matches,
+                selected=(sel if matches else None),
+                title=state.filter_title,
+            )
+        )
         key = read_key()
         if key == keys.ESC:
             return
