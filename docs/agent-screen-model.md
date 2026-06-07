@@ -24,7 +24,15 @@ any agent script that asserts on it.
 | `doctor` | `probe:<i>`, `fix:<n>` (runnable), `fix:display:<i>` | `warnings`, `errors`, `ok` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |
+| `walk.review` | per-walk line-item rows (e.g. `window:<date>`/`bill:<id>`/`settle:<i>`) | **`equivalent_cli`** (the apply command — canonical on every review), plus totals/counts + a full per-item detail list in `meta` |
 | `unstructured` | (prose region holds the rendered text) | — |
+
+`walk.review` is the **worker-built review screen** an agent reads at the write gate to see
+exactly what a posting walk will do before authorizing (M3; xbook's schedule-bills,
+payroll-clear, apply-remittance, raise-invoices, bills approve/settle). Row labels are
+parity-checked against the human render; richer per-item detail (amounts, dates) rides in
+`meta` (amounts are stringified — JSON-safe over stdio). Every `walk.review` exposes the
+apply command under `meta["equivalent_cli"]`.
 
 `walk.progress` is emitted on **semantic change** (a new log line / a stage status
 change), not per animation frame — `elapsed` ticks are not separate emits. The
