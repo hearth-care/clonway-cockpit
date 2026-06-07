@@ -37,3 +37,29 @@ def test_note_model_parity():
     assert "Bills overdue cleared for today" in txt
     assert "Acknowledged" in txt
     assert m.actions == ["any"]
+
+
+# --- Task 2: capability card ---------------------------------------------------
+
+
+def test_capability_card_model_parity():
+    from clonway_cockpit.registry import CapabilitySpec
+
+    spec = CapabilitySpec(
+        key="loans",
+        shelf="F",
+        title="Term loans",
+        summary="Review the loan schedule",
+        equivalent_cli="xbook loans review",
+    )
+    m = render.model_capability_card(spec)
+    txt = _text(render.render_capability_card(spec))
+
+    assert m.kind == "card"
+    assert m.title == "Term loans"
+    what = next(reg for reg in m.regions if reg.role == "what_this_does")
+    assert what.text == "Review the loan schedule"
+    assert "Review the loan schedule" in txt
+    assert m.meta["equivalent_cli"] == "xbook loans review"
+    assert "xbook loans review" in txt
+    assert m.actions == ["any"]

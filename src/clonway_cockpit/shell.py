@@ -665,6 +665,7 @@ def _open_capability(
             _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return
     # reference-only: no handler, just the equivalent-CLI card
+    host.on_screen(r.model_capability_card(spec))
     _show(screen, r.render_capability_card(spec), read_key)
 
 

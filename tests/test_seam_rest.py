@@ -6,6 +6,11 @@ from __future__ import annotations
 from clonway_cockpit import render, shell, usage
 from clonway_cockpit.agent import CockpitDriver
 from clonway_cockpit.model import ScreenModel
+from clonway_cockpit.registry import (
+    CapabilitySpec,
+    clear_capabilities,
+    register_capability,
+)
 from clonway_cockpit.state import CockpitState, NeedsItem
 
 
@@ -44,3 +49,27 @@ def test_note_emitted_when_opening_a_plain_need():
     notes = [m for m in stream if m.kind == "note"]
     assert notes, f"no note emitted; saw {_kinds(stream)}"
     assert notes[0].title == "Read me"
+
+
+# --- Task 2: capability card emit ----------------------------------------------
+
+
+def test_capability_card_emitted_for_reference_only_spec():
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="loans",
+            shelf="F",
+            title="Term loans",
+            summary="Review the loan schedule",
+            equivalent_cli="xbook loans review",
+        )  # run=None → reference-only card
+    )
+    state = CockpitState(tenant_name="Clonway")
+    # Shelf F has one spec → opens directly into the card; any key returns; quit.
+    driver = CockpitDriver(_host(state), keys=["f", "x", "q"])
+    stream = driver.run()
+    clear_capabilities()
+    cards = [m for m in stream if m.kind == "card"]
+    assert cards, f"no card emitted; saw {_kinds(stream)}"
+    assert cards[0].title == "Term loans"

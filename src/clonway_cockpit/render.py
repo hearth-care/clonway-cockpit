@@ -1284,3 +1284,15 @@ def model_note(title: str, detail: str) -> ScreenModel:
         actions=["any"],
         meta={"detail": detail},
     )
+
+
+def model_capability_card(spec: CapabilitySpec) -> ScreenModel:
+    """The semantic twin of :func:`render_capability_card` — a reference-only
+    capability (no walk yet): title, what-it-does prose, the equivalent-CLI."""
+    return ScreenModel(
+        kind="card",
+        title=spec.title,
+        regions=[MRegion("what_this_does", "what this does", text=spec.summary)],
+        actions=["any"],
+        meta={"equivalent_cli": spec.equivalent_cli, "summary": spec.summary},
+    )
