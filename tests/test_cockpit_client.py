@@ -222,3 +222,48 @@ def test_custom_timeout_is_honored():
     finally:
         wf.close()
         rf.close()
+
+
+# --- WS-A: the enriched proposal handed to the authorization policy ----------
+
+
+def test_apply_passes_enriched_proposal_to_policy():
+    clear_capabilities()
+    mock = _MockClient()
+    try:
+        client, t = _wire(_posting_host(mock), allow_apply=True)
+        client.read_home()
+        gate = client.press("c")
+        assert gate["meta"]["gate"] == "awaiting_apply"
+        seen: dict = {}
+
+        def spy(prop):
+            seen.update(prop)
+            return False  # decline → no post, but we capture what the policy saw
+
+        client.apply(gate["meta"]["token"], approve=spy, proposal=gate["meta"])
+        assert (
+            seen["equivalent_cli"] == "x post"
+        )  # the policy saw the apply identity, not just a token
+        assert seen["token"] == gate["meta"]["token"]
+        assert mock.posts == 0
+        client.quit()
+        t.join(timeout=5)
+    finally:
+        clear_capabilities()
+
+
+def test_apply_default_proposal_is_token_only_backcompat():
+    clear_capabilities()
+    mock = _MockClient()
+    try:
+        client, t = _wire(_posting_host(mock), allow_apply=True)
+        client.read_home()
+        gate = client.press("c")
+        seen: dict = {}
+        client.apply(gate["meta"]["token"], approve=lambda p: bool(seen.update(p)))
+        assert set(seen) == {"token"}  # no proposal passed → token-only (back-compatible)
+        client.quit()
+        t.join(timeout=5)
+    finally:
+        clear_capabilities()
