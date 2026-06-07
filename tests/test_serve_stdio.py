@@ -64,3 +64,51 @@ def test_serve_stdio_drives_into_a_shelf_menu():
     clear_capabilities()
     kinds = [f["kind"] for f in frames]
     assert "home" in kinds and "shelf_menu" in kinds, kinds
+
+
+# --- Task 3: snapshot + quit ---------------------------------------------------
+
+
+def test_snapshot_re_emits_current_screen_without_advancing():
+    state = CockpitState(tenant_name="Clonway")
+    frames = _drive(_host(state), [{"cmd": "snapshot"}, {"key": "q"}])
+    homes = [f for f in frames if f["kind"] == "home"]
+    assert len(homes) >= 2, [f["kind"] for f in frames]
+    assert homes[0] == homes[1]
+
+
+def test_quit_command_unwinds_like_q():
+    state = CockpitState(tenant_name="Clonway")
+    frames = _drive(_host(state), [{"cmd": "quit"}])
+    assert frames and frames[0]["kind"] == "home"
+
+
+# --- Task 4: protocol errors + EOF ---------------------------------------------
+
+
+def test_bad_json_yields_error_then_recovers():
+    state = CockpitState(tenant_name="Clonway")
+    inp = io.StringIO('not json\n{"key": "q"}\n')  # garbage line, then a real quit
+    out = io.StringIO()
+    serve_stdio(_host(state), stdin=inp, stdout=out)
+    frames = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+    assert any(f.get("error") == "invalid json" for f in frames)
+    assert any(f.get("kind") == "home" for f in frames)
+
+
+def test_non_object_and_unknown_command_error():
+    state = CockpitState(tenant_name="Clonway")
+    inp = io.StringIO('[1,2,3]\n{"cmd": "frob"}\n{"key": "q"}\n')
+    out = io.StringIO()
+    serve_stdio(_host(state), stdin=inp, stdout=out)
+    frames = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+    assert any(f.get("error") == "expected a JSON object" for f in frames)
+    assert any("unknown message" in str(f.get("error", "")) for f in frames)
+
+
+def test_eof_unwinds_without_a_quit_message():
+    state = CockpitState(tenant_name="Clonway")
+    out = io.StringIO()
+    serve_stdio(_host(state), stdin=io.StringIO(""), stdout=out)  # empty stdin = immediate EOF
+    frames = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+    assert frames and frames[0]["kind"] == "home"
