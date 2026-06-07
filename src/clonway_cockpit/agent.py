@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import contextlib
 import json
+import queue
+import subprocess
 import sys
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 
@@ -186,3 +189,152 @@ def serve_stdio(
                 meta={"shellout": True},
             ).to_dict()
         )
+
+
+def serve_agent_stdio(
+    host: shell.Host,
+    *,
+    allow_apply: bool = False,
+    stdin=sys.stdin,  # noqa: ANN001
+    stdout=sys.stdout,  # noqa: ANN001
+) -> None:
+    """The worker-side one-liner a CLI ``--agent-stdio`` callback calls: serve the agent
+    protocol over stdin/stdout. Thin over :func:`serve_stdio` (which already forces
+    ``agent_mode=True`` and wires the guarded-apply handshake when ``allow_apply``).
+
+    Promoted into the framework so every consumer stops hand-rolling its own ``serve_agent``;
+    the worker-template generates a call to this. NOTE the host-rebuild recipe: if a worker's
+    ``_host()`` is re-invoked inside its own callbacks, build it agent-mode-aware (see
+    docs/agent-screen-model.md → 'Wiring a worker to the agent channel')."""
+    serve_stdio(host, stdin=stdin, stdout=stdout, allow_apply=allow_apply)
+
+
+class CockpitClosed(Exception):
+    """The cockpit stream closed (worker exited / EOF) when a frame was expected."""
+
+
+_EOF = object()  # sentinel the reader thread enqueues on stream close
+
+
+class CockpitClient:
+    """Drive a worker's cockpit over the ``--agent-stdio`` protocol — the framework-owned
+    PEER of :func:`serve_stdio`. The orchestrator, a CLI session, and an autonomous agent all
+    drive through this one class, so 'human operating' and 'agent operating' are the same path.
+
+    The protocol is emit-driven (every draw writes a frame), so a background reader thread
+    pumps frames onto a queue and the request methods read from it. Two constructors:
+    :meth:`spawn` launches ``<worker> --agent-stdio`` as a subprocess (production);
+    :meth:`over_streams` wraps an existing reader/writer pair (tests, or any owned transport)."""
+
+    def __init__(self, *, stdin, stdout, proc=None) -> None:  # noqa: ANN001
+        # stdin = the stream WE READ frames from (the app's stdout);
+        # stdout = the stream WE WRITE messages to (the app's stdin).
+        self._in = stdin
+        self._out = stdout
+        self._proc = proc
+        self._q: queue.Queue = queue.Queue()
+        self._reader = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader.start()
+
+    @classmethod
+    def over_streams(cls, *, stdin, stdout) -> CockpitClient:  # noqa: ANN001
+        return cls(stdin=stdin, stdout=stdout)
+
+    @classmethod
+    def spawn(
+        cls, argv: list[str], *, cwd: str | None = None, env: dict | None = None
+    ) -> CockpitClient:
+        proc = subprocess.Popen(  # noqa: S603 — argv is caller-controlled, not a shell string
+            argv,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        return cls(stdin=proc.stdout, stdout=proc.stdin, proc=proc)
+
+    def _read_loop(self) -> None:
+        try:
+            while True:
+                line = self._in.readline(_MAX_MSG_BYTES)
+                if line == "":  # EOF
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    self._q.put(json.loads(line))
+                except (ValueError, TypeError):
+                    continue  # skip a malformed line rather than killing the reader
+        finally:
+            self._q.put(_EOF)
+
+    def _send(self, obj: dict) -> None:
+        self._out.write(json.dumps(obj) + "\n")
+        self._out.flush()
+
+    def _next(self, timeout: float = 5.0) -> dict:
+        try:
+            frame = self._q.get(timeout=timeout)
+        except queue.Empty as e:
+            raise CockpitClosed("timed out waiting for a frame") from e
+        if frame is _EOF:
+            raise CockpitClosed("cockpit stream closed")
+        return frame
+
+    def read_home(self) -> dict:
+        """Read the first frame the cockpit paints on open."""
+        return self._next()
+
+    def press(self, key: str) -> dict:
+        """Send a keypress; return the next frame the cockpit emits."""
+        self._send({"key": key})
+        return self._next()
+
+    def snapshot(self) -> dict:
+        """Ask for the current screen again (no state change)."""
+        self._send({"cmd": "snapshot"})
+        return self._next()
+
+    def apply(self, token: str, *, approve) -> dict:  # noqa: ANN001
+        """Complete the guarded-apply handshake at a ``walk.gate{awaiting_apply}`` frame.
+        ``approve(proposal) -> bool`` is the human-sign-off seam: called with the proposal;
+        only a True result sends ``{"apply":true,"token":token}``. Any other result sends
+        ``{"apply":false}`` so the app declines. Returns the next frame (applied/declined).
+        Never auto-approves — the policy is entirely the caller's."""
+        if approve({"token": token}):
+            self._send({"apply": True, "token": token})
+        else:
+            self._send({"apply": False})
+        return self._next()
+
+    def drain(self, *, idle: float = 0.1) -> list[dict]:
+        """Collect any further frames already in flight (an action can emit several before
+        the app blocks for input — e.g. applied + the home redraw), until none arrive within
+        ``idle``. Use to resync after a multi-frame action; the last entry is the current
+        screen."""
+        out: list[dict] = []
+        while True:
+            try:
+                frame = self._q.get(timeout=idle)
+            except queue.Empty:
+                break
+            if frame is _EOF:
+                break
+            out.append(frame)
+        return out
+
+    def quit(self) -> None:
+        with contextlib.suppress(Exception):
+            self._send({"cmd": "quit"})
+        if self._proc is not None:
+            with contextlib.suppress(Exception):
+                self._proc.wait(timeout=5)
+
+    def __enter__(self) -> CockpitClient:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.quit()

@@ -142,3 +142,38 @@ being a blanket decline and offers a token handshake:
   the agent sends. Guarded apply is strictly opt-in.
 - The `awaiting_apply` / `applied` / `declined` frames are the on-the-wire audit; an
   authoritative worker-side `obs` log of applied gates is a follow-on.
+
+## Protocol versioning
+
+Every `ScreenModel.to_dict()` frame carries a top-level `"schema_version"` (currently
+`"1.0"`, the `clonway_cockpit.model.SCHEMA_VERSION` constant). A driver / orchestrator
+branches on it. The version bumps ONLY on a **breaking** wire change (a removed or renamed
+key, or a changed type); additive keys (a new optional `meta` field) do **not** bump it. The
+shape-pin test in `tests/test_model.py` (`test_to_dict_carries_schema_version`) fails on an
+accidental breaking change to the top-level shape, forcing a deliberate bump + this doc's
+update.
+
+## Wiring a worker to the agent channel
+
+A worker exposes the cockpit to an agent with two pieces, both inherited from the framework:
+
+1. **`serve_agent_stdio(host, *, allow_apply=False, stdin, stdout)`** — the one-liner the
+   worker's CLI `--agent-stdio` callback calls. It is thin over `serve_stdio`, which forces
+   `agent_mode=True` (dry-run) and wires the guarded-apply handshake when `allow_apply`.
+2. **An agent-mode-aware host factory.** `serve_stdio` sets `agent_mode=True` on the host it
+   threads through `run_cockpit`. A worker whose `_host()` is **re-invoked inside its own
+   callbacks** loses that flag on the rebuilt instance — so such a worker reads an ambient
+   `_AGENT_MODE` module flag in `_host()` and sets it `True` before serving. A worker that
+   never rebuilds its host can pass the host directly and skip the flag.
+
+```python
+# the worker's cli/__init__.py callback
+if agent_stdio:
+    serve_agent(allow_apply=allow_apply)   # → serve_agent_stdio(_host(agent_mode=True), …)
+    raise typer.Exit()
+```
+
+The discipline is enforced, not optional: `clonway_cockpit.contract.assert_render_model_parity`
+(static) + `assert_drives_clean` (dynamic, drives the real loop and asserts no `unstructured`
+reaches the agent) run in the worker's CI. Drive and verify via `--agent-stdio` /
+`CockpitClient` / `CockpitDriver` — never scrape `export_text()`.

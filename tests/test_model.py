@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from clonway_cockpit.model import Field, Region, Row, ScreenModel
+from clonway_cockpit.model import SCHEMA_VERSION, Field, Region, Row, ScreenModel
 
 
 def test_screenmodel_to_dict_is_json_shaped():
@@ -29,3 +29,19 @@ def test_screenmodel_to_dict_is_json_shaped():
 
 def test_field_defaults_to_text_role():
     assert Field(label="amount", value="£10").role == "text"
+
+
+def test_to_dict_carries_schema_version():
+    d = ScreenModel(kind="note", title="t").to_dict()
+    assert d["schema_version"] == SCHEMA_VERSION
+    # The full top-level shape is pinned so an accidental breaking change to the wire
+    # contract fails here and forces a deliberate SCHEMA_VERSION bump + doc update.
+    assert set(d) == {
+        "kind",
+        "title",
+        "regions",
+        "selection",
+        "actions",
+        "meta",
+        "schema_version",
+    }
