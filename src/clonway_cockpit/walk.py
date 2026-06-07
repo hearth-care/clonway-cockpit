@@ -46,6 +46,8 @@ def _run_animated[T](
     clock: Callable[[], float],
     sleep: Callable[[float], None],
     poll_cancel: Callable[[], bool] | None = None,
+    model_frame: Callable[[int], ScreenModel] | None = None,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Run ``fn`` in a daemon worker thread while animating via ``present``.
     ``render_frame(frame, elapsed)`` builds each frame. When ``pass_arg`` is True,
@@ -55,7 +57,12 @@ def _run_animated[T](
 
     When ``poll_cancel`` is supplied, it is called each tick (instead of
     ``sleep``); if it returns True the loop raises ``Cancelled`` immediately.
-    The daemon worker is abandoned on cancel — the caller returns to the cockpit."""
+    The daemon worker is abandoned on cancel — the caller returns to the cockpit.
+
+    When ``emit`` and ``model_frame`` are supplied, the screen's semantic
+    ``ScreenModel`` is published to ``emit`` — but deduped on everything except the
+    per-second ``elapsed`` tick, so a steady screen emits once and a stage/log change
+    emits exactly once (an agent gets one model per meaningful change, not per frame)."""
     holder: dict[str, object] = {}
 
     def _worker() -> None:
@@ -68,10 +75,19 @@ def _run_animated[T](
     started = clock()
     thread.start()
     i = 0
+    last_sig: str | None = None
     while True:
         frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
         elapsed = int(clock() - started)
         present(render_frame(frame, elapsed))
+        if emit is not None and model_frame is not None:
+            model = model_frame(elapsed)
+            d = model.to_dict()
+            d["meta"] = {k: v for k, v in d["meta"].items() if k != "elapsed"}
+            sig = repr(d)
+            if sig != last_sig:
+                emit(model)
+                last_sig = sig
         i += 1
         thread.join(timeout=tick)
         if not thread.is_alive():
@@ -96,6 +112,7 @@ def animate_until_done[T](
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     log_lines: int = 5,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Run a blocking ``fn`` (a sync) in a worker thread while animating the
     screen via ``present`` (``screen.update`` for the cockpit, ``ctx.present``
@@ -145,6 +162,10 @@ def animate_until_done[T](
         tick=tick,
         clock=clock,
         sleep=sleep,
+        model_frame=lambda elapsed: render.model_sync_progress(
+            label, lines=tuple(buf), elapsed=elapsed
+        ),
+        emit=emit,
     )
 
 
@@ -160,6 +181,7 @@ def animate_staged[T](
     tick: float = _PROGRESS_TICK,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Like ``animate_until_done`` but renders a ticking STAGE CHECKLIST. ``fn`` is
     called with a :class:`StageReporter` (built from ``stages``) it drives as it
@@ -201,6 +223,14 @@ def animate_staged[T](
         clock=clock,
         sleep=sleep,
         poll_cancel=poll,
+        model_frame=lambda elapsed: render.model_staged_progress(
+            label,
+            reporter.snapshot(),
+            hint=hint,
+            elapsed=elapsed,
+            controls=controls,
+        ),
+        emit=emit,
     )
 
 

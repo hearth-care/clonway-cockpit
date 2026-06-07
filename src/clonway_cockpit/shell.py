@@ -201,6 +201,7 @@ def run_with_progress[T](
     tick: float = _PROGRESS_TICK,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Run a blocking ``fn`` (a sync) in a worker thread while animating the
     screen, so a long pull is visibly alive (spinner + elapsed seconds) instead
@@ -209,8 +210,11 @@ def run_with_progress[T](
     work. ``screen`` is anything with an ``update(renderable)`` method.
 
     Delegates to ``walk.animate_until_done`` (the shared thread/animation loop).
-    ``clock``/``sleep`` are injectable so the loop is testable without real time."""
-    return walk.animate_until_done(screen.update, label, fn, tick=tick, clock=clock, sleep=sleep)
+    ``clock``/``sleep`` are injectable so the loop is testable without real time.
+    ``emit`` (when set) receives the progress ``ScreenModel`` for an agent feed."""
+    return walk.animate_until_done(
+        screen.update, label, fn, tick=tick, clock=clock, sleep=sleep, emit=emit
+    )
 
 
 def run_cockpit(host: Host, *, read_key: Callable[[], str] = keys.read_key, screen: Screen) -> None:
@@ -787,13 +791,15 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
         # screen (FIX A) so it reads as alive. Other fixes (lock removal) are
         # instant, so the plain working screen is fine.
         if fix.title == "Sync now":
-            msg = run_with_progress(screen, f"{fix.title}…", fix.run)
+            msg = run_with_progress(screen, f"{fix.title}…", fix.run, emit=host.on_screen)
         else:
+            host.on_screen(r.model_walk_progress(f"{fix.title}…"))
             screen.update(r.render_walk_progress(f"{fix.title}…"))
             msg = fix.run()
         ok = True
     except Exception as e:  # noqa: BLE001 — surface any failure as a clean result
         msg, ok = str(e), False
+    host.on_screen(r.model_walk_result("Doctor", ok=ok, message=msg))
     screen.update(r.render_walk_result("Doctor", ok=ok, message=msg))
     read_key()
 
