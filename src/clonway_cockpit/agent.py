@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import queue
 import subprocess
 import sys
@@ -26,6 +27,8 @@ from rich.console import RenderableType
 
 from clonway_cockpit import shell, shellout
 from clonway_cockpit.model import Region, ScreenModel
+
+_log = logging.getLogger(__name__)
 
 # Cap a single stdin message so a hostile/buggy peer can't force unbounded buffering.
 _MAX_MSG_BYTES = 1_000_000
@@ -226,23 +229,32 @@ class CockpitClient:
     :meth:`spawn` launches ``<worker> --agent-stdio`` as a subprocess (production);
     :meth:`over_streams` wraps an existing reader/writer pair (tests, or any owned transport)."""
 
-    def __init__(self, *, stdin, stdout, proc=None) -> None:  # noqa: ANN001
+    def __init__(self, *, stdin, stdout, proc=None, timeout: float = 30.0) -> None:  # noqa: ANN001
         # stdin = the stream WE READ frames from (the app's stdout);
         # stdout = the stream WE WRITE messages to (the app's stdin).
+        # timeout = how long a single read waits for a frame before treating the cockpit as
+        # closed. Default 30s is generous on purpose: a cold-starting worker (the fleet bridge
+        # can take ~15s to paint its first frame) must not trip a spurious close.
         self._in = stdin
         self._out = stdout
         self._proc = proc
+        self._timeout = timeout
         self._q: queue.Queue = queue.Queue()
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
     @classmethod
-    def over_streams(cls, *, stdin, stdout) -> CockpitClient:  # noqa: ANN001
-        return cls(stdin=stdin, stdout=stdout)
+    def over_streams(cls, *, stdin, stdout, timeout: float = 30.0) -> CockpitClient:  # noqa: ANN001
+        return cls(stdin=stdin, stdout=stdout, timeout=timeout)
 
     @classmethod
     def spawn(
-        cls, argv: list[str], *, cwd: str | None = None, env: dict | None = None
+        cls,
+        argv: list[str],
+        *,
+        cwd: str | None = None,
+        env: dict | None = None,
+        timeout: float = 30.0,
     ) -> CockpitClient:
         proc = subprocess.Popen(  # noqa: S603 — argv is caller-controlled, not a shell string
             argv,
@@ -253,7 +265,7 @@ class CockpitClient:
             text=True,
             bufsize=1,
         )
-        return cls(stdin=proc.stdout, stdout=proc.stdin, proc=proc)
+        return cls(stdin=proc.stdout, stdout=proc.stdin, proc=proc, timeout=timeout)
 
     def _read_loop(self) -> None:
         try:
@@ -272,15 +284,25 @@ class CockpitClient:
             self._q.put(_EOF)
 
     def _send(self, obj: dict) -> None:
-        self._out.write(json.dumps(obj) + "\n")
-        self._out.flush()
-
-    def _next(self, timeout: float = 5.0) -> dict:
         try:
-            frame = self._q.get(timeout=timeout)
+            self._out.write(json.dumps(obj) + "\n")
+            self._out.flush()
+        except OSError as e:
+            # The peer's stdin pipe broke (worker exited) — surface as a clean close so
+            # callers (e.g. xops.drive.drive_argv) that handle CockpitClosed don't take a raw
+            # BrokenPipeError to the face.
+            _log.warning("cockpit driver: input stream broke on send (%s) — closing", e)
+            raise CockpitClosed("cockpit input stream closed") from e
+
+    def _next(self, timeout: float | None = None) -> dict:
+        t = self._timeout if timeout is None else timeout
+        try:
+            frame = self._q.get(timeout=t)
         except queue.Empty as e:
-            raise CockpitClosed("timed out waiting for a frame") from e
+            _log.warning("cockpit driver: no frame within %.1fs — treating as closed", t)
+            raise CockpitClosed(f"timed out waiting for a frame after {t:.1f}s") from e
         if frame is _EOF:
+            _log.warning("cockpit driver: stream closed (worker exited / EOF)")
             raise CockpitClosed("cockpit stream closed")
         return frame
 
@@ -322,6 +344,9 @@ class CockpitClient:
             except queue.Empty:
                 break
             if frame is _EOF:
+                self._q.put(
+                    _EOF
+                )  # keep the sentinel so a later _next() reports closed, not a timeout
                 break
             out.append(frame)
         return out
