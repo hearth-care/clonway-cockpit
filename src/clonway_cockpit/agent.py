@@ -320,13 +320,20 @@ class CockpitClient:
         self._send({"cmd": "snapshot"})
         return self._next()
 
-    def apply(self, token: str, *, approve) -> dict:  # noqa: ANN001
+    def apply(self, token: str, *, approve, proposal=None) -> dict:  # noqa: ANN001
         """Complete the guarded-apply handshake at a ``walk.gate{awaiting_apply}`` frame.
-        ``approve(proposal) -> bool`` is the human-sign-off seam: called with the proposal;
-        only a True result sends ``{"apply":true,"token":token}``. Any other result sends
-        ``{"apply":false}`` so the app declines. Returns the next frame (applied/declined).
-        Never auto-approves — the policy is entirely the caller's."""
-        if approve({"token": token}):
+        ``approve(proposal) -> bool`` is the authorization-policy seam (see
+        ``clonway_cockpit.approval``): called with the proposal; only a True result sends
+        ``{"apply":true,"token":token}``. Any other result sends ``{"apply":false}`` so the
+        app declines. Returns the next frame (applied/declined). Never auto-approves — the
+        policy is the caller's.
+
+        ``proposal`` is what the policy is shown. Pass the gate frame's ``meta`` (so the policy
+        sees ``equivalent_cli`` + the apply identity, not just the token); when omitted it
+        defaults to ``{"token": token}`` (back-compatible)."""
+        prop = dict(proposal) if proposal is not None else {"token": token}
+        prop.setdefault("token", token)
+        if approve(prop):
             self._send({"apply": True, "token": token})
         else:
             self._send({"apply": False})

@@ -100,7 +100,15 @@ def assert_drives_clean(
     This catches a model that exists but is never wired onto a real path — the
     'advertised but not wired' failure that static review structurally cannot see (drive it,
     don't read it). ``allow_unstructured`` opts out for a path that legitimately ends on a
-    setup hint (e.g. an unconfigured Doctor)."""
+    setup hint (e.g. an unconfigured Doctor).
+
+    COVERAGE — read this honestly: this only checks the screens the scripted ``keys`` actually
+    reach. It is NOT exhaustive. **The exhaustive guarantee is the STATIC gate**
+    (:func:`assert_render_model_parity`): every page-framing ``render_*`` has a ``model_*``
+    twin. ``assert_drives_clean`` is the complementary proof that the modeled screens it visits
+    actually *emit* on a real path. To see what a given drive covered, inspect
+    ``{m.kind for m in stream}`` on the returned stream; broaden the key script to widen
+    coverage."""
     from clonway_cockpit.agent import CockpitDriver  # local import: avoid an import cycle
 
     stream = CockpitDriver(host, keys=list(keys)).run()

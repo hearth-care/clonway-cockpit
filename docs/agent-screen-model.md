@@ -207,3 +207,35 @@ The discipline is enforced, not optional: `clonway_cockpit.contract.assert_rende
 (static) + `assert_drives_clean` (dynamic, drives the real loop and asserts no `unstructured`
 reaches the agent) run in the worker's CI. Drive and verify via `--agent-stdio` /
 `CockpitClient` / `CockpitDriver` — never scrape `export_text()`.
+
+## Coverage: what the gate actually proves
+
+Two checks, and it matters which guarantees what:
+
+- **`assert_render_model_parity` (static) is the EXHAUSTIVE guarantee.** It walks every
+  page-framing `render_*` in the namespace and fails if any lacks a `model_*` twin. Nothing
+  agent-blind can ship past it.
+- **`assert_drives_clean` (dynamic) is COMPLEMENTARY, not exhaustive.** It drives only the
+  screens the scripted keys reach, and asserts none of *those* fell through to `unstructured` —
+  i.e. it proves the modeled screens it visits actually *emit* on a real path ("advertised but
+  not wired" — drive it, don't read it). It does **not** prove every screen emits; widen the
+  key script (or inspect `{m.kind for m in stream}`) to widen coverage.
+
+Do not read a green `assert_drives_clean` as "every screen is agent-readable" — parity is what
+proves that. The cross-process golden-path test (WS-A) is the end-to-end companion: it proves
+the whole loop (spawn → drive → review → gate → decline=0 posts) survives a real process
+boundary, which neither static check can.
+
+## Model naming conventions
+
+So an agent author can predict ids without reading every screen:
+
+- **`kind`** follows `<domain>.<screen>` for worker screens — e.g. `report.compliance`,
+  `cashflow.affordability`, `loans.list`, `pnl.review_list`, `valuation.overview`,
+  `payroll.dashboard`, `occupancy.list`. Framework screens keep their bare kind (`home`,
+  `walk.review`, `walk.gate`, `note`, …).
+- **`Row.id`** is a stable `<entity>:<key>` — e.g. `bill:<id>`, `loan:<i>`, `dd:<i>`,
+  `emp:<ref>`, `resident:<ref>`, `room:<n>`, `month:<YYYY-MM>`, `gap:<i>`. Keep it stable across
+  releases; agents key on it.
+- **`meta`** carries machine facts: totals/counts, a per-item detail list, and
+  `equivalent_cli` on any screen with an apply/run command.
