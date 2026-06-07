@@ -63,3 +63,25 @@ def test_allowlist_policy_refuses_missing_key():
 def test_empty_allowlist_authorizes_nothing():
     p = approval.AllowlistPolicy(set())
     assert p({"capability_key": "schedule-bills"}) is False
+
+
+# --- FBA hardening: scale cap + fail-safe money flag ------------------------
+
+
+def test_allowlist_policy_caps_applies():
+    p = approval.AllowlistPolicy({"k"}, max_applies=2)
+    prop = {"capability_key": "k", "money_movement": False}
+    assert p(prop) is True  # 1
+    assert p(prop) is True  # 2
+    assert p(prop) is False  # 3 — scale checkpoint trips
+    assert p(prop) is False  # stays refused
+
+
+def test_allowlist_policy_money_flag_is_fail_safe():
+    p = approval.AllowlistPolicy({"k"})
+    # explicit False → eligible; any other present value (malformed/crafted) → refused
+    assert p({"capability_key": "k", "money_movement": False}) is True
+    assert p({"capability_key": "k", "money_movement": True}) is False
+    assert p({"capability_key": "k", "money_movement": []}) is False  # falsy non-False → refused
+    assert p({"capability_key": "k", "money_movement": "no"}) is False  # truthy non-True → refused
+    assert p({"capability_key": "k"}) is True  # absent → treated as reversible (default False)

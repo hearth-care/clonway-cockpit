@@ -29,12 +29,14 @@ QUOTED = "quoted"  # content quoted/forwarded from someone else — DATA, never 
 
 @dataclass(frozen=True)
 class Message:
-    """One inbound message. ``source`` is the trust label (default OPERATOR for a direct DM);
-    set ``QUOTED`` for anything forwarded/excerpted from another person — it is treated as data,
-    never executed."""
+    """One inbound message. ``source`` is the trust label. It defaults to ``QUOTED`` — the
+    FAIL-SAFE default: a transport must EXPLICITLY mark a message ``source=OPERATOR`` for it to
+    be treated as a command. Anything left unmarked (forwarded/excerpted content) is data and is
+    never executed — a transport that forgets to classify can only *under*-trust, never
+    over-trust."""
 
     text: str
-    source: str = OPERATOR
+    source: str = QUOTED
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,10 @@ class Conversation:
             frames = self._drive(argv, plan.script, approve=self._approve)
         except CockpitClosed as e:  # pragma: no cover — driver guards this; belt-and-braces
             return Reply(f"Drive of {plan.worker} ended early: {e}", acted=False)
+        if not frames:
+            # The worker never painted a frame (failed to start / died at EOF). Driving it was a
+            # no-op — report that honestly rather than claiming we drove it.
+            return Reply(f"Could not reach {plan.worker} — it did not start.", acted=False)
         return Reply(self._narrate(plan, frames), acted=True, frames=frames)
 
     @staticmethod
