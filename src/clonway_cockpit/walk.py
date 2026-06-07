@@ -373,6 +373,7 @@ def preflight(
                 # One-key confirm, then run the remedy and re-evaluate so the
                 # operator sees the row clear and continues from the same screen.
                 _present(ctx, render.render_remedy_confirm(remedy))
+                _emit(ctx, render.model_remedy_confirm(remedy))
                 if ctx.read_key() in (keys.ENTER, "y", "Y"):
                     remedy.action()
                     rechecked = recheck() if recheck is not None else preconditions

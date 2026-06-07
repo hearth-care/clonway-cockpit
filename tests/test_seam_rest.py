@@ -3,11 +3,14 @@ keys and a no-op screen, then assert the new model lands in the recorded stream.
 
 from __future__ import annotations
 
+from rich.console import Console
+
 from clonway_cockpit import render, shell, usage
 from clonway_cockpit.agent import CockpitDriver
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import (
     CapabilitySpec,
+    WizardContext,
     clear_capabilities,
     register_capability,
 )
@@ -85,3 +88,37 @@ def test_help_emitted_on_question_key():
     helps = [m for m in stream if m.kind == "help"]
     assert helps, f"no help emitted; saw {_kinds(stream)}"
     assert helps[0].title == "Keys"
+
+
+# --- Task 4: remedy confirm emit -----------------------------------------------
+
+
+def test_remedy_confirm_emitted_in_preflight():
+    from clonway_cockpit.registry import BlastRadius
+    from clonway_cockpit.walk import Precondition, Remedy, preflight
+
+    captured: list[ScreenModel] = []
+    remedy = Remedy(key="u", label="clear the stale apply lock", action=lambda: "cleared")
+    preconds = [Precondition("No stale lock", False, "lock held", remedy=remedy)]
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(),
+        input_fn=lambda prompt, default: "",
+        confirm_fn=lambda prompt: False,
+        present=lambda frame: None,
+        # press the remedy key, then cancel the confirm with a non-y key
+        read_key=iter(["u", "n"]).__next__,
+        on_screen=captured.append,
+    )
+    preflight(
+        ctx,
+        title="Schedule bills",
+        blast_radius=BlastRadius(summary="posts a batch"),
+        preconditions=preconds,
+        equivalent_cli="xbook bills",
+        recheck=lambda: preconds,
+    )
+    confirms = [m for m in captured if m.kind == "confirm"]
+    assert confirms, f"no remedy confirm emitted; saw {[m.kind for m in captured]}"
+    assert confirms[0].meta["confirm_of"] == "remedy"

@@ -89,3 +89,37 @@ def test_help_model_parity_worker_lines():
     txt = _text(render.render_help(lines))
     assert [row.label for row in m.regions[0].rows] == ["open worker", "refresh"]
     assert "open worker" in txt
+
+
+# --- Task 4: confirm screens ---------------------------------------------------
+
+
+def test_remedy_confirm_model_parity():
+    from clonway_cockpit.walk import Remedy
+
+    remedy = Remedy(key="u", label="clear the stale apply lock", action=lambda: "cleared")
+    m = render.model_remedy_confirm(remedy)
+    txt = _text(render.render_remedy_confirm(remedy))
+
+    assert m.kind == "confirm"
+    assert m.title == "Clear the stale apply lock"
+    assert "Clear the stale apply lock" in txt
+    assert m.meta["confirm_of"] == "remedy"
+    assert m.meta["key"] == "u"
+    assert m.actions == ["enter", "y"]
+
+
+def test_doctor_confirm_model_parity():
+    from clonway_cockpit.doctor import Fix
+
+    fix = Fix(title="Remove stale lock", cmd="xbook unlock", confirm=True, run=lambda: "ok")
+    m = render.model_doctor_confirm(fix)
+    txt = _text(render.render_doctor_confirm(fix))
+
+    assert m.kind == "confirm"
+    assert m.title == "Remove stale lock"
+    assert "Remove stale lock" in txt
+    assert m.meta["confirm_of"] == "doctor_fix"
+    assert m.meta["cmd"] == "xbook unlock"
+    assert "xbook unlock" in txt
+    assert m.actions == ["enter", "y"]

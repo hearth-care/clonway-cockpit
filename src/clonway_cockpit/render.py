@@ -1316,3 +1316,28 @@ def model_help(
         regions=[MRegion("help", "Keys", rows=rows)],
         actions=["any"],
     )
+
+
+def model_remedy_confirm(remedy) -> ScreenModel:  # noqa: ANN001 — mirrors render_remedy_confirm
+    """The semantic twin of :func:`render_remedy_confirm` — the one-key gate before
+    an inline pre-flight remedy runs. ``remedy`` is a ``walk.Remedy``."""
+    label = remedy.label.capitalize()
+    return ScreenModel(
+        kind="confirm",
+        title=label,
+        regions=[MRegion("prose", "", text=f"{label}?")],
+        actions=["enter", "y"],
+        meta={"confirm_of": "remedy", "key": remedy.key, "label": remedy.label},
+    )
+
+
+def model_doctor_confirm(fix) -> ScreenModel:  # noqa: ANN001 — mirrors render_doctor_confirm
+    """The semantic twin of :func:`render_doctor_confirm` — the one-key gate before a
+    state-changing Doctor fix runs. ``fix`` is a ``doctor.Fix``."""
+    return ScreenModel(
+        kind="confirm",
+        title=fix.title,
+        regions=[MRegion("prose", "", text=f"{fix.title}?")],
+        actions=["enter", "y"],
+        meta={"confirm_of": "doctor_fix", "cmd": fix.cmd},
+    )
