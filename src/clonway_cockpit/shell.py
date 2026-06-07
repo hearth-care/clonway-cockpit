@@ -196,6 +196,10 @@ class Host:
     # walk's WizardContext so confirm_apply declines — an agent driving the real
     # cockpit can never post. Default False = the live human cockpit is unchanged.
     agent_mode: bool = False
+    # M4 guarded apply (opt-in, set by serve_stdio(allow_apply=True)): threaded into the
+    # walk ctx so the write gate offers a token handshake instead of a blanket decline.
+    # None = no guarded apply = pure dry-run. Only consulted in agent_mode.
+    authorize_apply: Callable[[dict], bool] | None = None
 
 
 def run_with_progress[T](
@@ -668,7 +672,12 @@ def _open_capability(
         return
     if spec.run is not None:
         ctx = host.build_walk_ctx(screen, read_key, focus=focus)
-        ctx = replace(ctx, on_screen=host.on_screen, dry_run=host.agent_mode)
+        ctx = replace(
+            ctx,
+            on_screen=host.on_screen,
+            dry_run=host.agent_mode,
+            authorize_apply=host.authorize_apply,
+        )
         try:
             spec.run(ctx)
         except shellout.ShellOut:

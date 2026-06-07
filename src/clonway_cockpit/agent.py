@@ -62,7 +62,13 @@ class CockpitDriver:
         return self._stream[-1]
 
 
-def serve_stdio(host: shell.Host, *, stdin=sys.stdin, stdout=sys.stdout) -> None:  # noqa: ANN001
+def serve_stdio(
+    host: shell.Host,
+    *,
+    stdin=sys.stdin,  # noqa: ANN001
+    stdout=sys.stdout,  # noqa: ANN001
+    allow_apply: bool = False,
+) -> None:
     """Drive the real cockpit over line-delimited JSON on stdin/stdout — the
     subprocess transport an external agent process uses to launch + drive the
     cockpit. A thin pump over ``shell.run_cockpit``: each draw writes the screen's
@@ -75,7 +81,12 @@ def serve_stdio(host: shell.Host, *, stdin=sys.stdin, stdout=sys.stdout) -> None
       app -> agent : <ScreenModel.to_dict()>  |  {"error": "<reason>"}
     Stdin EOF unwinds the cockpit (treated as quit). A capability that shells out
     (``ShellOut``) surfaces as a note frame rather than exec'ing a child — agents
-    don't get an interactive child shell."""
+    don't get an interactive child shell.
+
+    ``allow_apply`` (M4, default False) opts into the guarded-apply handshake: at a
+    write gate the app emits ``walk.gate{gate:"awaiting_apply",token,…}`` and the next
+    message must be exactly ``{"apply":true,"token":<token>}`` to post — anything else
+    declines. With it False (the default) the gate stays pure dry-run and NEVER posts."""
     last: list[ScreenModel | None] = [None]
 
     def _write(obj: dict) -> None:
@@ -124,7 +135,34 @@ def serve_stdio(host: shell.Host, *, stdin=sys.stdin, stdout=sys.stdout) -> None
                 return "q"
             _write({"error": f"unknown message: {msg}"})
 
-    agent_host = replace(host, on_screen=on_screen, agent_mode=True)
+    def authorize_apply(proposal: dict) -> bool:
+        # Read ONE message and authorize iff it is exactly {"apply":true,"token":<the
+        # gate's token>}. Anything else (wrong/missing token, a different message, bad
+        # JSON, EOF) declines — fail-safe. The per-gate token defeats stale/replayed
+        # applies. The human-sign-off policy is the agent's; this only enforces the
+        # explicit, gate-matched handshake.
+        raw = stdin.readline(_MAX_MSG_BYTES)
+        if raw == "":  # EOF → decline
+            return False
+        line = raw.strip()
+        if not line:
+            return False
+        try:
+            msg = json.loads(line)
+        except (ValueError, TypeError, RecursionError):
+            _write({"error": "invalid json"})
+            return False
+        if not isinstance(msg, dict):
+            _write({"error": "expected a JSON object"})
+            return False
+        return msg.get("apply") is True and msg.get("token") == proposal["token"]
+
+    agent_host = replace(
+        host,
+        on_screen=on_screen,
+        agent_mode=True,
+        authorize_apply=authorize_apply if allow_apply else None,
+    )
     try:
         shell.run_cockpit(agent_host, read_key=read_key, screen=_NullScreen())
     except shellout.ShellOut as so:
