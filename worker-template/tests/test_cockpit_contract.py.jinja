@@ -1,0 +1,30 @@
+"""Agent-navigability gate for {{ worker_id }} — inherited from clonway-cockpit.
+
+This is the DNA check: every page-framing ``render_*`` this worker adds MUST ship a
+``model_*`` twin, and driving the cockpit must never hand an agent an ``unstructured``
+screen. Both are enforced here in CI. As you add bespoke screens keep them twinned and
+extend the drive script — do not weaken these asserts.
+"""
+
+from __future__ import annotations
+
+from clonway_cockpit import contract
+
+from {{ package_name }}.cli import cockpit
+
+
+def test_render_model_parity() -> None:
+    """Every page-framing render_* in the worker's cockpit module has a model_* twin.
+    Vacuously true for the scaffold (it uses framework screens); becomes load-bearing the
+    moment you add a bespoke render_* here — point this at the module that defines it (or a
+    worker render submodule) so the gate fires."""
+    contract.assert_render_model_parity(cockpit)
+
+
+def test_cockpit_drives_clean() -> None:
+    """Driving the home screen emits structured frames only — no `unstructured` reaches an
+    agent. Extend the key script as you add shelves; configure Doctor before driving into
+    'g' (the scaffold's Doctor is unconfigured and emits an unstructured setup hint)."""
+    host = cockpit._host(agent_mode=True)
+    stream = contract.assert_drives_clean(host, ["q"])
+    assert stream[0].kind == "home"

@@ -13,7 +13,7 @@ import sys
 
 import typer
 
-from {{ package_name }}.cli.cockpit import run_cockpit
+from {{ package_name }}.cli.cockpit import run_cockpit, serve_agent
 from {{ package_name }}.cli.signals import signals_app
 
 app = typer.Typer(
@@ -25,9 +25,21 @@ app.add_typer(signals_app, name="signals")
 
 
 @app.callback(invoke_without_command=True)
-def _root(ctx: typer.Context) -> None:
-    """Bare ``{{ worker_id }}``: open the cockpit on a real TTY; else print help
-    so pipes and scheduled jobs keep today's behaviour."""
+def _root(
+    ctx: typer.Context,
+    agent_stdio: bool = typer.Option(
+        False, "--agent-stdio", help="Serve the cockpit to an agent over JSON stdin/stdout."
+    ),
+    allow_apply: bool = typer.Option(
+        False, "--allow-apply", help="With --agent-stdio: opt into the guarded-apply handshake."
+    ),
+) -> None:
+    """Bare ``{{ worker_id }}``: open the cockpit on a real TTY; ``--agent-stdio`` serves the
+    SAME cockpit to an agent over line-delimited JSON; else print help so pipes and scheduled
+    jobs keep today's behaviour."""
+    if agent_stdio:
+        serve_agent(allow_apply=allow_apply)
+        raise typer.Exit()
     if ctx.invoked_subcommand is not None:
         return
     if sys.stdin.isatty() and sys.stdout.isatty():
