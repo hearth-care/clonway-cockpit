@@ -53,3 +53,20 @@ M1 + M1-rest cover every framework primitive: home, shelf menu, walk preflight/r
 capability card, note, help, the two confirm screens, doctor, filter, the three progress
 screens, plus the `unstructured` fallback. Worker shelf-report screens and the walk
 review/apply screen adopt the model in M3.
+
+## Boundary note (read before M2)
+
+The `ScreenModel` carries whatever the screen carries — it is NOT a sanitised view:
+
+- **`unstructured` holds the screen's raw rendered text.** It is the fallback for a
+  not-yet-migrated screen (e.g. a worker's doctor-unconfigured hint), captured verbatim.
+  Don't put secrets/credentials in a screen, and treat `unstructured.text` as sensitive.
+- **`meta` strings are pass-through** — `equivalent_cli`, doctor `cmd`, `links` urls,
+  `detail` are not escaped. They are safe under `json.dumps` (the M2 stdio protocol must
+  serialise that way) but unsafe if a consumer raw-prints them to a terminal (a crafted
+  url/`detail` could carry control sequences). **M2 invariant: serialise models as JSON
+  at the process boundary; never raw-print model text.**
+
+The observer is also best-effort by contract: `Host.on_screen` / `WizardContext.on_screen`
+are invoked inside `try/except` (`contextlib.suppress`) at every emit site, so a buggy or
+crashing observer (a recorder, the M2 pump) can never take down the human cockpit.
