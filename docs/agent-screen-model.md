@@ -104,9 +104,14 @@ This guarantee covers the framework's own walk path. It does **not** cover:
   `Host()` defaults `agent_mode=False`, dropping dry-run. **A worker adding `--agent` MUST
   preserve `agent_mode` on any host it constructs**, or re-entering `_open_capability`
   through that host can post for real.
-- `activate_pill` (pulse sync / bank re-auth) and Doctor `fix.run()` — these still run in
-  agent mode (read-only / local by framework contract, not Xero posts). Gating them behind
-  `agent_mode` is a future consideration.
+- `activate_pill` (pulse sync / bank re-auth) and Doctor `fix.run()` — **now gated**: in
+  `agent_mode` the shell skips them and emits a `note{"…skipped…"}` frame instead, so an
+  autonomously-driving agent triggers no sync / browser / local side effect. (The live
+  human cockpit, `agent_mode=False`, is unchanged.)
+
+For an authoritative audit of applied gates, `serve_stdio(..., on_apply=cb)` invokes `cb`
+with the gate proposal the moment an apply is authorized (before the post) — a worker binds
+its own `obs.event` there. Best-effort; a logging failure never blocks the post.
 
 ## Guarded apply — the M4 authorization handshake (opt-in)
 

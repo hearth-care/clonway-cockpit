@@ -16,7 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 
 from rich.console import RenderableType
@@ -68,6 +68,7 @@ def serve_stdio(
     stdin=sys.stdin,  # noqa: ANN001
     stdout=sys.stdout,  # noqa: ANN001
     allow_apply: bool = False,
+    on_apply: Callable[[dict], None] | None = None,
 ) -> None:
     """Drive the real cockpit over line-delimited JSON on stdin/stdout — the
     subprocess transport an external agent process uses to launch + drive the
@@ -155,7 +156,14 @@ def serve_stdio(
         if not isinstance(msg, dict):
             _write({"error": "expected a JSON object"})
             return False
-        return msg.get("apply") is True and msg.get("token") == proposal["token"]
+        authorized = msg.get("apply") is True and msg.get("token") == proposal["token"]
+        if authorized and on_apply is not None:
+            # Authoritative audit hook: fire on an AUTHORIZED apply (before the post),
+            # so a worker can log the applied gate via its own obs. Best-effort — a
+            # logging failure must never block or crash the post.
+            with contextlib.suppress(Exception):
+                on_apply(proposal)
+        return authorized
 
     agent_host = replace(
         host,

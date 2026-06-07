@@ -558,6 +558,13 @@ def _activate(
     if not isinstance(ref, int):
         return
     if kind == "pill":
+        # In agent mode, a pulse sync (network pull / bank re-auth browser launch) is a
+        # side effect an autonomously-driving agent shouldn't trigger by pressing ⏎ on a
+        # pill. Skip it and emit a note so the agent sees it was declined. The live human
+        # cockpit (agent_mode=False) is unchanged.
+        if host.agent_mode:
+            _safe_emit(host, r.model_note("Sync skipped", "pulse sync is disabled in agent mode"))
+            return
         host.activate_pill(state.pills[ref], screen, read_key)
         return
     _activate_need(host, state.needs[ref], screen, read_key)
@@ -809,7 +816,14 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
     confirm key. The confirm grammar matches the walk gate (M-2 / N-5): ENTER or
     ``y``/``Y`` confirms; anything else fails closed (the fix does NOT run). The
     result waits for a key; the caller's loop then re-builds so the probes
-    refresh."""
+    refresh.
+
+    In agent mode the fix is NOT run — a Doctor fix (sync pull / lock removal / browser
+    re-auth) is a side effect an autonomously-driving agent shouldn't trigger; a note is
+    emitted instead. The live human cockpit (agent_mode=False) is unchanged."""
+    if host.agent_mode:
+        _safe_emit(host, r.model_note("Fix skipped", f"{fix.title} is disabled in agent mode"))
+        return
     if fix.confirm:
         _safe_emit(host, r.model_doctor_confirm(fix))
         screen.update(r.render_doctor_confirm(fix))
