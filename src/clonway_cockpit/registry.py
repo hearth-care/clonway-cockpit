@@ -40,6 +40,10 @@ class WizardContext:
     # Optional observer the cockpit threads in so a walk's screens are emitted as
     # ScreenModels (for the agent driver). None = not emitting (console/test callers).
     on_screen: Callable[[ScreenModel], None] | None = None
+    # Agent dry-run: when True, the write gate (walk.confirm_apply) ALWAYS declines,
+    # so an agent driving over stdio (Host.agent_mode) can walk any flow end-to-end
+    # and see the review/blast-radius but never posts. Default False = unchanged.
+    dry_run: bool = False
 
 
 Handler = Callable[[WizardContext], None]

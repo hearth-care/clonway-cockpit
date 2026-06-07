@@ -192,6 +192,10 @@ class Host:
     # Default no-op so existing Host constructions are byte-identical and the live
     # cockpit pays nothing.
     on_screen: Callable[[ScreenModel], None] = field(default=lambda model: None)
+    # When True (set by agent.serve_stdio), the shell threads dry_run=True into every
+    # walk's WizardContext so confirm_apply declines — an agent driving the real
+    # cockpit can never post. Default False = the live human cockpit is unchanged.
+    agent_mode: bool = False
 
 
 def run_with_progress[T](
@@ -664,7 +668,7 @@ def _open_capability(
         return
     if spec.run is not None:
         ctx = host.build_walk_ctx(screen, read_key, focus=focus)
-        ctx = replace(ctx, on_screen=host.on_screen)
+        ctx = replace(ctx, on_screen=host.on_screen, dry_run=host.agent_mode)
         try:
             spec.run(ctx)
         except shellout.ShellOut:
