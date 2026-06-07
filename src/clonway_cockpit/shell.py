@@ -430,6 +430,7 @@ def _home(
         elif low == "r":
             pass  # explicit refresh — fall through to the re-capture below
         elif low == "?":
+            host.on_screen(r.model_help(state.help_lines))
             _show(screen, r.render_help(state.help_lines), read_key)
         elif low == "/":
             # Snapshot cursor before opening the filter (back returns here).

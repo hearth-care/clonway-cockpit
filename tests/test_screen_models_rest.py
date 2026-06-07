@@ -63,3 +63,29 @@ def test_capability_card_model_parity():
     assert m.meta["equivalent_cli"] == "xbook loans review"
     assert "xbook loans review" in txt
     assert m.actions == ["any"]
+
+
+# --- Task 3: help --------------------------------------------------------------
+
+
+def test_help_model_parity_default_lines():
+    m = render.model_help()
+    txt = _text(render.render_help())
+
+    assert m.kind == "help"
+    assert m.title == "Keys"
+    rows = m.regions[0].rows
+    assert rows, "help model has no rows"
+    for row in rows:
+        assert row.label in txt, f"help description {row.label!r} not rendered"
+        key = next(f.value for f in row.fields if f.label == "keys")
+        assert key in txt
+    assert m.actions == ["any"]
+
+
+def test_help_model_parity_worker_lines():
+    lines = (("⏎", "open worker"), ("r", "refresh"))
+    m = render.model_help(lines)
+    txt = _text(render.render_help(lines))
+    assert [row.label for row in m.regions[0].rows] == ["open worker", "refresh"]
+    assert "open worker" in txt

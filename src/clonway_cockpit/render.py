@@ -628,6 +628,20 @@ def render_note(title: str, detail: str) -> RenderableType:
     )
 
 
+# The default home help body (key, description) — shared by render_help and
+# model_help so the rendered help and its semantic twin can never drift.
+_DEFAULT_HELP_LINES: tuple[tuple[str, str], ...] = (
+    ("↑ ↓", "move the highlight"),
+    ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
+    ("⏎", "open the item · sync the selected pulse pill"),
+    ("1–9", "jump to a needs-you item"),
+    ("A–G", "open a toolkit shelf"),
+    ("/", "filter capabilities by name"),
+    ("r", "refresh the cockpit"),
+    ("q / esc", "back · quit"),
+)
+
+
 def render_help(
     help_lines: tuple[tuple[str, str], ...] | None = None,
 ) -> RenderableType:
@@ -636,20 +650,7 @@ def render_help(
     no dead "sync"; the real letter set. ``None`` → xbook's verbatim help, so the
     extracting worker is byte-identical. The chrome (title + border + return hint) is
     the same either way."""
-    rows = (
-        list(help_lines)
-        if help_lines is not None
-        else [
-            ("↑ ↓", "move the highlight"),
-            ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
-            ("⏎", "open the item · sync the selected pulse pill"),
-            ("1–9", "jump to a needs-you item"),
-            ("A–G", "open a toolkit shelf"),
-            ("/", "filter capabilities by name"),
-            ("r", "refresh the cockpit"),
-            ("q / esc", "back · quit"),
-        ]
-    )
+    rows = list(help_lines) if help_lines is not None else list(_DEFAULT_HELP_LINES)
     body = Text()
     for k, d in rows:
         body.append(f"  {k:<9}", style=_KEY_STYLE)
@@ -1295,4 +1296,23 @@ def model_capability_card(spec: CapabilitySpec) -> ScreenModel:
         regions=[MRegion("what_this_does", "what this does", text=spec.summary)],
         actions=["any"],
         meta={"equivalent_cli": spec.equivalent_cli, "summary": spec.summary},
+    )
+
+
+def model_help(
+    help_lines: tuple[tuple[str, str], ...] | None = None,
+) -> ScreenModel:
+    """The semantic twin of :func:`render_help`. ``help_lines`` (key, description)
+    pairs override the default body, mirroring ``render_help``; the default is the
+    shared ``_DEFAULT_HELP_LINES`` so the two can never drift."""
+    rows_src = list(help_lines) if help_lines is not None else list(_DEFAULT_HELP_LINES)
+    rows = [
+        MRow(id=f"help:{i}", label=desc, fields=[MField("keys", k)])
+        for i, (k, desc) in enumerate(rows_src)
+    ]
+    return ScreenModel(
+        kind="help",
+        title="Keys",
+        regions=[MRegion("help", "Keys", rows=rows)],
+        actions=["any"],
     )

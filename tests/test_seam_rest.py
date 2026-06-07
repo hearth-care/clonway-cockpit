@@ -73,3 +73,15 @@ def test_capability_card_emitted_for_reference_only_spec():
     cards = [m for m in stream if m.kind == "card"]
     assert cards, f"no card emitted; saw {_kinds(stream)}"
     assert cards[0].title == "Term loans"
+
+
+# --- Task 3: help emit ---------------------------------------------------------
+
+
+def test_help_emitted_on_question_key():
+    state = CockpitState(tenant_name="Clonway")
+    driver = CockpitDriver(_host(state), keys=["?", "x", "q"])
+    stream = driver.run()
+    helps = [m for m in stream if m.kind == "help"]
+    assert helps, f"no help emitted; saw {_kinds(stream)}"
+    assert helps[0].title == "Keys"
