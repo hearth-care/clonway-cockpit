@@ -11,6 +11,7 @@ domain screen. The domain screens themselves are supplied by each worker."""
 
 from __future__ import annotations
 
+import io
 import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -1544,8 +1545,12 @@ def model_staged_progress(
 def model_unstructured(renderable: RenderableType, *, title: str = "") -> ScreenModel:
     """Fallback model for a screen not yet migrated to a ``model_*`` twin: capture the
     rendered text into a prose region and flag it explicitly as not-yet-semantic, so
-    the driver still records a usable (if opaque) snapshot."""
-    con = Console(record=True, width=_PANEL_WIDTH)
+    the driver still records a usable (if opaque) snapshot.
+
+    ``file=io.StringIO()`` keeps ``con.print`` off the real process stdout — otherwise it
+    would write the Rich panel straight into the agent's JSON channel under serve_stdio
+    (it still records, so ``export_text`` is unaffected)."""
+    con = Console(record=True, width=_PANEL_WIDTH, file=io.StringIO())
     con.print(renderable)
     return ScreenModel(
         kind="unstructured",

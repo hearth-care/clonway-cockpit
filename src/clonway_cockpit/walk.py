@@ -449,9 +449,18 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     only reads the gate key. The ONLY place a walk may post to Xero.
 
     ``equivalent_cli`` is kept in the signature for API stability even though the
-    review screen renders it."""
+    review screen renders it. In agent mode (``ctx.dry_run``) the gate still reads the
+    key so the stdio cadence stays one-message-per-screen, then ALWAYS declines — an
+    agent can drive any walk end-to-end but never posts."""
     if ctx.read_key is not None:
         k = ctx.read_key()
+        if ctx.dry_run:
+            # Emit an observable so an agent can assert the gate was reached and held
+            # (the human render is unchanged — this frame only reaches an observer).
+            _emit(
+                ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"})
+            )
+            return False
         return k in (keys.ENTER, "a", "A")
     return ctx.confirm_fn(prompt)
 
