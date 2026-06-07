@@ -93,6 +93,8 @@ def test_agent_mode_threads_dry_run_into_a_driven_walk():
     )
     # Open shelf C (single spec → opens directly into the handler); the handler hits
     # the gate, presses "a", but dry_run declines → never posts. "q" quits.
-    CockpitDriver(host, keys=["c", "a", "q"]).run()
+    stream = CockpitDriver(host, keys=["c", "a", "q"]).run()
     clear_capabilities()
     assert posted == [], "agent-mode walk posted despite dry-run"
+    # the decline is observable: a walk.gate frame is emitted so an agent can assert it
+    assert any(m.kind == "walk.gate" and m.meta["status"] == "declined" for m in stream)
