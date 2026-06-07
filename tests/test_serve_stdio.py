@@ -112,3 +112,56 @@ def test_eof_unwinds_without_a_quit_message():
     serve_stdio(_host(state), stdin=io.StringIO(""), stdout=out)  # empty stdin = immediate EOF
     frames = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
     assert frames and frames[0]["kind"] == "home"
+
+
+# --- Task 5: gate-safety (the safety test) -------------------------------------
+
+
+def test_gate_safety_no_post_over_stdio():
+    from rich.console import Console
+
+    from clonway_cockpit.registry import BlastRadius, WizardContext
+    from clonway_cockpit.walk import confirm_apply
+
+    class _MockXero:
+        def __init__(self) -> None:
+            self.posts = 0
+
+        def post_batch(self) -> None:
+            self.posts += 1
+
+    client = _MockXero()
+
+    def handler(ctx) -> None:
+        if confirm_apply(ctx, equivalent_cli="xbook bills"):
+            ctx.client.post_batch()  # only reached if the gate confirms
+
+    def build_ctx(screen, read_key, *, focus=None):
+        return WizardContext(
+            state={},
+            client=client,
+            console=Console(),
+            input_fn=lambda prompt, default: "",
+            confirm_fn=lambda prompt: False,
+            present=screen.update,
+            read_key=read_key,
+            focus=focus,
+        )
+
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="sb",
+            shelf="C",
+            title="Schedule bills",
+            summary="s",
+            equivalent_cli="xbook bills",
+            run=handler,
+            blast_radius=BlastRadius(summary="posts a batch"),
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")
+    # Open shelf C (single spec → handler), press the apply key "a", then quit.
+    _drive(_host(state, build_walk_ctx=build_ctx), [{"key": "c"}, {"key": "a"}, {"key": "q"}])
+    clear_capabilities()
+    assert client.posts == 0, "walk posted to Xero despite agent dry-run gate"

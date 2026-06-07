@@ -70,3 +70,26 @@ The `ScreenModel` carries whatever the screen carries — it is NOT a sanitised 
 The observer is also best-effort by contract: `Host.on_screen` / `WizardContext.on_screen`
 are invoked inside `try/except` (`contextlib.suppress`) at every emit site, so a buggy or
 crashing observer (a recorder, the M2 pump) can never take down the human cockpit.
+
+## Subprocess protocol — `agent.serve_stdio` (M2)
+
+`agent.serve_stdio(host, *, stdin, stdout)` drives the real cockpit over line-delimited
+JSON, so a separate agent process can launch and drive it. It is a thin pump over the
+same `run_cockpit` core the in-process `CockpitDriver` uses.
+
+| Direction | Message | Effect |
+|-----------|---------|--------|
+| agent → app | `{"key": "<k>"}` | the next keypress (`up`/`down`/`enter`/`esc`/letters/digits/…) |
+| agent → app | `{"cmd": "snapshot"}` | re-emit the current `ScreenModel` (does not advance) |
+| agent → app | `{"cmd": "quit"}` / stdin EOF | unwind the cockpit |
+| app → agent | `ScreenModel.to_dict()` | emitted at every draw |
+| app → agent | `{"error": "<reason>"}` | bad JSON / non-object / unknown message; screen held |
+
+Cadence: under piped (non-tty) stdin the loop emits one frame per draw before each
+blocking read — request/response. Inert keys may not redraw (use `snapshot` to re-poll);
+animated `walk.progress` pushes frames unsolicited, so treat app→agent as a stream.
+
+**Safety:** `serve_stdio` runs in `Host.agent_mode`, which threads `dry_run=True` into
+every walk's `WizardContext`. `walk.confirm_apply` reads the gate key (keeping cadence)
+then always declines — an agent can drive any walk end-to-end and see the review and
+blast-radius, but **never posts**. The explicit apply-authorization handshake is M4.
