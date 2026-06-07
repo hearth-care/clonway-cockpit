@@ -186,3 +186,21 @@ def serve_stdio(
                 meta={"shellout": True},
             ).to_dict()
         )
+
+
+def serve_agent_stdio(
+    host: shell.Host,
+    *,
+    allow_apply: bool = False,
+    stdin=sys.stdin,  # noqa: ANN001
+    stdout=sys.stdout,  # noqa: ANN001
+) -> None:
+    """The worker-side one-liner a CLI ``--agent-stdio`` callback calls: serve the agent
+    protocol over stdin/stdout. Thin over :func:`serve_stdio` (which already forces
+    ``agent_mode=True`` and wires the guarded-apply handshake when ``allow_apply``).
+
+    Promoted into the framework so every consumer stops hand-rolling its own ``serve_agent``;
+    the worker-template generates a call to this. NOTE the host-rebuild recipe: if a worker's
+    ``_host()`` is re-invoked inside its own callbacks, build it agent-mode-aware (see
+    docs/agent-screen-model.md → 'Wiring a worker to the agent channel')."""
+    serve_stdio(host, stdin=stdin, stdout=stdout, allow_apply=allow_apply)
