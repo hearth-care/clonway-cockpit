@@ -14,6 +14,7 @@ action through it (no silent --confirm). ``make_walk_handler()`` returns a
 from __future__ import annotations
 
 import collections
+import contextlib
 import inspect
 import threading
 import time
@@ -46,6 +47,8 @@ def _run_animated[T](
     clock: Callable[[], float],
     sleep: Callable[[float], None],
     poll_cancel: Callable[[], bool] | None = None,
+    model_frame: Callable[[int], ScreenModel] | None = None,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Run ``fn`` in a daemon worker thread while animating via ``present``.
     ``render_frame(frame, elapsed)`` builds each frame. When ``pass_arg`` is True,
@@ -55,7 +58,12 @@ def _run_animated[T](
 
     When ``poll_cancel`` is supplied, it is called each tick (instead of
     ``sleep``); if it returns True the loop raises ``Cancelled`` immediately.
-    The daemon worker is abandoned on cancel — the caller returns to the cockpit."""
+    The daemon worker is abandoned on cancel — the caller returns to the cockpit.
+
+    When ``emit`` and ``model_frame`` are supplied, the screen's semantic
+    ``ScreenModel`` is published to ``emit`` — but deduped on everything except the
+    per-second ``elapsed`` tick, so a steady screen emits once and a stage/log change
+    emits exactly once (an agent gets one model per meaningful change, not per frame)."""
     holder: dict[str, object] = {}
 
     def _worker() -> None:
@@ -63,6 +71,24 @@ def _run_animated[T](
             holder["value"] = fn(worker_arg) if pass_arg else fn()
         except BaseException as e:  # noqa: BLE001 — captured and re-raised on the main thread
             holder["error"] = e
+
+    last_sig: str | None = None
+
+    def _maybe_emit(elapsed: int) -> None:
+        """Emit the progress model on SEMANTIC change only (ignoring the per-second
+        elapsed tick), best-effort. Captures ``last_sig`` via ``nonlocal``."""
+        nonlocal last_sig
+        if emit is None or model_frame is None:
+            return
+        model = model_frame(elapsed)
+        d = model.to_dict()
+        d["meta"] = {k: v for k, v in d["meta"].items() if k != "elapsed"}
+        sig = repr(d)
+        if sig != last_sig:
+            last_sig = sig
+            # Best-effort: the agent feed must never crash the progress run.
+            with contextlib.suppress(Exception):
+                emit(model)
 
     thread = threading.Thread(target=_worker, daemon=True)
     started = clock()
@@ -72,6 +98,7 @@ def _run_animated[T](
         frame = render.SPINNER_FRAMES[i % len(render.SPINNER_FRAMES)]
         elapsed = int(clock() - started)
         present(render_frame(frame, elapsed))
+        _maybe_emit(elapsed)
         i += 1
         thread.join(timeout=tick)
         if not thread.is_alive():
@@ -81,6 +108,11 @@ def _run_animated[T](
                 raise Cancelled
         else:
             sleep(tick)
+
+    # The worker can flip a final stage to done / append a last log line inside the
+    # last join window, AFTER the loop's emit. Emit once more (deduped) so the agent
+    # feed always carries the terminal snapshot, not a stale next-to-last one.
+    _maybe_emit(int(clock() - started))
 
     if "error" in holder:
         raise holder["error"]  # type: ignore[misc]
@@ -96,6 +128,7 @@ def animate_until_done[T](
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     log_lines: int = 5,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Run a blocking ``fn`` (a sync) in a worker thread while animating the
     screen via ``present`` (``screen.update`` for the cockpit, ``ctx.present``
@@ -145,6 +178,10 @@ def animate_until_done[T](
         tick=tick,
         clock=clock,
         sleep=sleep,
+        model_frame=lambda elapsed: render.model_sync_progress(
+            label, lines=tuple(buf), elapsed=elapsed
+        ),
+        emit=emit,
     )
 
 
@@ -160,6 +197,7 @@ def animate_staged[T](
     tick: float = _PROGRESS_TICK,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    emit: Callable[[ScreenModel], None] | None = None,
 ) -> T:
     """Like ``animate_until_done`` but renders a ticking STAGE CHECKLIST. ``fn`` is
     called with a :class:`StageReporter` (built from ``stages``) it drives as it
@@ -201,6 +239,14 @@ def animate_staged[T](
         clock=clock,
         sleep=sleep,
         poll_cancel=poll,
+        model_frame=lambda elapsed: render.model_staged_progress(
+            label,
+            reporter.snapshot(),
+            hint=hint,
+            elapsed=elapsed,
+            controls=controls,
+        ),
+        emit=emit,
     )
 
 
@@ -296,9 +342,12 @@ def _present(ctx: WizardContext, renderable: RenderableType) -> None:
 
 
 def _emit(ctx: WizardContext, model: ScreenModel) -> None:
-    """Publish a screen's semantic model to the cockpit observer, if one is bound."""
+    """Publish a screen's semantic model to the cockpit observer, if one is bound.
+    Best-effort: a worker/agent observer that raises must never crash a walk."""
     if ctx.on_screen is not None:
-        ctx.on_screen(model)
+        # Best-effort: an observer that raises must never crash a walk.
+        with contextlib.suppress(Exception):
+            ctx.on_screen(model)
 
 
 def _await(ctx: WizardContext) -> None:
@@ -373,6 +422,7 @@ def preflight(
                 # One-key confirm, then run the remedy and re-evaluate so the
                 # operator sees the row clear and continues from the same screen.
                 _present(ctx, render.render_remedy_confirm(remedy))
+                _emit(ctx, render.model_remedy_confirm(remedy))
                 if ctx.read_key() in (keys.ENTER, "y", "Y"):
                     remedy.action()
                     rechecked = recheck() if recheck is not None else preconditions
