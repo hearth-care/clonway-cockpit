@@ -684,6 +684,10 @@ def _open_capability(
             on_screen=host.on_screen,
             dry_run=host.agent_mode,
             authorize_apply=host.authorize_apply,
+            # WS-B: thread the capability identity so the write gate can hand an authorization
+            # policy a proposal it can decide on (key + money-movement class).
+            capability_key=spec.key,
+            capability_money_movement=spec.money_movement,
         )
         try:
             spec.run(ctx)

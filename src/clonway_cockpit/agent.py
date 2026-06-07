@@ -75,6 +75,7 @@ def serve_stdio(
     stdout=sys.stdout,  # noqa: ANN001
     allow_apply: bool = False,
     on_apply: Callable[[dict], None] | None = None,
+    policy: Callable[[dict], bool] | None = None,
 ) -> None:
     """Drive the real cockpit over line-delimited JSON on stdin/stdout — the
     subprocess transport an external agent process uses to launch + drive the
@@ -171,11 +172,30 @@ def serve_stdio(
                 on_apply(proposal)
         return authorized
 
+    def autonomous_authorize(proposal: dict) -> bool:
+        # WS-B: an injected authorization policy decides the gate WITHOUT a human round-trip
+        # (autonomous mode). on_apply still fires on an authorized apply, so audit is uniform
+        # across the human-handshake and policy paths.
+        authorized = bool(policy(proposal))  # type: ignore[misc]
+        if authorized and on_apply is not None:
+            with contextlib.suppress(Exception):
+                on_apply(proposal)
+        return authorized
+
+    # Gate authorizer precedence: an injected policy (autonomous) wins; else the token
+    # handshake (human-via-driver, allow_apply); else None (pure dry-run — unchanged default).
+    if policy is not None:
+        gate_authorizer: Callable[[dict], bool] | None = autonomous_authorize
+    elif allow_apply:
+        gate_authorizer = authorize_apply
+    else:
+        gate_authorizer = None
+
     agent_host = replace(
         host,
         on_screen=on_screen,
         agent_mode=True,
-        authorize_apply=authorize_apply if allow_apply else None,
+        authorize_apply=gate_authorizer,
     )
     try:
         shell.run_cockpit(agent_host, read_key=read_key, screen=_NullScreen())
@@ -200,6 +220,8 @@ def serve_agent_stdio(
     allow_apply: bool = False,
     stdin=sys.stdin,  # noqa: ANN001
     stdout=sys.stdout,  # noqa: ANN001
+    on_apply: Callable[[dict], None] | None = None,
+    policy: Callable[[dict], bool] | None = None,
 ) -> None:
     """The worker-side one-liner a CLI ``--agent-stdio`` callback calls: serve the agent
     protocol over stdin/stdout. Thin over :func:`serve_stdio` (which already forces
@@ -208,8 +230,20 @@ def serve_agent_stdio(
     Promoted into the framework so every consumer stops hand-rolling its own ``serve_agent``;
     the worker-template generates a call to this. NOTE the host-rebuild recipe: if a worker's
     ``_host()`` is re-invoked inside its own callbacks, build it agent-mode-aware (see
-    docs/agent-screen-model.md → 'Wiring a worker to the agent channel')."""
-    serve_stdio(host, stdin=stdin, stdout=stdout, allow_apply=allow_apply)
+    docs/agent-screen-model.md → 'Wiring a worker to the agent channel').
+
+    ``policy`` (WS-B) injects an autonomous authorization policy (e.g.
+    ``clonway_cockpit.approval.AllowlistPolicy``) used at the write gate INSTEAD of the human
+    token-handshake — the agent posts the allowlisted, non-money-movement set without a human.
+    ``on_apply`` fires on every authorized apply (audit), under either path."""
+    serve_stdio(
+        host,
+        stdin=stdin,
+        stdout=stdout,
+        allow_apply=allow_apply,
+        on_apply=on_apply,
+        policy=policy,
+    )
 
 
 class CockpitClosed(Exception):

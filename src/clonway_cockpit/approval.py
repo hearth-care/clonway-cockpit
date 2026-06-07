@@ -35,6 +35,28 @@ def approve_all(_proposal: Mapping[str, object]) -> bool:
     return True
 
 
+class AllowlistPolicy:
+    """Auto-approve a write ONLY if its capability is on an operator-enabled allowlist AND it
+    does not move money — WS-B's autonomous policy (the agent posts the reversible bookkeeping
+    set without a human; the operator audits after).
+
+    Two locks: (1) the capability key must be in ``allowlist`` — the operator's deliberate
+    opt-in per capability; an EMPTY allowlist authorizes NOTHING, so this is safe by default.
+    (2) a ``money_movement`` proposal is REFUSED even if its key is allowlisted — the structural
+    money-direction line cannot be opted out of by mistake. A proposal with no capability key
+    (an untagged/legacy gate) is never auto-approved."""
+
+    def __init__(self, allowlist, *, label: str = "") -> None:  # noqa: ANN001
+        self.allowlist = frozenset(allowlist)
+        self.label = label
+
+    def __call__(self, proposal: Mapping[str, object]) -> bool:
+        if proposal.get("money_movement"):
+            return False  # structural exclusion — never auto-approve a money-direction write
+        key = proposal.get("capability_key")
+        return bool(key) and key in self.allowlist
+
+
 def prompt_human(
     proposal: Mapping[str, object],
     *,

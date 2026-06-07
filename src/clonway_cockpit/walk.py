@@ -494,7 +494,15 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
                     },
                 ),
             )
-            if ctx.authorize_apply({"token": token, "equivalent_cli": equivalent_cli}):
+            proposal = {
+                "token": token,
+                "equivalent_cli": equivalent_cli,
+                # WS-B: the apply identity so an authorization policy can decide (allowlist +
+                # the structural money-direction exclusion). Threaded via shell._open_capability.
+                "capability_key": ctx.capability_key,
+                "money_movement": ctx.capability_money_movement,
+            }
+            if ctx.authorize_apply(proposal):
                 _emit(
                     ctx, ScreenModel(kind="walk.gate", meta={"status": "applied", "token": token})
                 )
