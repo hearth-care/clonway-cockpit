@@ -1125,6 +1125,9 @@ def model_cockpit_screen(
             id=f"pill:{i}",
             label=p.label,
             fields=[
+                # ``source`` is the stable sync-source key ("xero"/"lloyds") — exposed
+                # so an agent keys on identity, not the positional ``pill:<i>`` order.
+                MField("source", p.source or "", "id"),
                 MField("status", p.status, "status"),
                 MField("detail", p.detail),
                 MField("level", p.level, "status"),
@@ -1137,7 +1140,14 @@ def model_cockpit_screen(
         MRow(
             id=f"need:{i}",
             label=n.title,
-            fields=[MField("detail", n.detail), MField("level", n.level, "status")],
+            fields=[
+                MField("detail", n.detail),
+                MField("level", n.level, "status"),
+                # ``capability_key`` tells an agent whether ⏎ launches a walk (non-empty)
+                # or just shows a note (empty); ``focus`` is the subset it opens scoped to.
+                MField("capability_key", n.capability_key or "", "id"),
+                MField("focus", n.focus or "", "id"),
+            ],
             selected=sel_id == f"need:{i}",
         )
         for i, n in enumerate(state.needs)
@@ -1195,8 +1205,10 @@ def model_menu(
     ]
     rows.append(MRow(id="back", label="Back", selected=selected == len(options)))
     sel_id: str | None = None
-    if selected is not None:
-        sel_id = "back" if selected == len(options) else f"option:{options[selected][0]}"
+    if selected == len(options):
+        sel_id = "back"
+    elif selected is not None and 0 <= selected < len(options):
+        sel_id = f"option:{options[selected][0]}"
     return ScreenModel(
         kind="shelf_menu",
         title=title,
@@ -1356,21 +1368,19 @@ def model_doctor(
     fixes (those with a ``run``), matching the render. The read-only "what you reach
     for" usage block is telemetry display, not navigable structure, so it is not
     semanticised here (its presence is flagged in ``meta``)."""
-    probe_rows = [
-        MRow(
-            id=f"probe:{i}",
-            label=p.name,
-            fields=[MField("level", p.level, "status"), MField("detail", p.detail)],
-        )
-        for i, p in enumerate(probes)
-    ]
+    # Build the fixes first so we can give each probe a ``fix_id`` cross-reference —
+    # the ``Probe.fix`` relationship the render shows by adjacency but the flat lists
+    # would otherwise drop. Match by object identity (fixes_for returns the probes'
+    # own Fix objects); a worker that rebuilds them simply gets no link (graceful).
     fix_rows: list[MRow] = []
+    fix_id_by_obj: dict[int, str] = {}
     run_i = 0
     for i, f in enumerate(fixes):
         if f.run is not None:
+            row_id = f"fix:{run_i}"
             fix_rows.append(
                 MRow(
-                    id=f"fix:{run_i}",
+                    id=row_id,
                     label=f.title,
                     fields=[MField("cmd", f.cmd)],
                     selected=selected == run_i,
@@ -1379,19 +1389,33 @@ def model_doctor(
             )
             run_i += 1
         else:
+            row_id = f"fix:display:{i}"
             fix_rows.append(
                 MRow(
-                    id=f"fix:display:{i}",
+                    id=row_id,
                     label=f.title,
                     fields=[MField("cmd", f.cmd), MField("note", f.note)],
                     enabled=False,
                 )
             )
+        fix_id_by_obj[id(f)] = row_id
+
+    def _probe_fields(p: Probe) -> list[MField]:
+        fields = [MField("level", p.level, "status"), MField("detail", p.detail)]
+        link = fix_id_by_obj.get(id(p.fix)) if p.fix is not None else None
+        if link is not None:
+            fields.append(MField("fix_id", link, "id"))
+        return fields
+
+    probe_rows = [
+        MRow(id=f"probe:{i}", label=p.name, fields=_probe_fields(p)) for i, p in enumerate(probes)
+    ]
     warns = sum(1 for p in probes if p.level == "warn")
     errs = sum(1 for p in probes if p.level == "error")
     if run_i > 0:
         actions = ["up", "down", "enter", "q"] + [str(n + 1) for n in range(run_i)]
-        sel_id = f"fix:{selected}" if selected is not None else None
+        # Clamp to a runnable fix that exists (selected indexes RUNNABLE fixes).
+        sel_id = f"fix:{selected}" if selected is not None and 0 <= selected < run_i else None
     else:
         actions = ["q"]
         sel_id = None
@@ -1436,7 +1460,10 @@ def model_filter(
         )
         for i, s in enumerate(shown)
     ]
-    sel_id = f"match:{selected}" if selected is not None and shown else None
+    # Only point selection at a row that is actually shown — the render caps the list
+    # at 9 and shows NO cursor for an off-screen ``selected``, so a model that minted
+    # ``match:<selected>`` past the cap would be a phantom id (parity break).
+    sel_id = f"match:{selected}" if selected is not None and 0 <= selected < len(shown) else None
     return ScreenModel(
         kind="filter",
         title=title or "Find a tool",

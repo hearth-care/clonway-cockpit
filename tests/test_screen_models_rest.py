@@ -265,3 +265,70 @@ def test_unstructured_model_carries_rendered_text():
     prose = next(reg for reg in m.regions if reg.role == "prose")
     assert "run xbook init first" in (prose.text or "")
     assert m.actions == ["any"]
+
+
+# --- Audit fix #2/#7: selection ids clamped to the shown rows ------------------
+
+
+def test_filter_model_selection_clamped_to_shown_rows():
+    # >9 matches: render caps the list at 9 and shows no cursor for an off-screen
+    # ``selected``; the model must not mint a phantom ``match:10``.
+    matches = [_M(f"cap {i}", "s") for i in range(12)]
+    m = render.model_filter("c", matches, selected=10)
+    assert len(m.regions[0].rows) == 9
+    assert m.selection is None
+    # in-range selection still resolves
+    assert render.model_filter("c", matches, selected=3).selection == "match:3"
+
+
+def test_doctor_model_selection_clamped_to_runnable():
+    from clonway_cockpit.doctor import Fix, Probe
+
+    probes = [Probe("p", "ok", "d", None)]
+    fixes = [Fix(title="Fix A", cmd="cmd", run=lambda: "x")]  # one runnable fix
+    assert render.model_doctor(probes=probes, fixes=fixes, selected=5).selection is None
+    assert render.model_doctor(probes=probes, fixes=fixes, selected=0).selection == "fix:0"
+
+
+def test_menu_model_selection_clamped():
+    options = [("1", "A", "s")]
+    assert render.model_menu("X", options, selected=9).selection is None
+    assert render.model_menu("X", options, selected=-1).selection is None
+    assert render.model_menu("X", options, selected=1).selection == "back"  # == len(options)
+
+
+# --- Audit fix #5/#6: home model exposes pill source + need capability_key -----
+
+
+def test_home_model_exposes_pill_source_and_need_capability():
+    from clonway_cockpit.state import CockpitState, NeedsItem, Pill
+
+    state = CockpitState(
+        tenant_name="Clonway",
+        pills=(Pill("Xero", "synced", "06:45", "ok", "xero"),),
+        needs=(
+            NeedsItem("Bills overdue", "2 bills", "warn", "schedule-bills", focus="overdue"),
+            NeedsItem("Just a note", "fyi", "warn", ""),
+        ),
+    )
+    m = render.model_cockpit_screen(state, [], selection=None, extra_regions=None)
+    pill = next(r for reg in m.regions if reg.role == "pulse" for r in reg.rows)
+    assert any(f.label == "source" and f.value == "xero" for f in pill.fields)
+    needs = [r for reg in m.regions if reg.role == "needs" for r in reg.rows]
+    assert any(f.label == "capability_key" and f.value == "schedule-bills" for f in needs[0].fields)
+    assert any(f.label == "focus" and f.value == "overdue" for f in needs[0].fields)
+    # a note-only need carries an empty capability_key (the agent's discriminator)
+    assert any(f.label == "capability_key" and f.value == "" for f in needs[1].fields)
+
+
+# --- Audit fix #9: doctor probe carries a fix_id cross-reference ---------------
+
+
+def test_doctor_model_links_probe_to_its_fix():
+    from clonway_cockpit.doctor import Fix, Probe
+
+    fix = Fix(title="Remove lock", cmd="xbook unlock", run=lambda: "ok")
+    probes = [Probe("Apply lock", "warn", "stale", fix)]
+    m = render.model_doctor(probes=probes, fixes=[fix], selected=0)
+    probe_row = next(reg for reg in m.regions if reg.role == "probes").rows[0]
+    assert any(f.label == "fix_id" and f.value == "fix:0" for f in probe_row.fields)
