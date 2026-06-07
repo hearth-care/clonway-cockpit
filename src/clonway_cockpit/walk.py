@@ -31,6 +31,24 @@ from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
 _PROGRESS_TICK = 0.12
 
+# Per-process monotonic nonce for the M4 apply-authorization gate. Each gate gets a
+# fresh ``gate-<n>`` token, so a stale/duplicated apply (a previous gate's token) can
+# never fire. Not cryptographic — the human-sign-off policy is the agent's; the token's
+# framework job is per-gate uniqueness (no accidental replay).
+_gate_seq = 0
+
+
+def _next_gate_token() -> str:
+    global _gate_seq
+    _gate_seq += 1
+    return f"gate-{_gate_seq}"
+
+
+def _reset_gate_seq() -> None:
+    """Reset the gate nonce (tests: makes the next gate ``gate-1``)."""
+    global _gate_seq
+    _gate_seq = 0
+
 
 class Cancelled(Exception):
     """The operator pressed q/esc to abort an animated operation."""
@@ -449,20 +467,51 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     only reads the gate key. The ONLY place a walk may post to Xero.
 
     ``equivalent_cli`` is kept in the signature for API stability even though the
-    review screen renders it. In agent mode (``ctx.dry_run``) the gate still reads the
-    key so the stdio cadence stays one-message-per-screen, then ALWAYS declines — an
-    agent can drive any walk end-to-end but never posts."""
-    if ctx.read_key is not None:
-        k = ctx.read_key()
-        if ctx.dry_run:
-            # Emit an observable so an agent can assert the gate was reached and held
-            # (the human render is unchanged — this frame only reaches an observer).
+    review screen renders it.
+
+    Agent mode (``ctx.dry_run``):
+    * **guarded apply** (``ctx.authorize_apply`` set, M4) — mint a per-gate token, emit
+      ``walk.gate{gate:"awaiting_apply",token,equivalent_cli}``, and post ONLY if the
+      authorizer returns True for an explicit ``{"apply":true,"token":<token>}``. Emits
+      an ``applied``/``declined`` frame as the on-the-wire audit.
+    * **pure dry-run** (default) — read one message for cadence, emit ``declined`` and
+      never post. An agent drives any walk end-to-end but cannot write."""
+    if ctx.read_key is None:
+        return ctx.confirm_fn(prompt)
+    if ctx.dry_run:
+        if ctx.authorize_apply is not None:
+            token = _next_gate_token()
             _emit(
-                ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"})
+                ctx,
+                ScreenModel(
+                    kind="walk.gate",
+                    meta={
+                        "gate": "awaiting_apply",
+                        "token": token,
+                        "equivalent_cli": equivalent_cli,
+                    },
+                ),
+            )
+            if ctx.authorize_apply({"token": token, "equivalent_cli": equivalent_cli}):
+                _emit(
+                    ctx, ScreenModel(kind="walk.gate", meta={"status": "applied", "token": token})
+                )
+                return True
+            _emit(
+                ctx,
+                ScreenModel(
+                    kind="walk.gate",
+                    meta={"status": "declined", "reason": "not_authorized", "token": token},
+                ),
             )
             return False
-        return k in (keys.ENTER, "a", "A")
-    return ctx.confirm_fn(prompt)
+        # Pure dry-run: read one message for cadence, then decline. Emit an observable
+        # so an agent can assert the gate was reached and held.
+        ctx.read_key()
+        _emit(ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"}))
+        return False
+    k = ctx.read_key()
+    return k in (keys.ENTER, "a", "A")
 
 
 def run_walk(

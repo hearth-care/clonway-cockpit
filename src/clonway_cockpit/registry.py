@@ -44,6 +44,12 @@ class WizardContext:
     # so an agent driving over stdio (Host.agent_mode) can walk any flow end-to-end
     # and see the review/blast-radius but never posts. Default False = unchanged.
     dry_run: bool = False
+    # M4 guarded apply (opt-in): when set, the write gate offers a token handshake
+    # instead of a blanket decline. Given {"token", "equivalent_cli"} it returns True
+    # iff an authorized {"apply":true,"token":<token>} was received (the stdio pump
+    # provides it under serve_stdio(allow_apply=True)). None = no guarded apply =
+    # pure dry-run. Only consulted when ``dry_run`` is True.
+    authorize_apply: Callable[[dict], bool] | None = None
 
 
 Handler = Callable[[WizardContext], None]
