@@ -35,3 +35,31 @@ def test_prompt_human_writes_to_given_stream_not_stdout(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""  # nothing leaked to stdout (the JSON channel stays clean)
     assert "Apply:" in out.getvalue()
+
+
+# --- WS-B: AllowlistPolicy (autonomous, money-direction excluded) ------------
+
+
+def test_allowlist_policy_approves_allowlisted_reversible():
+    p = approval.AllowlistPolicy({"schedule-bills"})
+    assert p({"capability_key": "schedule-bills", "money_movement": False}) is True
+
+
+def test_allowlist_policy_refuses_capability_not_in_allowlist():
+    p = approval.AllowlistPolicy({"schedule-bills"})
+    assert p({"capability_key": "reconcile-settle", "money_movement": False}) is False
+
+
+def test_allowlist_policy_refuses_money_movement_even_if_allowlisted():
+    p = approval.AllowlistPolicy({"pay-supplier"})
+    # allowlisted by key, but money_movement → the structural line refuses it
+    assert p({"capability_key": "pay-supplier", "money_movement": True}) is False
+
+
+def test_allowlist_policy_refuses_missing_key():
+    assert approval.AllowlistPolicy({"x"})({"money_movement": False}) is False
+
+
+def test_empty_allowlist_authorizes_nothing():
+    p = approval.AllowlistPolicy(set())
+    assert p({"capability_key": "schedule-bills"}) is False

@@ -50,6 +50,12 @@ class WizardContext:
     # provides it under serve_stdio(allow_apply=True)). None = no guarded apply =
     # pure dry-run. Only consulted when ``dry_run`` is True.
     authorize_apply: Callable[[dict], bool] | None = None
+    # WS-B autonomous-policy context: the identity of the capability whose walk is running,
+    # threaded by shell._open_capability so the write gate can hand an authorization policy a
+    # proposal it can DECIDE on (capability key + whether it moves money) — not just a token.
+    # Defaults keep every existing WizardContext construction unchanged.
+    capability_key: str | None = None
+    capability_money_movement: bool = False
 
 
 Handler = Callable[[WizardContext], None]
@@ -80,6 +86,11 @@ class CapabilitySpec:
     run: Handler | None = None
     blast_radius: BlastRadius | None = None
     beta: bool = False
+    # WS-B: does this capability MOVE MONEY or change a payment destination (vs write a
+    # reversible bookkeeping record)? A money_movement capability can NEVER be auto-approved by
+    # an AllowlistPolicy, even if mistakenly allowlisted — the structural money-direction line.
+    # Default False = reversible record (the safe, auto-approvable class).
+    money_movement: bool = False
 
 
 _CAPABILITIES: dict[str, CapabilitySpec] = {}
