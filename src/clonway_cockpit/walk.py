@@ -500,7 +500,8 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
             _emit(
                 ctx,
                 ScreenModel(
-                    kind="walk.gate", meta={"status": "declined", "reason": "not_authorized"}
+                    kind="walk.gate",
+                    meta={"status": "declined", "reason": "not_authorized", "token": token},
                 ),
             )
             return False

@@ -108,5 +108,24 @@ This guarantee covers the framework's own walk path. It does **not** cover:
   agent mode (read-only / local by framework contract, not Xero posts). Gating them behind
   `agent_mode` is a future consideration.
 
-The explicit apply-authorization handshake (turning the blanket decline into reviewable,
-token-gated approval) is M4.
+## Guarded apply — the M4 authorization handshake (opt-in)
+
+`serve_stdio(host, *, allow_apply=False)`. With `allow_apply=True`, a write gate stops
+being a blanket decline and offers a token handshake:
+
+| Step | Frame / message |
+|------|-----------------|
+| app → agent | `{"kind":"walk.gate","meta":{"gate":"awaiting_apply","token":"<nonce>","equivalent_cli":"…"}}` |
+| agent → app | `{"apply":true,"token":"<nonce>"}` — the ONLY input that authorizes |
+| app → agent | `{"kind":"walk.gate","meta":{"status":"applied","token":"<nonce>"}}` → the walk posts |
+| app → agent | `{"kind":"walk.gate","meta":{"status":"declined",…}}` → anything else (wrong/missing/stale token, `apply` not literally `true`, a plain key, EOF) — no post |
+
+- The `token` is a fresh per-gate monotonic nonce, so a stale/duplicated apply (a previous
+  gate's token) can never fire. The agent reads it from the `awaiting_apply` frame and is
+  expected to route the proposal up for **human sign-off** before replying — the framework
+  enforces the gate-matched handshake; the human policy is the agent's.
+- **Default is unchanged dry-run.** With `allow_apply=False` (the default) there is no
+  authorizer, so the gate emits `walk.gate{declined,dry_run}` and **never posts**, whatever
+  the agent sends. Guarded apply is strictly opt-in.
+- The `awaiting_apply` / `applied` / `declined` frames are the on-the-wire audit; an
+  authoritative worker-side `obs` log of applied gates is a follow-on.
