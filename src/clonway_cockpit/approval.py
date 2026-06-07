@@ -40,21 +40,41 @@ class AllowlistPolicy:
     does not move money — WS-B's autonomous policy (the agent posts the reversible bookkeeping
     set without a human; the operator audits after).
 
-    Two locks: (1) the capability key must be in ``allowlist`` — the operator's deliberate
-    opt-in per capability; an EMPTY allowlist authorizes NOTHING, so this is safe by default.
-    (2) a ``money_movement`` proposal is REFUSED even if its key is allowlisted — the structural
-    money-direction line cannot be opted out of by mistake. A proposal with no capability key
-    (an untagged/legacy gate) is never auto-approved."""
+    Locks: (1) the capability key must be in ``allowlist`` — the operator's deliberate opt-in
+    per capability; an EMPTY allowlist authorizes NOTHING, so this is safe by default. (2) a
+    ``money_movement`` proposal is REFUSED even if its key is allowlisted — the structural
+    money-direction line cannot be opted out of by mistake. (3) ``max_applies`` caps the number
+    of autonomous applies in one session, so a runaway can't post an unbounded batch before a
+    human sees it (the scale checkpoint). A proposal with no capability key (untagged/legacy
+    gate) is never auto-approved."""
 
-    def __init__(self, allowlist, *, label: str = "") -> None:  # noqa: ANN001
+    def __init__(
+        self,
+        allowlist,  # noqa: ANN001
+        *,
+        label: str = "",
+        max_applies: int | None = None,
+    ) -> None:
         self.allowlist = frozenset(allowlist)
         self.label = label
+        self.max_applies = max_applies
+        self._applied = 0
 
     def __call__(self, proposal: Mapping[str, object]) -> bool:
-        if proposal.get("money_movement"):
-            return False  # structural exclusion — never auto-approve a money-direction write
+        # Structural money-direction exclusion, FAIL-SAFE: a capability is eligible only if
+        # money_movement is EXPLICITLY False (the real threaded proposal is always a bool).
+        # Anything else — True, or a malformed truthy/falsy non-False value (`[]`,`{}`,`5`,`None`)
+        # from an external/crafted proposal — is refused rather than slipping through as "not money".
+        if proposal.get("money_movement", False) is not False:
+            return False
         key = proposal.get("capability_key")
-        return bool(key) and key in self.allowlist
+        if not (bool(key) and key in self.allowlist):
+            return False
+        # Scale checkpoint: refuse once the per-session apply cap is reached.
+        if self.max_applies is not None and self._applied >= self.max_applies:
+            return False
+        self._applied += 1
+        return True
 
 
 def prompt_human(

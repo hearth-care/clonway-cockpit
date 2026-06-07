@@ -115,3 +115,23 @@ def test_default_drive_is_the_framework_driver():
     assert (
         conv._drive is conversation._drive_argv
     )  # defaults to the framework's CockpitClient driver
+
+
+# --- FBA hardening: fail-safe trust default + honest empty-drive -------------
+
+
+def test_unmarked_message_defaults_to_quoted_and_is_never_executed():
+    # B1: the fail-safe default — a Message with no explicit source is QUOTED, not OPERATOR.
+    calls: list = []
+    conv = _conv(router=lambda m: Plan("xbook", ("c",), "x"), drive=_fake_drive(calls, []))
+    reply = conv.handle(Message("draft this week's bills"))  # NO source given
+    assert reply.acted is False
+    assert calls == []  # an unmarked/forwarded message can never drive a worker
+
+
+def test_operator_message_with_empty_drive_reports_not_acted():
+    # B3: a worker that never paints a frame → honest "couldn't reach", not a false "Drove ...".
+    conv = _conv(router=lambda m: Plan("xbook", ("c",), "draft"), drive=_fake_drive([], []))
+    reply = conv.handle(Message("go", source=OPERATOR))
+    assert reply.acted is False
+    assert "could not reach" in reply.text.lower()
