@@ -55,6 +55,36 @@ stream = driver.run()
 assert any(s.kind == "walk.preflight" for s in stream)
 ```
 
+## Driving over a subprocess: `CockpitClient`
+
+`CockpitDriver` drives an **in-process** host (tests, scripted verification). To drive a
+**real worker as a separate process** — the production path the orchestrator and an agent
+use — `serve_stdio` (served side) has a peer, `CockpitClient` (driving side):
+
+```python
+from clonway_cockpit.agent import CockpitClient
+
+argv = ["uv", "run", "--project", "/…/Auto-Bookkeeper", "xbook", "--agent-stdio"]
+with CockpitClient.spawn(argv) as c:
+    home = c.read_home()         # first painted frame (dict; carries schema_version)
+    frame = c.press("c")         # send {"key":"c"}, return the next frame
+    snap = c.snapshot()          # re-request the current screen
+    # at an awaiting_apply gate, route the proposal to a human before echoing the token:
+    #   c.apply(frame["meta"]["token"], approve=ask_human)  # approve()->bool; never auto-approves
+    # c.quit() runs on context exit (escalates terminate->kill so a child is never orphaned)
+```
+
+- `spawn(argv)` launches a subprocess; `over_streams(stdin=, stdout=)` wraps any reader/writer
+  pair (the in-process test transport, or a custom one).
+- A background reader thread pumps the emit-driven frame stream onto a queue; `read_home` /
+  `press` / `snapshot` / `apply` / `drain` / `quit` read from it. `drain()` collects the extra
+  frames an action emits before the cockpit blocks for input (e.g. `applied` + the home redraw).
+- `apply(token, *, approve)` is the **human-sign-off seam**: it sends the apply message ONLY
+  if `approve(proposal)` returns True; otherwise it declines. It never auto-approves.
+- The orchestrator wraps this in `xops.drive` (resolve a roster codename → argv → drive),
+  routing the gate to a real approval queue. The `drive-cockpit` skill is the operational
+  recipe for a session/agent.
+
 ## Scope
 
 M1 + M1-rest cover every framework primitive: home, shelf menu, walk preflight/result,

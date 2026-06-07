@@ -7,12 +7,68 @@ capability registry (`CapabilitySpec` / `WizardContext` / `BlastRadius`), the
 render primitives that define the cockpit's locked visual language
 (header / pulse / needs-you / toolkit / walk / doctor / usage chrome), the raw
 single-keypress reader, local usage telemetry, the shell-out mechanism, the
-forward-looking `Signal` model, and the shared best-effort Signal emitter.
+forward-looking `Signal` model and emitter — **and the agent-navigability layer
+that makes every cockpit drivable by an AI agent over the same code path a human
+uses.**
 
-Workers (xbook, and future siblings) depend on this package and supply their own
-capabilities, probes, and domain screens. The only runtime dependency is
+Workers (xbook, xhr, …) depend on this package and supply their own capabilities,
+probes, and domain screens. The only runtime dependency is
 [`rich`](https://github.com/Textualize/rich); the package never imports any
 worker — it is the substrate they build on, not the other way round.
+
+## Agent-navigable by construction
+
+Every Clonway worker is **one binary serving two audiences** — a human TUI *and*
+an agent-drivable surface — over the **same render loop, same code path, same
+write gate**. There is no second implementation and no distinction between a human
+operating a worker and an agent operating it. This is a structural property of the
+framework, enforced in CI, inherited by every worker — not a per-worker add-on.
+
+**The principle: one screen, two projections.**
+A cockpit screen is described once. The human sees Rich renderables (`render_*`);
+an agent reads a JSON `ScreenModel` (`model_*`) built from the same inputs. They
+cannot drift, because the build fails when they do.
+
+```
+            ┌───────────────────────── one screen ─────────────────────────┐
+ inputs ──▶ │  render_foo(...) → Rich pixels (human)                        │
+            │  model_foo(...)  → ScreenModel.to_dict() → JSON line (agent)  │
+            └───────────────────────────────────────────────────────────────┘
+                       ▲ parity + drive-clean gate keeps these in lockstep
+```
+
+**The pieces (all in this package):**
+
+| Concern | What | Where |
+|---|---|---|
+| The model | `ScreenModel` / `Region` / `Row` / `Field`, `to_dict()` with `schema_version` | `model.py` |
+| The screens | `render_*` (human) + `model_*` (agent) twins | `render.py` |
+| The gate | `assert_render_model_parity` (static: every page-framing `render_*` has a `model_*`) + `assert_drives_clean` (dynamic: drive the real loop, no screen reaches the agent as `unstructured`) | `contract.py` |
+| The channel — served | `serve_stdio` / `serve_agent_stdio` — pump the cockpit over line-delimited JSON on stdin/stdout (`<worker> --agent-stdio`) | `agent.py` |
+| The channel — driven | `CockpitClient` (subprocess peer) + `CockpitDriver` (in-process) — launch and drive a cockpit, read frames | `agent.py` |
+| The write gate | `confirm_apply` — agent mode is **dry-run by default**; posting requires the opt-in guarded-apply token handshake | `walk.py` |
+
+**The money gate.** An agent can navigate any flow but **cannot post**. In agent
+mode every walk's write gate is dry-run. Posting requires *two* locks: the worker
+launched with `--allow-apply`, **and** an explicit `{"apply":true,"token":<per-gate
+nonce>}` echoed back at the `awaiting_apply` frame. Anything else declines; the
+nonce defeats replay. The orchestrator routes that decision to a human approver
+(`approve` callback) and never auto-approves.
+
+**How it's enforced (why it stays true):** the gate (`contract.py`) ships *from*
+this framework and is *imported* by each worker's CI (not hand-copied), so a
+framework bump propagates the discipline fleet-wide via the pinned-rev model. A
+screen with no model fails the build; a model that never emits on a real path fails
+`assert_drives_clean`. New workers inherit the whole thing from the template.
+
+**Read next:**
+- [docs/agent-screen-model.md](docs/agent-screen-model.md) — the wire protocol, the
+  `ScreenModel` contract, the `Row.id` table, the guarded-apply handshake, protocol
+  versioning, and how to wire a worker to the agent channel.
+- The `drive-cockpit` skill — the operational recipe for a session/agent to launch
+  and drive any worker (read frames, route the write gate to a human).
+- Auto-Orchestrator `docs/agent-driving.md` — how the orchestrator drives the fleet
+  via `CockpitClient` (`xops.drive`).
 
 ## Layout
 
@@ -20,32 +76,33 @@ worker — it is the substrate they build on, not the other way round.
 src/clonway_cockpit/
   keys.py        prompts.py     registry.py    state.py
   doctor.py      render.py      walk.py        usage.py    shellout.py
-  signals/model.py   signals/rank.py   signals/emit.py
+  model.py       contract.py    agent.py       obs.py      # the agent-navigability layer
+  signals/model.py   signals/rank.py   signals/emit.py   signals/horizon.py
 ```
 
-Adding a new worker to the Fleet Signal layer? See
-[docs/onboarding-a-worker.md](docs/onboarding-a-worker.md).
+- `model.py` — the `ScreenModel` contract + `SCHEMA_VERSION`.
+- `contract.py` — the shippable parity + drive-clean gate workers import in CI.
+- `agent.py` — `serve_stdio` / `serve_agent_stdio` (served side), `CockpitClient` /
+  `CockpitDriver` (driving side).
 
-## Scaffold a new worker (the template)
+## Onboarding & scaffolding
 
-`worker-template/` + `copier.yml` are a [copier](https://copier.readthedocs.io/)
-template that generates a new fleet worker born with a working cockpit, a
-flag-guarded Signal emit path, a **mandatory** `@scan_horizon` stub, telemetry,
-CI, and the single write-gate + draft-never-send safety posture — out of the
-box (S8/C6). The template lives in this repo (no repo proliferation); copier
-copies fine from this local path or the Git URL.
+- **Add a worker to the Fleet Signal layer:** [docs/onboarding-a-worker.md](docs/onboarding-a-worker.md)
+  (includes the inherited agent channel — you wire ~nothing).
+- **Scaffold a brand-new worker:** `worker-template/` + `copier.yml` generate a
+  worker **born agent-navigable** — a working cockpit, the `--agent-stdio` channel,
+  the inherited parity + drive-clean gate, a flag-guarded Signal emit path, a
+  mandatory `@scan_horizon` stub, telemetry, CI, a `CLAUDE.md` carrying the
+  convention, and the single write-gate safety posture — out of the box (S8/C6).
 
 ```sh
 copier copy gh:hearth-care/clonway-cockpit ../xadmit   # or a local checkout path
-# answer worker_id / worker_title / package_name / deploy_shape, then:
-cd ../xadmit && uv sync && uv run pytest -q
+cd ../xadmit && uv sync && uv run pytest -q             # green out of the box
+uv run xadmit --agent-stdio                             # drive the SAME cockpit as an agent
 ```
 
-The generated worker runs, emits, and opens a cockpit immediately; its
-`@scan_horizon` stub returns `()` behind a strict-`xfail` test until you fill in
-real domain signals (proactive by construction). `make template-smoke` runs a
-full generate-install-and-test of the template against this checkout; the fast,
-network-free version of those assertions runs in CI
+`make template-smoke` runs a full generate-install-and-test of the template; the
+fast, network-free assertions run in CI
 ([tests/test_worker_template.py](tests/test_worker_template.py)).
 
 ## Develop
