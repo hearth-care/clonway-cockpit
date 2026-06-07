@@ -7,9 +7,12 @@ without spawning a child. A real-subprocess integration test is Phase 4's job.
 
 from __future__ import annotations
 
+import io
 import os
 import threading
+import time
 
+import pytest
 from rich.console import Console
 
 from clonway_cockpit import agent, render, shell, usage, walk
@@ -132,7 +135,6 @@ def test_apply_approve_posts_once():
 def test_quit_escalates_terminate_then_kill_for_a_stuck_child():
     """FBA hardening: a child that ignores quit/EOF must not be orphaned — quit() escalates
     terminate → kill. Uses a fake proc so the test is fast and asserts the escalation path."""
-    import io
     import subprocess
 
     class _StuckProc:
@@ -176,3 +178,47 @@ def test_apply_decline_zero_posts():
         t.join(timeout=5)
     finally:
         clear_capabilities()
+
+
+# --- FBA round-2 hardening: robustness of the driving client --------------
+
+
+def test_send_broken_pipe_raises_cockpit_closed():
+    """A broken peer (worker exited) surfaces as CockpitClosed on send, not a raw
+    BrokenPipeError the caller (drive_argv) doesn't catch."""
+
+    class _BrokenOut:
+        def write(self, _s: str) -> int:
+            raise BrokenPipeError("peer gone")
+
+        def flush(self) -> None:
+            pass
+
+    client = agent.CockpitClient(stdin=io.StringIO(""), stdout=_BrokenOut())
+    with pytest.raises(agent.CockpitClosed):
+        client.press("x")
+
+
+def test_drain_preserves_eof_sentinel():
+    """drain() that swallows EOF must re-enqueue the sentinel, so the NEXT read reports a
+    clean close immediately instead of stalling for the full timeout."""
+    client = agent.CockpitClient(stdin=io.StringIO(""), stdout=io.StringIO())
+    client.drain(idle=0.3)  # consumes frames; hits EOF and re-enqueues it
+    with pytest.raises(agent.CockpitClosed, match="stream closed"):
+        client._next(timeout=0.3)  # sees the preserved _EOF → "closed", not "timed out"
+
+
+def test_custom_timeout_is_honored():
+    """A configured timeout is used (not the 30s default) — a worker that never emits trips a
+    close promptly rather than hanging."""
+    r, w = os.pipe()
+    rf, wf = os.fdopen(r, "r"), os.fdopen(w, "w")  # wf stays open → reader blocks, no EOF
+    try:
+        client = agent.CockpitClient(stdin=rf, stdout=io.StringIO(), timeout=0.3)
+        t0 = time.monotonic()
+        with pytest.raises(agent.CockpitClosed, match="timed out"):
+            client.read_home()
+        assert time.monotonic() - t0 < 5  # honored 0.3s, not the 30s default
+    finally:
+        wf.close()
+        rf.close()
