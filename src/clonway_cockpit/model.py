@@ -16,6 +16,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+# Wire-protocol version, stamped onto every ScreenModel.to_dict() frame so a driver /
+# orchestrator can branch on it. Bumps ONLY on a breaking change (a removed/renamed key or a
+# changed type); additive keys (a new optional meta field) do not bump it. The shape-pin test
+# in tests/test_model.py fails on an accidental breaking change, forcing a deliberate bump.
+SCHEMA_VERSION = "1.0"
+
 
 @dataclass(frozen=True)
 class Field:
@@ -59,5 +65,9 @@ class ScreenModel:
     meta: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        """A plain JSON-serialisable dict (nested dataclasses expanded)."""
-        return asdict(self)
+        """A plain JSON-serialisable dict (nested dataclasses expanded), tagged with the
+        wire-protocol version so a driver/orchestrator can branch on it. Additive: a
+        consumer that ignores unknown keys is unaffected."""
+        d = asdict(self)
+        d["schema_version"] = SCHEMA_VERSION
+        return d
