@@ -693,7 +693,9 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
     try:
         report = host.doctor_build_report()
     except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
-        _show(screen, host.doctor_unconfigured_renderable(), read_key)
+        unconfigured = host.doctor_unconfigured_renderable()
+        host.on_screen(r.model_unstructured(unconfigured, title="Doctor"))
+        _show(screen, unconfigured, read_key)
         return
     dirty = True
     while True:
@@ -770,7 +772,9 @@ def _rebuild_doctor_report(
     try:
         return host.doctor_build_report()
     except Exception:  # noqa: BLE001 — became unconfigured/offline → setup hint, don't crash
-        _show(screen, host.doctor_unconfigured_renderable(), read_key)
+        unconfigured = host.doctor_unconfigured_renderable()
+        host.on_screen(r.model_unstructured(unconfigured, title="Doctor"))
+        _show(screen, unconfigured, read_key)
         return None
 
 

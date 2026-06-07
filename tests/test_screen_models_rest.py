@@ -252,3 +252,16 @@ def test_staged_progress_model_parity():
     assert m.meta["stages"][0]["status"] == "done"
     assert m.meta["stages"][1]["status"] == "active"
     assert m.actions == ["q"]  # cancellable
+
+
+# --- Task 9: unstructured fallback --------------------------------------------
+
+
+def test_unstructured_model_carries_rendered_text():
+    renderable = render.render_note("Setup needed", "run xbook init first")
+    m = render.model_unstructured(renderable, title="Setup needed")
+    assert m.kind == "unstructured"
+    assert m.title == "Setup needed"
+    prose = next(reg for reg in m.regions if reg.role == "prose")
+    assert "run xbook init first" in (prose.text or "")
+    assert m.actions == ["any"]

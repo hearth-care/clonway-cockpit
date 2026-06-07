@@ -224,3 +224,29 @@ def test_sync_progress_emits_through_run_with_progress():
     syncs = [m for m in emitted if m.kind == "walk.progress"]
     assert syncs, "no sync progress model emitted"
     assert syncs[0].meta["label"] == "Syncing"
+
+
+# --- Task 9: unstructured emit -------------------------------------------------
+
+
+def test_unstructured_emitted_when_doctor_unconfigured():
+    def boom():
+        raise RuntimeError("not configured")
+
+    clear_capabilities()
+    register_capability(
+        CapabilitySpec(
+            key="doctor", shelf="G", title="Doctor", summary="health", equivalent_cli="x"
+        )
+    )
+    state = CockpitState(tenant_name="Clonway")
+    host = _host(
+        state,
+        doctor_build_report=boom,
+        doctor_unconfigured_renderable=lambda: render.render_note("Setup", "run init"),
+    )
+    driver = CockpitDriver(host, keys=["g", "x", "q"])  # open doctor → any key → quit
+    stream = driver.run()
+    clear_capabilities()
+    unstr = [m for m in stream if m.kind == "unstructured"]
+    assert unstr, f"no unstructured model emitted; saw {_kinds(stream)}"

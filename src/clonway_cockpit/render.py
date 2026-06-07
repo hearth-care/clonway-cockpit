@@ -1512,3 +1512,17 @@ def model_staged_progress(
             ],
         },
     )
+
+
+def model_unstructured(renderable: RenderableType, *, title: str = "") -> ScreenModel:
+    """Fallback model for a screen not yet migrated to a ``model_*`` twin: capture the
+    rendered text into a prose region and flag it explicitly as not-yet-semantic, so
+    the driver still records a usable (if opaque) snapshot."""
+    con = Console(record=True, width=_PANEL_WIDTH)
+    con.print(renderable)
+    return ScreenModel(
+        kind="unstructured",
+        title=title,
+        regions=[MRegion("prose", "", text=con.export_text())],
+        actions=["any"],
+    )
