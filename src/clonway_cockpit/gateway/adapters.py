@@ -11,7 +11,21 @@ import json
 import urllib.error
 import urllib.request
 
-from .types import Completion, GatewayError, Message, Usage
+from .types import AssistantTurn, Completion, GatewayError, Message, ToolCall, Usage
+
+
+def _parse_arguments(raw: object) -> dict:
+    """Tool-call arguments arrive as a JSON string (OpenAI) or already a dict. Parse
+    leniently — a malformed argument blob becomes ``{}`` rather than crashing the turn."""
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str | bytes | bytearray):
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 class OpenAICompatibleAdapter:
@@ -20,8 +34,7 @@ class OpenAICompatibleAdapter:
         self._api_key = api_key
         self._timeout = timeout
 
-    def complete(self, model: str, messages: list[Message], **params: object) -> Completion:
-        body = {"model": model, "messages": list(messages), **params}
+    def _post(self, body: dict) -> dict:
         data = json.dumps(body).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -39,7 +52,20 @@ class OpenAICompatibleAdapter:
             raise GatewayError(f"transport error to {self._base_url}: {exc}") from exc
         except json.JSONDecodeError as exc:
             raise GatewayError(f"non-JSON response from {self._base_url}") from exc
-        return self._parse(payload)
+        if not isinstance(payload, dict):
+            raise GatewayError("completion response was not a JSON object")
+        return payload
+
+    def complete(self, model: str, messages: list[Message], **params: object) -> Completion:
+        return self._parse(self._post({"model": model, "messages": list(messages), **params}))
+
+    def complete_tools(
+        self, model: str, messages: list[Message], tools: list[dict], **params: object
+    ) -> AssistantTurn:
+        payload = self._post(
+            {"model": model, "messages": list(messages), "tools": list(tools), **params}
+        )
+        return self._parse_tools(payload)
 
     @staticmethod
     def _parse(payload: object) -> Completion:
@@ -56,6 +82,36 @@ class OpenAICompatibleAdapter:
             raise GatewayError("completion content was not a string")
         return Completion(
             text=text,
+            usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+        )
+
+    @staticmethod
+    def _parse_tools(payload: dict) -> AssistantTurn:
+        try:
+            message = payload["choices"][0]["message"]
+            usage = payload.get("usage") or {}
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise GatewayError(f"malformed tool-use payload: {exc}") from exc
+        content = message.get("content")
+        text = content if isinstance(content, str) and content else None
+        tool_calls: list[ToolCall] = []
+        for tc in message.get("tool_calls") or []:
+            try:
+                fn = tc["function"]
+                tool_calls.append(
+                    ToolCall(
+                        id=str(tc.get("id", "")),
+                        name=str(fn["name"]),
+                        arguments=_parse_arguments(fn.get("arguments")),
+                    )
+                )
+            except (KeyError, TypeError) as exc:
+                raise GatewayError(f"malformed tool_call: {exc}") from exc
+        return AssistantTurn(
+            text=text,
+            tool_calls=tool_calls,
             usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
         )
 
@@ -90,7 +146,7 @@ class LiteLLMAdapter:
         self._timeout = timeout
         self._api_base = api_base or None
 
-    def complete(self, model: str, messages: list[Message], **params: object) -> Completion:
+    def _invoke(self, model: str, messages: list[Message], **params: object) -> object:
         litellm = _litellm()
         kwargs: dict[str, object] = {
             "model": model,
@@ -103,12 +159,19 @@ class LiteLLMAdapter:
         if self._api_base:
             kwargs["api_base"] = self._api_base
         try:
-            response = litellm.completion(**kwargs)  # type: ignore[attr-defined]
+            return litellm.completion(**kwargs)  # type: ignore[attr-defined]
         except GatewayError:
             raise
         except Exception as exc:  # noqa: BLE001 — litellm raises many types; normalise them
             raise GatewayError(f"litellm completion failed for {model!r}: {exc}") from exc
-        return self._parse(response)
+
+    def complete(self, model: str, messages: list[Message], **params: object) -> Completion:
+        return self._parse(self._invoke(model, messages, **params))
+
+    def complete_tools(
+        self, model: str, messages: list[Message], tools: list[dict], **params: object
+    ) -> AssistantTurn:
+        return self._parse_tools(self._invoke(model, messages, tools=list(tools), **params))
 
     @staticmethod
     def _parse(response: object) -> Completion:
@@ -124,5 +187,35 @@ class LiteLLMAdapter:
             raise GatewayError("litellm completion content was not a string")
         return Completion(
             text=text,
+            usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+        )
+
+    @staticmethod
+    def _parse_tools(response: object) -> AssistantTurn:
+        try:
+            message = response.choices[0].message  # type: ignore[attr-defined]
+            usage = response.usage  # type: ignore[attr-defined]
+            prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        except (AttributeError, IndexError, TypeError, ValueError) as exc:
+            raise GatewayError(f"malformed litellm tool-use response: {exc}") from exc
+        content = getattr(message, "content", None)
+        text = content if isinstance(content, str) and content else None
+        tool_calls: list[ToolCall] = []
+        for tc in getattr(message, "tool_calls", None) or []:
+            try:
+                fn = tc.function
+                tool_calls.append(
+                    ToolCall(
+                        id=str(getattr(tc, "id", "")),
+                        name=str(fn.name),
+                        arguments=_parse_arguments(fn.arguments),
+                    )
+                )
+            except (AttributeError, TypeError) as exc:
+                raise GatewayError(f"malformed litellm tool_call: {exc}") from exc
+        return AssistantTurn(
+            text=text,
+            tool_calls=tool_calls,
             usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
         )

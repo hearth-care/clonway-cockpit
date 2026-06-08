@@ -17,13 +17,17 @@ from typing import Protocol
 from .adapters import LiteLLMAdapter, OpenAICompatibleAdapter
 from .config import GatewayConfig, RoleConfig
 from .telemetry import record_call
-from .types import Completion, GatewayError, Message
+from .types import AssistantTurn, Completion, GatewayError, Message
 
 
 class _Adapter(Protocol):
     """Structural type for anything the gateway can drive."""
 
     def complete(self, model: str, messages: list[Message], **params: object) -> Completion: ...
+
+    def complete_tools(
+        self, model: str, messages: list[Message], tools: list[dict], **params: object
+    ) -> AssistantTurn: ...
 
 
 AdapterFactory = Callable[..., _Adapter]
@@ -66,13 +70,51 @@ class Gateway:
         )
         return _validate_required(_extract_json(comp.text), schema)
 
-    def _call(self, messages: list[Message], role: str, extra: dict[str, object]) -> Completion:
-        role_cfg = self._config.resolve(role)  # raises on unknown role
-        key: str | None = None
+    def complete_tools(
+        self, messages: list[Message], tools: list[dict], *, role: str
+    ) -> AssistantTurn:
+        """One tool-use turn: send ``tools`` (OpenAI-shaped function schemas) and get back
+        the assistant's free text and/or its tool-call requests. The caller runs the tools,
+        appends the results, and calls again — the gateway owns no loop (thin port)."""
+        role_cfg = self._config.resolve(role)
+        key = self._key_for(role_cfg, role)
+        adapter = self._build_adapter(role_cfg, key)
+        params = {**role_cfg.params}
+        turn: AssistantTurn | None = None
+        ok = True
+        err: str | None = None
+        try:
+            turn = adapter.complete_tools(role_cfg.model, list(messages), list(tools), **params)
+            return turn
+        except GatewayError as exc:
+            ok = False
+            err = type(exc).__name__
+            raise
+        finally:
+            usage = turn.usage if turn is not None else None
+            record_call(
+                self._telemetry_base,
+                role=role,
+                provider=role_cfg.provider,
+                model=role_cfg.model,
+                prompt_tokens=usage.prompt_tokens if usage else 0,
+                completion_tokens=usage.completion_tokens if usage else 0,
+                est_cost=self._config.cost_for(role_cfg.model, usage) if usage else None,
+                ok=ok,
+                err=err,
+            )
+
+    def _key_for(self, role_cfg: RoleConfig, role: str) -> str | None:
         if role_cfg.api_key_env:
             key = os.environ.get(role_cfg.api_key_env)
             if not key:
                 raise GatewayError(f"env var {role_cfg.api_key_env!r} is unset for role {role!r}")
+            return key
+        return None
+
+    def _call(self, messages: list[Message], role: str, extra: dict[str, object]) -> Completion:
+        role_cfg = self._config.resolve(role)  # raises on unknown role
+        key = self._key_for(role_cfg, role)
         adapter = self._build_adapter(role_cfg, key)
         params = {**role_cfg.params, **extra}
         comp: Completion | None = None
