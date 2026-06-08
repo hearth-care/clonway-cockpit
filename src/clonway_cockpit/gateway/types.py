@@ -66,3 +66,26 @@ class Completion:
 
     text: str
     usage: Usage
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    """One tool/function-call request the model emitted. ``arguments`` is the parsed
+    JSON object (the provider sends it as a JSON string; the adapter parses it)."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AssistantTurn:
+    """One assistant turn from a tool-use call: free ``text`` and/or ``tool_calls``.
+
+    The caller runs the requested tools, appends the results, and calls again — the
+    gateway stays one-shot per turn, the loop lives in the caller (the thin port owns
+    no loop). ``text`` is ``None`` when the model only asked for tool calls."""
+
+    text: str | None
+    tool_calls: list[ToolCall]
+    usage: Usage

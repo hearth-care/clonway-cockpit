@@ -98,6 +98,31 @@ backend, verify caching landed via the provider's `cache_read_input_tokens` (Ant
 minimum cacheable prefix is ~1024–4096 tokens depending on model — shorter prefixes
 silently won't cache).
 
+## Tool use
+
+`complete_tools(messages, tools, role)` is one **tool-use turn**: pass OpenAI-shaped
+function schemas and get back the assistant's free text and/or its tool-call requests.
+
+```python
+from clonway_cockpit.gateway import Gateway
+
+turn = gw.complete_tools(
+    [{"role": "user", "content": "any bills due?"}],
+    tools=[{"type": "function", "function": {
+        "name": "get_bills_due", "description": "List bills due", "parameters": {"type": "object"}}}],
+    role="chat",          # role must map to a tool-capable model
+)
+# turn.text: str | None   ·   turn.tool_calls: list[ToolCall(id, name, arguments: dict)]
+```
+
+The gateway is **one-shot per turn and owns no loop** — the *caller* runs each requested
+tool, appends a `{"role": "tool", "tool_call_id": ..., "content": ...}` message, and calls
+`complete_tools` again until `tool_calls` is empty. `arguments` is parsed from the
+provider's JSON-string form (a malformed blob degrades to `{}` rather than crashing the
+turn). Works against any tool-capable backend (a recent Ollama with a tool model, OpenAI,
+or LiteLLM→Anthropic). A model that can't tool-call simply returns text with no
+`tool_calls`. The turn is recorded in telemetry like any other call.
+
 ## Telemetry
 
 Every call appends one event to `<telemetry_base>/model_usage.jsonl`

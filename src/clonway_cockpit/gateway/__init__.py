@@ -20,16 +20,19 @@ from .telemetry import (
     record_call,
 )
 from .types import (
+    AssistantTurn,
     Completion,
     ContentPart,
     GatewayError,
     Message,
+    ToolCall,
     Usage,
     image_part,
     text_part,
 )
 
 __all__ = [
+    "AssistantTurn",
     "Completion",
     "ContentPart",
     "Gateway",
@@ -39,6 +42,7 @@ __all__ = [
     "Message",
     "OpenAICompatibleAdapter",
     "RoleConfig",
+    "ToolCall",
     "Usage",
     "fanin_relpath",
     "flush_model_usage",
