@@ -1,8 +1,9 @@
 """The model-gateway port: ``complete`` + ``complete_structured`` over an
 injected role→model config, through one adapter, recording per-call telemetry.
 
-The adapter is built via an injectable ``adapter_factory`` (default the real
-OpenAI-compatible one) so consumers can swap providers and tests need no network.
+By default the adapter is chosen per the role's ``provider`` (``openai_compatible``
+or ``litellm``). An optional ``adapter_factory`` overrides that dispatch so tests
+can inject a fake and need no network.
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from .adapters import OpenAICompatibleAdapter
-from .config import GatewayConfig
+from .adapters import LiteLLMAdapter, OpenAICompatibleAdapter
+from .config import GatewayConfig, RoleConfig
 from .telemetry import record_call
 from .types import Completion, GatewayError, Message
 
@@ -34,11 +35,20 @@ class Gateway:
         config: GatewayConfig,
         *,
         telemetry_base: Path | None = None,
-        adapter_factory: AdapterFactory = OpenAICompatibleAdapter,
+        adapter_factory: AdapterFactory | None = None,
     ) -> None:
         self._config = config
         self._telemetry_base = telemetry_base
+        # An explicit factory overrides provider dispatch (used by tests to inject a fake);
+        # otherwise the adapter is chosen per the role's provider.
         self._adapter_factory = adapter_factory
+
+    def _build_adapter(self, role_cfg: RoleConfig, key: str | None) -> _Adapter:
+        if self._adapter_factory is not None:
+            return self._adapter_factory(role_cfg.base_url, key, timeout=role_cfg.timeout)
+        if role_cfg.provider == "litellm":
+            return LiteLLMAdapter(key, timeout=role_cfg.timeout, api_base=role_cfg.base_url or None)
+        return OpenAICompatibleAdapter(role_cfg.base_url, key, timeout=role_cfg.timeout)
 
     def complete(self, messages: list[Message], *, role: str) -> str:
         return self._call(list(messages), role, {}).text
@@ -63,7 +73,7 @@ class Gateway:
             key = os.environ.get(role_cfg.api_key_env)
             if not key:
                 raise GatewayError(f"env var {role_cfg.api_key_env!r} is unset for role {role!r}")
-        adapter = self._adapter_factory(role_cfg.base_url, key, timeout=role_cfg.timeout)
+        adapter = self._build_adapter(role_cfg, key)
         params = {**role_cfg.params, **extra}
         comp: Completion | None = None
         ok = True
