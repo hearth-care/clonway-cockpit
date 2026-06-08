@@ -166,3 +166,44 @@ class GroupChatOrchestrator:
                     ChatMessage.from_text(reply, author=persona.handle, is_owner=False, space=space)
                 )
         return posted
+
+
+def echo_responder(persona: Persona, message: ChatMessage) -> str:
+    """A trivial stub responder for demos/tests — the persona acknowledges in-voice. Wire a
+    real conversational loop (a gateway tool-use loop) in production; this lets the group
+    space run end-to-end with no model and no live transport."""
+    return f"{persona.name} here — that's mine ({persona.domain})."
+
+
+@dataclass
+class GroupSpace:
+    """A running group space: a persona registry + a transport + the orchestrator that ties
+    them together, addressed by one ``space_id``. The convenience a worker/operator wires up.
+    ``space.owner_says("…")`` posts the owner's message and runs one round; the personas that
+    self-select reply (subject to the same owner-only-command + turn-cap guards)."""
+
+    space_id: str
+    registry: PersonaRegistry
+    transport: ChatTransport
+    responder: Callable[[Persona, ChatMessage], str | None]
+    max_persona_turns: int = 6
+    domain_matches: Callable[[str, Persona], bool] | None = None
+    _orch: GroupChatOrchestrator = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._orch = GroupChatOrchestrator(
+            transport=self.transport,
+            registry=self.registry,
+            responder=self.responder,
+            max_persona_turns=self.max_persona_turns,
+            domain_matches=self.domain_matches,
+        )
+
+    def owner_says(self, text: str, *, author: str = "owner") -> list[PostedReply]:
+        msg = ChatMessage.from_text(text, author=author, is_owner=True, space=self.space_id)
+        return self._orch.run_round(self.space_id, [msg])
+
+    def agent_says(self, handle: str, text: str) -> list[PostedReply]:
+        """A persona posts (agent chatter — never a command); others may reply, capped."""
+        msg = ChatMessage.from_text(text, author=handle, is_owner=False, space=self.space_id)
+        return self._orch.run_round(self.space_id, [msg])
