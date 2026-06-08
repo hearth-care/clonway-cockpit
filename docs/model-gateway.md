@@ -128,11 +128,12 @@ GCS-client sink is the caller's — `sink(relpath, data_bytes)` — so the frame
 `YYYY-MM-DD`, else the flush is a no-op (no path escape). xops reading the fan-in tree
 by-worker is a follow-up on its cost page.
 
-## Scope (slice 1)
+## Scope
 
-One OpenAI-compatible adapter — works against OpenAI, Groq/Together, a local
-Ollama/vLLM, or a LiteLLM proxy via `base_url`. Cost caps, a circuit-breaker, and
-the LiteLLM / Anthropic adapters are later slices.
+Two adapters ship: the zero-dependency `openai_compatible` one (OpenAI, Groq/Together,
+a local Ollama/vLLM, or a LiteLLM proxy via `base_url`) and the optional `litellm` one
+(provider-prefixed routing to 100+ providers, with Anthropic prompt-caching and native
+vision). Cost caps and a circuit-breaker are later slices.
 
 ## Watched-working
 

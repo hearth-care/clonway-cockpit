@@ -1,4 +1,4 @@
-"""Provider-agnostic model gateway (slice 1: port + OpenAI-compatible adapter + telemetry).
+"""Provider-agnostic model gateway: port + adapters (OpenAI-compatible, LiteLLM) + telemetry.
 
 Public API::
 

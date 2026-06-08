@@ -1,8 +1,9 @@
 """The model-gateway port: ``complete`` + ``complete_structured`` over an
 injected role→model config, through one adapter, recording per-call telemetry.
 
-The adapter is built via an injectable ``adapter_factory`` (default the real
-OpenAI-compatible one) so consumers can swap providers and tests need no network.
+By default the adapter is chosen per the role's ``provider`` (``openai_compatible``
+or ``litellm``). An optional ``adapter_factory`` overrides that dispatch so tests
+can inject a fake and need no network.
 """
 
 from __future__ import annotations
