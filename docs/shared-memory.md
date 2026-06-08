@@ -82,7 +82,9 @@ writer.write(name="bank", kind="preference", summary="...", source="quoted")  # 
 The writer **trusts the `source` it is given** — the caller must set it honestly from
 the message trust boundary (`operator` vs `quoted`); the gate is the backstop. It is
 **fail-closed**: a refused write (non-owner source, a `name` that isn't a safe
-`[a-z0-9][a-z0-9_-]*` slug, or an empty/multi-line `kind`/`summary`) writes nothing.
+`[a-z0-9][a-z0-9_-]*` slug, or an empty/multi-line `kind`/`summary`/`as_of`) writes
+nothing. Every value rendered into the frontmatter is single-line-validated, so none can
+inject extra keys.
 A written fact round-trips through `SharedMemory`; writing an existing `name` overwrites
 it (the owner updating shared truth). `as_of` defaults to today (UTC).
 

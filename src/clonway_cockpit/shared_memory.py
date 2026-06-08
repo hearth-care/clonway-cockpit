@@ -215,14 +215,16 @@ class GovernedWriter:
                 "is never promoted to shared memory"
             )
         # 2. Validation — also a security boundary, since ``name`` becomes a filename.
-        if not _SLUG_RE.match(name):
+        if not _SLUG_RE.fullmatch(name):  # fullmatch: `$` alone allows a trailing newline
             raise WriteRefused(
                 f"invalid name {name!r}: must be a lower-case slug [a-z0-9][a-z0-9_-]* "
                 "(rejects path traversal and odd filenames)"
             )
         kind = _single_line(kind, "kind")
         summary = _single_line(summary, "summary")
-        stamp = as_of or _today()
+        # as_of is also rendered into the frontmatter, so it must be single-line too
+        # (else a newline injects extra keys the reader's last-wins parse would honour).
+        stamp = _single_line(as_of, "as_of") if as_of else _today()
         clean_body = body.strip()
         # 3. Write (only now is anything created).
         self._base.mkdir(parents=True, exist_ok=True)

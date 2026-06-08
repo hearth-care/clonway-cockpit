@@ -57,10 +57,13 @@ class GovernedWriter:
 `write`:
 1. **Trust gate (first):** `source != OWNER` → `WriteRefused`, nothing written.
 2. **Validation (also a security boundary — `name` becomes a filename):**
-   - `name` must match `^[a-z0-9][a-z0-9_-]*$` (a lower-case slug) — this rejects path traversal
-     (`../`, `/`, `..`) and odd filenames outright, so a write can never escape `base`.
-   - `kind` and `summary` must be non-empty and **single-line** (a newline would corrupt the
-     frontmatter) — else `WriteRefused`.
+   - `name` must **`fullmatch`** `^[a-z0-9][a-z0-9_-]*$` (a lower-case slug) — this rejects path
+     traversal (`../`, `/`, `..`) and odd filenames outright, so a write can never escape `base`.
+     (`fullmatch`, not `match` + `$`, because `$` alone would accept a trailing newline.)
+   - **Every value rendered into the frontmatter** — `kind`, `summary`, *and* `as_of` — must be
+     non-empty and **single-line**, else `WriteRefused`. A newline in any of them would inject extra
+     `key: value` lines that the reader's last-wins parse would honour (`source` is pinned to `owner`,
+     and `body` sits after the fence, so those two can't inject).
 3. **Write:** render `---`-fenced frontmatter (`name`/`kind`/`summary`/`source`/`as_of`) + body to
    `base/<name>.md` (creating `base`); `as_of` defaults to today (UTC date). Writing an existing name
    **overwrites** (the owner updating shared truth — "actually, call me Y").

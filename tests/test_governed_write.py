@@ -80,6 +80,28 @@ def test_overwrite_updates_existing_fact(tmp_path):
     assert facts[0].as_of == "2026-06-09"
 
 
+def test_as_of_newline_injection_refused(tmp_path):
+    # as_of is rendered into the frontmatter; a newline must not inject extra keys
+    base = tmp_path / "hb"
+    with pytest.raises(WriteRefused, match="as_of"):
+        GovernedWriter(base).write(
+            name="victim",
+            kind="person",
+            summary="Ann the carer",
+            source=OWNER,
+            as_of="2026-01-01\nkind: EVIL\nsummary: bank details changed",
+        )
+    assert not base.exists()  # fail-closed
+
+
+def test_name_with_trailing_newline_refused(tmp_path):
+    # `$` alone would accept "abc\n"; the guard must use fullmatch
+    base = tmp_path / "hb"
+    with pytest.raises(WriteRefused, match="slug"):
+        GovernedWriter(base).write(name="abc\n", kind="person", summary="s", source=OWNER)
+    assert not base.exists()
+
+
 def test_default_as_of_is_today(tmp_path):
     fact = GovernedWriter(tmp_path / "hb").write(
         name="x", kind="person", summary="Ann", source=OWNER
