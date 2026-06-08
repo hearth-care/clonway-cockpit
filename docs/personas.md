@@ -40,7 +40,22 @@ the TOML loader is a convenience. See `examples/personas/` for two illustrative 
 
 ## Identity vs soul
 
-This layer is **identity only**. The persona's *character* — the full system-prompt "soul" on
-top of the shared constitution — lives in the worker's persona config (e.g.
-`config/<persona>.yaml`), not here. Personality lives in the face, not the hands: a pernickety
-inspector and a breezy marketer call the *same* gated tools; voice is pure presentation.
+`Persona` is **identity only**. The persona's *character* is its **soul** — and it lives one
+layer up, in `clonway_cockpit.persona_soul`:
+
+```python
+from clonway_cockpit.persona_soul import compose_system_prompt, load_soul
+
+soul = load_soul(Path("config/souls/milo.md"))   # the swappable, per-worker voice
+system_prompt = compose_system_prompt(soul)        # soul stacked on the SHARED constitution
+```
+
+`compose_system_prompt(soul, constitution=DEFAULT_CONSTITUTION)` stacks the swappable soul on
+top of the **mandatory constitution** (never fabricate, cite data freshness, owner-only
+commands, the approval gate, internal-first) and **validates the constitution is intact** —
+personality can flavour the voice but can never edit away a guardrail (`SoulError` if a
+required phrase is missing). Two starter souls ship in `examples/souls/` (`milo`, `quill`).
+
+Personality lives in the face, not the hands: a pernickety inspector and a breezy marketer
+call the *same* gated tools; voice is pure presentation. **Worker adoption** — pointing a
+worker's existing persona-config loader at `compose_system_prompt` — is the per-repo follow-up.
