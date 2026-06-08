@@ -48,7 +48,30 @@ parses JSON from the reply and checks the `required` keys are present
 Every call appends one event to `<telemetry_base>/model_usage.jsonl`
 (`ts, role, provider, model, prompt_tokens, completion_tokens, est_cost, ok, err`).
 It is best-effort and never breaks a call. This is the per-call model-spend stream
-a later slice surfaces in xops. Read it back with `load_events(base)`.
+surfaced in the xops cost page. Read it back with `load_events(base)`.
+
+## Fleet fan-in
+
+`model_usage.jsonl` is local to each worker. To build a fleet-wide view, a worker
+fans its file out to a shared location under a per-worker path, and xops lists that
+prefix (deriving the worker from the path):
+
+```python
+from clonway_cockpit.gateway import flush_model_usage, local_dir_sink
+
+# at the end of a run — best-effort, never raises:
+flush_model_usage(
+    Path(".cockpit"), worker="xbook", run_id="run-123", date="2026-06-08",
+    sink=local_dir_sink(Path("/mnt/fleet-telemetry")),  # → model-usage/xbook/2026-06-08/run-123.jsonl
+)
+```
+
+The framework provides the **path convention** (`fanin_relpath`), the **flush logic**,
+and a stdlib **`local_dir_sink`** (write under a local dir / a GCS-FUSE mount). The
+GCS-client sink is the caller's — `sink(relpath, data_bytes)` — so the framework adds
+**no** storage dependency. `worker`/`run_id` must be safe slugs and `date` a
+`YYYY-MM-DD`, else the flush is a no-op (no path escape). xops reading the fan-in tree
+by-worker is a follow-up on its cost page.
 
 ## Scope (slice 1)
 

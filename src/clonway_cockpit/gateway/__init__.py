@@ -12,7 +12,13 @@ Public API::
 from .adapters import OpenAICompatibleAdapter
 from .config import GatewayConfig, RoleConfig
 from .gateway import Gateway
-from .telemetry import load_events, record_call
+from .telemetry import (
+    fanin_relpath,
+    flush_model_usage,
+    load_events,
+    local_dir_sink,
+    record_call,
+)
 from .types import Completion, GatewayError, Message, Usage
 
 __all__ = [
@@ -24,6 +30,9 @@ __all__ = [
     "OpenAICompatibleAdapter",
     "RoleConfig",
     "Usage",
+    "fanin_relpath",
+    "flush_model_usage",
     "load_events",
+    "local_dir_sink",
     "record_call",
 ]
