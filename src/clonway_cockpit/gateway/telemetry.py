@@ -11,6 +11,8 @@ slice has xops read it.
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -74,3 +76,61 @@ def load_events(base: Path | None = None) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return out
+
+
+# --- Fleet fan-in -------------------------------------------------------------
+# The gateway writes model_usage.jsonl locally in each worker. To build a
+# fleet-wide view (xops's cost page), each worker fans its file out to a shared
+# location under a per-worker path; xops lists that prefix and derives the worker
+# from the path. The framework provides the path convention + the flush logic +
+# a stdlib local-dir sink; the GCS-client sink is the caller's, so the framework
+# stays dependency-free.
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+Sink = Callable[[str, bytes], None]
+
+
+def fanin_relpath(*, worker: str, run_id: str, date: str) -> str:
+    """The canonical fleet fan-in path for a worker's model-usage, relative to a
+    fleet telemetry root: ``model-usage/<worker>/<date>/<run_id>.jsonl``."""
+    return f"model-usage/{worker}/{date}/{run_id}.jsonl"
+
+
+def local_dir_sink(root: Path) -> Sink:
+    """A stdlib sink that writes fan-in objects under a local directory ``root``
+    (a fan-in dir, or a GCS-FUSE mount). The GCS-client sink is the caller's."""
+
+    def _sink(relpath: str, data: bytes) -> None:
+        target = root / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+    return _sink
+
+
+def flush_model_usage(
+    base: Path | None, *, worker: str, run_id: str, date: str, sink: Sink
+) -> str | None:
+    """Fan a worker's local ``model_usage.jsonl`` out to a fleet location via
+    ``sink(relpath, data)``. Returns the relpath written, or ``None`` if there was
+    nothing to flush or ``worker``/``run_id``/``date`` aren't safe path segments.
+
+    Best-effort and never-raises: a missing file or a sink error is swallowed —
+    fan-in must never break a run.
+    """
+    if not (_SLUG_RE.fullmatch(worker) and _SLUG_RE.fullmatch(run_id) and _DATE_RE.fullmatch(date)):
+        return None
+    try:
+        data = _path(base).read_bytes()
+    except OSError:
+        return None
+    if not data.strip():
+        return None
+    relpath = fanin_relpath(worker=worker, run_id=run_id, date=date)
+    try:
+        sink(relpath, data)
+    except Exception:  # noqa: BLE001 — fan-in is best-effort; never break a run
+        return None
+    return relpath
