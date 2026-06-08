@@ -58,6 +58,25 @@ def test_missing_required_field_raises():
         GatewayConfig.from_dict(bad)
 
 
+def test_bad_timeout_raises_gateway_error():
+    bad = {
+        "roles": {
+            "x": {"provider": "openai_compatible", "base_url": "u", "model": "m", "timeout": "soon"}
+        }
+    }
+    with pytest.raises(GatewayError, match="timeout"):
+        GatewayConfig.from_dict(bad)
+
+
+def test_bad_pricing_rate_raises_gateway_error():
+    bad = {
+        "roles": {"x": {"provider": "openai_compatible", "base_url": "u", "model": "m"}},
+        "pricing": {"m": {"prompt": "cheap"}},
+    }
+    with pytest.raises(GatewayError, match="non-numeric"):
+        GatewayConfig.from_dict(bad)
+
+
 def test_cost_for_priced_and_unpriced():
     cfg = GatewayConfig.from_dict(VALID)
     usage = Usage(prompt_tokens=1000, completion_tokens=1000)

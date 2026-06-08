@@ -53,22 +53,29 @@ class GatewayConfig:
             for required in ("base_url", "model"):
                 if not rc.get(required):
                     raise GatewayError(f"role {name!r} missing {required!r}")
+            try:
+                timeout = float(rc.get("timeout", 30.0))
+            except (TypeError, ValueError):
+                raise GatewayError(f"role {name!r}: 'timeout' must be a number") from None
             roles[name] = RoleConfig(
                 provider=str(provider),
                 base_url=str(rc["base_url"]),
                 model=str(rc["model"]),
                 api_key_env=(str(rc["api_key_env"]) if rc.get("api_key_env") else None),
                 params=dict(rc.get("params") or {}),
-                timeout=float(rc.get("timeout", 30.0)),
+                timeout=timeout,
             )
         pricing_in = data.get("pricing") or {}
         if not isinstance(pricing_in, Mapping):
             raise GatewayError("'pricing' must be a mapping if present")
-        pricing = {
-            str(model): {str(k): float(v) for k, v in rate.items()}
-            for model, rate in pricing_in.items()
-            if isinstance(rate, Mapping)
-        }
+        pricing: dict[str, dict[str, float]] = {}
+        for model, rate in pricing_in.items():
+            if not isinstance(rate, Mapping):
+                continue
+            try:
+                pricing[str(model)] = {str(k): float(v) for k, v in rate.items()}
+            except (TypeError, ValueError):
+                raise GatewayError(f"pricing for {model!r} has a non-numeric rate") from None
         return cls(roles=roles, pricing=pricing)
 
     def resolve(self, role: str) -> RoleConfig:

@@ -89,3 +89,14 @@ def test_malformed_payload_becomes_gateway_error(monkeypatch):
     adapter = OpenAICompatibleAdapter("https://api.x/v1", "k")
     with pytest.raises(GatewayError, match="malformed"):
         adapter.complete("m", [{"role": "user", "content": "hi"}])
+
+
+def test_null_content_becomes_gateway_error(monkeypatch):
+    # a server returning content: null must not yield the literal string "None"
+    _patch_urlopen(
+        monkeypatch,
+        payload={"choices": [{"message": {"content": None}}], "usage": {}},
+    )
+    adapter = OpenAICompatibleAdapter("https://api.x/v1", "k")
+    with pytest.raises(GatewayError, match="not a string"):
+        adapter.complete("m", [{"role": "user", "content": "hi"}])

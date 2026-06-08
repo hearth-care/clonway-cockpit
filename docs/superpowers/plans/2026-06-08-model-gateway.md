@@ -1244,7 +1244,9 @@ Ship with the `ship-pr` skill. The PR body's Test plan MUST paste the Task 8 wat
 - **Port (`complete`/`complete_structured`, role→model, injected, no baked secret):** Tasks 5, 6. ✓
 - **OpenAI-compatible adapter, stdlib urllib, provider-agnostic via base_url, typed errors:** Task 4. ✓
 - **Config: plain dict, env-var keys, pricing, validation, unsupported-provider rejected:** Task 2. ✓
-- **Telemetry: best-effort never-crash JSONL events, ok:false on failure, injectable base:** Tasks 3, 5. ✓
+- **Telemetry: best-effort never-crash JSONL events, injectable base:** Tasks 3, 5. ✓ (`ok` tracks the
+  model call: `ok:false` on a transport failure; a successful call whose output later fails structured
+  validation stays `ok:true` since the tokens were spent; pre-call errors emit nothing.)
 - **Zero new runtime dependency; future adapters behind extras:** stdlib-only across all tasks; final gate asserts `dependencies` unchanged. ✓
 - **Lightweight structured validation (required-keys, not JSON Schema):** Task 5 `_validate_required`. ✓
 - **Watched-working real call + telemetry record:** Tasks 7–8. ✓

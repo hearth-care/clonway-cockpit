@@ -91,7 +91,13 @@ class Gateway:
 
 
 def _extract_json(text: str) -> object:
-    """Parse a JSON object out of model text, tolerating prose / ``` fences."""
+    """Parse a JSON object out of model text, tolerating prose / ``` fences.
+
+    Heuristic: try the whole string, else the first ``{`` to the last ``}``. This
+    fails *closed* — it raises rather than returning a wrong object — but it can't
+    recover a reply that contains two JSON objects. ``response_format=json_object``
+    (sent by ``complete_structured``) keeps well-behaved servers to one object.
+    """
     try:
         return json.loads(text.strip())
     except json.JSONDecodeError:

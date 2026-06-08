@@ -48,12 +48,13 @@ class OpenAICompatibleAdapter:
         try:
             text = payload["choices"][0]["message"]["content"]
             usage = payload.get("usage") or {}
-            return Completion(
-                text=str(text),
-                usage=Usage(
-                    prompt_tokens=int(usage.get("prompt_tokens", 0)),
-                    completion_tokens=int(usage.get("completion_tokens", 0)),
-                ),
-            )
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as exc:
             raise GatewayError(f"malformed completion payload: {exc}") from exc
+        if not isinstance(text, str):
+            raise GatewayError("completion content was not a string")
+        return Completion(
+            text=text,
+            usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+        )

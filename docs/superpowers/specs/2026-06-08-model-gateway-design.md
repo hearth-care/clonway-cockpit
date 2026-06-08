@@ -129,8 +129,12 @@ capability-open counts but not per-call cost). Fields:
 - Same two hard guarantees as `usage.py`: **local-only, no extra network**, and **never crashes the
   call** — every read/write is wrapped; an unwritable/locked base degrades to a silent no-op. A
   telemetry failure must not turn a successful model call into a failed one.
-- A failed call (a raised `GatewayError`) still emits a record with `ok: false` and the error class,
-  so the spend / reliability view later sees failures too.
+- `ok` reflects **the model call itself** (transport/HTTP). A call that fails at the transport layer
+  emits `ok: false` with the error class, so the spend / reliability view later sees failures too. A
+  call that *succeeds* but whose output then fails structured validation is still `ok: true` — the
+  tokens were spent, so that is the honest cost signal — and the validation error is raised to the
+  caller separately. Pre-call failures (unknown role, unset env key) happen before any model call and
+  emit **no** record, by design (no tokens, nothing to cost).
 - This is exactly the per-call model-£ stream the owner noted xops cannot currently see (it bills
   outside GCP). This slice **emits** it in a clean shape; a later slice has xops read and surface it.
 
