@@ -8,6 +8,14 @@ dependencies = [
     "rich>=15.0.0",
 ]
 
+[project.optional-dependencies]
+# The LiteLLM gateway adapter (provider-agnostic routing to 100+ providers, with
+# Anthropic prompt-caching + native vision). Kept optional so the core stays rich-only;
+# `pip install clonway-cockpit[litellm]`.
+litellm = [
+    "litellm>=1.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

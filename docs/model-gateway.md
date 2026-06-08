@@ -70,6 +70,34 @@ The gateway is **transparent** — it passes content parts through untouched, so
   against a direct OpenAI endpoint (which auto-caches and may reject the field). The
   gateway neither implements nor strips caching — efficacy is the backend's.
 
+## Providers: `openai_compatible` vs `litellm`
+
+A role's `provider` picks the adapter:
+
+- **`openai_compatible`** (default, zero-dependency) — POSTs to a literal
+  `<base_url>/chat/completions`. Use for OpenAI, Groq/Together, a local Ollama/vLLM,
+  or a LiteLLM proxy. `base_url` is required; `cache_control` and `image_url` parts
+  pass through, but whether caching/vision actually happen is the *backend's* job.
+- **`litellm`** — routes through [LiteLLM](https://docs.litellm.ai): one OpenAI-shaped
+  interface to 100+ providers, selected by the model's prefix. This is where the
+  passthrough *lands* — LiteLLM forwards Anthropic `cache_control` (realising prompt
+  caching) and translates `image_url` parts into each provider's native vision shape.
+  `base_url` is optional (the prefix routes; set it as LiteLLM's `api_base` for a local
+  endpoint). Needs the optional extra — `pip install clonway-cockpit[litellm]`.
+
+```yaml
+roles:
+  chat:  {provider: litellm, model: anthropic/claude-haiku-4-5, api_key_env: ANTHROPIC_API_KEY}
+  vision:{provider: litellm, model: claude-opus-4-8, api_key_env: ANTHROPIC_API_KEY}
+  gate:  {provider: litellm, model: ollama/qwen2.5:0.5b, base_url: http://localhost:11434}
+```
+
+Model ids are LiteLLM's provider-prefixed form (`anthropic/claude-haiku-4-5`,
+`gpt-4o-mini`, `ollama/llama3.1`); keys come from the provider's env var. With a LiteLLM
+backend, verify caching landed via the provider's `cache_read_input_tokens` (Anthropic's
+minimum cacheable prefix is ~1024–4096 tokens depending on model — shorter prefixes
+silently won't cache).
+
 ## Telemetry
 
 Every call appends one event to `<telemetry_base>/model_usage.jsonl`

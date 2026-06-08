@@ -9,7 +9,7 @@ Public API::
     text = gw.complete([{"role": "user", "content": "hi"}], role="chat")
 """
 
-from .adapters import OpenAICompatibleAdapter
+from .adapters import LiteLLMAdapter, OpenAICompatibleAdapter
 from .config import GatewayConfig, RoleConfig
 from .gateway import Gateway
 from .telemetry import (
@@ -35,6 +35,7 @@ __all__ = [
     "Gateway",
     "GatewayConfig",
     "GatewayError",
+    "LiteLLMAdapter",
     "Message",
     "OpenAICompatibleAdapter",
     "RoleConfig",

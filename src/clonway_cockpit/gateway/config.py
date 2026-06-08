@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from .types import GatewayError, Usage
 
-_SUPPORTED_PROVIDERS = ("openai_compatible",)
+_SUPPORTED_PROVIDERS = ("openai_compatible", "litellm")
 
 
 @dataclass(frozen=True)
@@ -20,8 +20,8 @@ class RoleConfig:
     """Resolved settings for one role (e.g. "chat", "gate")."""
 
     provider: str
-    base_url: str
     model: str
+    base_url: str = ""
     api_key_env: str | None = None
     params: dict[str, object] = field(default_factory=dict)
     timeout: float = 30.0
@@ -47,20 +47,22 @@ class GatewayConfig:
                 raise GatewayError(f"role {name!r} must be a mapping")
             provider = rc.get("provider")
             if provider not in _SUPPORTED_PROVIDERS:
-                raise GatewayError(
-                    f"role {name!r}: only 'openai_compatible' provider is supported in this slice"
-                )
-            for required in ("base_url", "model"):
-                if not rc.get(required):
-                    raise GatewayError(f"role {name!r} missing {required!r}")
+                raise GatewayError(f"role {name!r}: provider must be one of {_SUPPORTED_PROVIDERS}")
+            if not rc.get("model"):
+                raise GatewayError(f"role {name!r} missing 'model'")
+            # base_url is the literal endpoint for openai_compatible (required); litellm
+            # routes by the model's provider prefix, so base_url is optional there (it maps
+            # to litellm's api_base when given — e.g. a local Ollama).
+            if provider == "openai_compatible" and not rc.get("base_url"):
+                raise GatewayError(f"role {name!r} (openai_compatible) missing 'base_url'")
             try:
                 timeout = float(rc.get("timeout", 30.0))
             except (TypeError, ValueError):
                 raise GatewayError(f"role {name!r}: 'timeout' must be a number") from None
             roles[name] = RoleConfig(
                 provider=str(provider),
-                base_url=str(rc["base_url"]),
                 model=str(rc["model"]),
+                base_url=str(rc.get("base_url") or ""),
                 api_key_env=(str(rc["api_key_env"]) if rc.get("api_key_env") else None),
                 params=dict(rc.get("params") or {}),
                 timeout=timeout,
