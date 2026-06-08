@@ -19,10 +19,19 @@ from .telemetry import (
     local_dir_sink,
     record_call,
 )
-from .types import Completion, GatewayError, Message, Usage
+from .types import (
+    Completion,
+    ContentPart,
+    GatewayError,
+    Message,
+    Usage,
+    image_part,
+    text_part,
+)
 
 __all__ = [
     "Completion",
+    "ContentPart",
     "Gateway",
     "GatewayConfig",
     "GatewayError",
@@ -32,7 +41,9 @@ __all__ = [
     "Usage",
     "fanin_relpath",
     "flush_model_usage",
+    "image_part",
     "load_events",
     "local_dir_sink",
     "record_call",
+    "text_part",
 ]

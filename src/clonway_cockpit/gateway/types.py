@@ -9,14 +9,43 @@ adapter returns.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypedDict
+from typing import Any, TypedDict
+
+# An OpenAI-shaped content part, e.g. {"type": "text", "text": "..."} or
+# {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}. Parts may
+# carry provider-specific extras (e.g. an Anthropic ``cache_control`` marker) — the
+# gateway is transparent and passes them through untouched.
+ContentPart = dict[str, Any]
 
 
 class Message(TypedDict):
-    """One chat message in OpenAI shape."""
+    """One chat message in OpenAI shape.
+
+    ``content`` is either a plain string (the common case) or a list of OpenAI-shaped
+    content parts for multimodal input (text + images) and provider passthrough markers
+    (prompt caching). Build parts with :func:`text_part` / :func:`image_part`.
+    """
 
     role: str  # "system" | "user" | "assistant"
-    content: str
+    content: str | list[ContentPart]
+
+
+def text_part(text: str, *, cache: bool = False) -> ContentPart:
+    """An OpenAI-shaped text content part. ``cache=True`` adds an Anthropic-style
+    ``cache_control: ephemeral`` marker for prompt caching — honoured by backends that
+    support it (e.g. a LiteLLM proxy fronting Anthropic); ignored by others. Do NOT set
+    it against a direct OpenAI endpoint (which auto-caches and may reject the field)."""
+    part: ContentPart = {"type": "text", "text": text}
+    if cache:
+        part["cache_control"] = {"type": "ephemeral"}
+    return part
+
+
+def image_part(url: str) -> ContentPart:
+    """An OpenAI-shaped image content part. ``url`` may be an http(s) URL or a
+    ``data:`` URL carrying base64 image bytes (e.g.
+    ``data:image/png;base64,<...>``). Needs a vision-capable model behind the role."""
+    return {"type": "image_url", "image_url": {"url": url}}
 
 
 class GatewayError(RuntimeError):

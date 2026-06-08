@@ -43,6 +43,33 @@ obj = gw.complete_structured([{"role": "user", "content": "summarise"}], schema,
 parses JSON from the reply and checks the `required` keys are present
 (lightweight — not full JSON Schema).
 
+## Multimodal & prompt caching
+
+A message's `content` is a plain string in the common case, but may also be a list of
+OpenAI-shaped **content parts** for images and provider passthrough markers. Build them
+with `text_part` / `image_part`:
+
+```python
+from clonway_cockpit.gateway import text_part, image_part
+
+gw.complete([
+    {"role": "user", "content": [
+        text_part("What's in this photo?"),
+        image_part("data:image/png;base64,<...>"),   # or an http(s) URL
+    ]},
+], role="vision")          # the role must map to a vision-capable model
+```
+
+The gateway is **transparent** — it passes content parts through untouched, so:
+
+- **Multimodal:** image parts reach any vision model behind the role (OpenAI `gpt-4o`,
+  a local `llava`/`qwen-vl`, …). A non-vision model will ignore or reject them.
+- **Prompt caching:** `text_part(..., cache=True)` adds an Anthropic-style
+  `cache_control: ephemeral` marker. It's honoured by backends that support it (a
+  LiteLLM proxy fronting Anthropic); harmless-but-ignored elsewhere. Don't set it
+  against a direct OpenAI endpoint (which auto-caches and may reject the field). The
+  gateway neither implements nor strips caching — efficacy is the backend's.
+
 ## Telemetry
 
 Every call appends one event to `<telemetry_base>/model_usage.jsonl`
