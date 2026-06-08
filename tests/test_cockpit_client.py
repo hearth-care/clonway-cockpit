@@ -235,6 +235,10 @@ def test_apply_passes_enriched_proposal_to_policy():
         client.read_home()
         gate = client.press("c")
         assert gate["meta"]["gate"] == "awaiting_apply"
+        # The apply identity is carried in the FRAME meta itself, so a driving-side policy (the
+        # orchestrator's autonomy launcher) can decide allowlist + money-direction from the frame.
+        assert gate["meta"]["capability_key"] == "sb"
+        assert gate["meta"]["money_movement"] is False
         seen: dict = {}
 
         def spy(prop):
@@ -246,6 +250,8 @@ def test_apply_passes_enriched_proposal_to_policy():
             seen["equivalent_cli"] == "x post"
         )  # the policy saw the apply identity, not just a token
         assert seen["token"] == gate["meta"]["token"]
+        assert seen["capability_key"] == "sb"  # ← forwarding the frame meta gives the policy this
+        assert seen["money_movement"] is False
         assert mock.posts == 0
         client.quit()
         t.join(timeout=5)

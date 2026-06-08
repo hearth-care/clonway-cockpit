@@ -491,6 +491,13 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
                         "gate": "awaiting_apply",
                         "token": token,
                         "equivalent_cli": equivalent_cli,
+                        # The apply identity is carried in the FRAME meta too (not only in the
+                        # proposal handed to the served-side policy below) so a DRIVING-side
+                        # authorization policy — e.g. the orchestrator's autonomy launcher — can
+                        # make the same allowlist + money-direction decision from the frame it
+                        # sees. Additive, non-breaking.
+                        "capability_key": ctx.capability_key,
+                        "money_movement": ctx.capability_money_movement,
                     },
                 ),
             )
