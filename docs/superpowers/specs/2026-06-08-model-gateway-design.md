@@ -34,7 +34,8 @@ A `clonway_cockpit/gateway/` subpackage, mirroring the existing `signals/` prece
 
 - `__init__.py` — the `Gateway` object + port types (`Message`, `Completion`, `GatewayError`).
 - `adapters.py` — `OpenAICompatibleAdapter`.
-- `config.py` — load + validate the role→model config and the pricing table.
+- `config.py` — `GatewayConfig.from_dict(...)`: validate a **plain-dict** role→model config +
+  pricing table (no YAML / JSON-Schema dependency — see below).
 - `telemetry.py` — the best-effort per-call usage emitter.
 
 ## The port (the only surface consumers see)
@@ -59,7 +60,10 @@ class Gateway:
 - `complete` returns the assistant text. `complete_structured` returns a dict parsed from the
   model's JSON output and **validated against `schema`** (raises `GatewayError` on parse/validation
   failure); the adapter requests JSON via the OpenAI `response_format` field where supported, and the
-  prompt carries the schema as a fallback for servers that ignore it.
+  prompt carries the schema as a fallback for servers that ignore it. Validation here is deliberately
+  **lightweight** — the JSON parses to an object and every key in `schema["required"]` is present —
+  *not* full JSON Schema, to keep the framework dependency-free; richer validation is the caller's
+  concern or a later slice.
 
 ## The adapter (OpenAI-compatible, zero new dependency)
 
@@ -84,6 +88,9 @@ class OpenAICompatibleAdapter:
 ## Config (role → provider/model; secrets stay out of the repo)
 
 Injected by the consumer (worker/operator); the framework provides only the loader + validation.
+The loader takes a **plain dict** (`GatewayConfig.from_dict(mapping)`) — the YAML below is just an
+illustrative serialization a consumer may keep on disk; parsing it (PyYAML / JSON / TOML) is the
+consumer's choice, so the framework itself pulls in no config-format dependency.
 
 ```yaml
 roles:
