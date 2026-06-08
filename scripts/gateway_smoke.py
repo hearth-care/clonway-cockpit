@@ -1,32 +1,54 @@
 """Watched-working driver for the model gateway — makes ONE real call.
 
-Run against the cheapest real OpenAI-compatible endpoint you have. Examples:
+Run it with a single bare line (no env vars, nothing for the shell to mangle):
 
-  # local Ollama (free, no key) — `ollama serve` + `ollama pull llama3.1`
-  GATEWAY_BASE_URL=http://localhost:11434/v1 GATEWAY_MODEL=llama3.1 \
-      python scripts/gateway_smoke.py
+    python3 /Users/olliepage/Developer/clonway-cockpit/.claude/worktrees/model-gateway/scripts/gateway_smoke.py
 
-  # OpenAI (cheap) — needs OPENAI_API_KEY in the env
-  GATEWAY_BASE_URL=https://api.openai.com/v1 GATEWAY_MODEL=gpt-4o-mini \
-      GATEWAY_API_KEY_ENV=OPENAI_API_KEY python scripts/gateway_smoke.py
+It self-bootstraps its import path (the gateway is stdlib-only, so no uv / active
+venv is needed) and PROMPTS for the endpoint, model, and key. What to enter:
 
-It prints the model's reply and the telemetry event written to ./.cockpit/model_usage.jsonl.
+  - local Ollama (free):  base URL http://localhost:11434/v1   model llama3.1     key (blank)
+  - OpenAI (cheap):       base URL https://api.openai.com/v1    model gpt-4o-mini  key sk-...
+  - Groq (free tier):     base URL https://api.groq.com/openai/v1  model llama-3.1-8b-instant  key gsk-...
+
+It prints the model's reply and the telemetry event written to the worktree's
+.cockpit/model_usage.jsonl.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
-from clonway_cockpit.gateway import Gateway, GatewayConfig, load_events
+# Make this runnable with a bare `python3 <path>` from anywhere: add the worktree's
+# src/ so clonway_cockpit imports without uv or an active venv (the gateway is
+# stdlib-only — nothing to install).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from clonway_cockpit.gateway import Gateway, GatewayConfig, load_events  # noqa: E402
+
+
+def _ask(label: str, default: str) -> str:
+    raw = input(f"{label} [{default}]: ").strip()
+    # zsh paste-escaping can insert literal backslashes before URL punctuation; undo it.
+    for esc in ("\\?", "\\=", "\\&", "\\:"):
+        raw = raw.replace(esc, esc[1])
+    return raw or default
 
 
 def main() -> None:
-    base_url = os.environ.get("GATEWAY_BASE_URL", "http://localhost:11434/v1")
-    model = os.environ.get("GATEWAY_MODEL", "llama3.1")
-    api_key_env = os.environ.get("GATEWAY_API_KEY_ENV")  # None for keyless local servers
-    telemetry_base = Path(".cockpit")
+    print("Model-gateway smoke — one real call. Press Enter to accept each [default].\n")
+    base_url = _ask("Endpoint base URL", "http://localhost:11434/v1")
+    model = _ask("Model", "llama3.1")
+    api_key = _ask("API key (blank for keyless local servers)", "")
 
+    api_key_env: str | None = None
+    if api_key:
+        os.environ["GATEWAY_SMOKE_KEY"] = api_key
+        api_key_env = "GATEWAY_SMOKE_KEY"
+
+    telemetry_base = Path(__file__).resolve().parent.parent / ".cockpit"
     cfg = GatewayConfig.from_dict(
         {
             "roles": {
@@ -43,12 +65,19 @@ def main() -> None:
     )
     gw = Gateway(cfg, telemetry_base=telemetry_base)
 
-    print(f"→ calling {model} at {base_url} ...")
-    reply = gw.complete(
-        [{"role": "user", "content": "Reply with exactly: gateway online"}], role="chat"
-    )
-    print(f"← reply: {reply!r}")
+    print(f"\n→ calling {model} at {base_url} ...")
+    try:
+        reply = gw.complete(
+            [{"role": "user", "content": "Reply with exactly: gateway online"}], role="chat"
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any failure plainly to the operator
+        print(f"\n✗ call failed: {type(exc).__name__}: {exc}")
+        events = load_events(telemetry_base)
+        if events:
+            print(f"telemetry record (failure): {events[-1]}")
+        raise SystemExit(1) from exc
 
+    print(f"← reply: {reply!r}")
     events = load_events(telemetry_base)
     print(f"telemetry record: {events[-1] if events else '(none written)'}")
 
