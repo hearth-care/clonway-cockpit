@@ -46,8 +46,14 @@ mem.recall("ppe", kind="supplier", limit=3)
 
 `recall` is dependency-free keyword scoring: +2 per query word found in a fact's
 `name`/`summary` (high signal), +1 in its `kind`/`body`; non-matches are excluded;
-results sort by score. An empty query returns `[]`. (Semantic recall is a later
-enhancement.)
+results sort by score, then by `name` for ties. An empty query returns `[]`.
+
+Matching is **substring and case-insensitive**, not word-boundary or semantic: a query
+word matches anywhere (so `art` would also match "started"), a repeated query word
+counts repeatedly, and leading/trailing punctuation on query words is stripped (so
+`"PPE supplier?"` and `"ppe,"` still match). `kind` filtering is case-insensitive;
+`get(name)` is an exact slug match. For precise or meaning-based lookup, semantic recall
+is a later enhancement.
 
 ## Robustness
 

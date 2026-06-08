@@ -111,6 +111,36 @@ def test_recall_kind_filter_limit_and_empty_query(tmp_path):
     assert mem.recall("   ") == []
 
 
+def test_recall_strips_query_punctuation(tmp_path):
+    _write(tmp_path, "s.md", "---\nname: s\nkind: supplier\nsummary: ppe supplier.\n---\n")
+    mem = SharedMemory(tmp_path)
+    assert [f.name for f in mem.recall("ppe,")] == ["s"]  # trailing punctuation stripped
+    assert [f.name for f in mem.recall("ppe supplier?")] == ["s"]  # both tokens survive
+
+
+def test_kind_filter_is_case_insensitive(tmp_path):
+    _write(tmp_path, "s.md", "---\nname: s\nkind: Supplier\nsummary: ppe supplier.\n---\n")
+    mem = SharedMemory(tmp_path)
+    assert [f.name for f in mem.all(kind="supplier")] == ["s"]
+    assert [f.name for f in mem.recall("ppe", kind="SUPPLIER")] == ["s"]
+
+
+def test_crlf_frontmatter_parses(tmp_path):
+    _write(
+        tmp_path, "crlf.md", "---\r\nname: crlf\r\nkind: person\r\nsummary: Ada.\r\n---\r\nbody\r\n"
+    )
+    fact = SharedMemory(tmp_path).get("crlf")
+    assert fact is not None
+    assert fact.kind == "person"
+    assert fact.summary == "Ada."
+
+
+def test_recall_ties_break_by_name(tmp_path):
+    _write(tmp_path, "z.md", "---\nname: z\nkind: person\nsummary: ppe note.\n---\n")
+    _write(tmp_path, "a.md", "---\nname: a\nkind: person\nsummary: ppe note.\n---\n")
+    assert [f.name for f in SharedMemory(tmp_path).recall("ppe")] == ["a", "z"]
+
+
 def test_missing_base_dir_returns_empty(tmp_path):
     mem = SharedMemory(tmp_path / "does-not-exist")
     assert mem.all() == []

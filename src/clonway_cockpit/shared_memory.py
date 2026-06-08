@@ -14,6 +14,7 @@ See ``docs/shared-memory.md`` and the design spec
 
 from __future__ import annotations
 
+import string
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,7 +119,7 @@ class SharedMemory:
     def all(self, *, kind: str | None = None) -> list[Fact]:
         facts = self._load()
         if kind is not None:
-            facts = [f for f in facts if f.kind == kind]
+            facts = [f for f in facts if f.kind.lower() == kind.lower()]
         return sorted(facts, key=lambda f: f.name)
 
     def get(self, name: str) -> Fact | None:
@@ -130,12 +131,12 @@ class SharedMemory:
     def recall(
         self, query: str, *, kind: str | None = None, limit: int | None = None
     ) -> list[Fact]:
-        tokens = query.lower().split()
+        tokens = [t for t in (w.strip(string.punctuation) for w in query.lower().split()) if t]
         if not tokens:
             return []
         candidates = self._load()
         if kind is not None:
-            candidates = [f for f in candidates if f.kind == kind]
+            candidates = [f for f in candidates if f.kind.lower() == kind.lower()]
         hits = [(s, f) for s, f in ((_score(f, tokens), f) for f in candidates) if s > 0]
         hits.sort(key=lambda sf: (-sf[0], sf[1].name))
         result = [f for _s, f in hits]
