@@ -103,7 +103,11 @@ def local_dir_sink(root: Path) -> Sink:
     (a fan-in dir, or a GCS-FUSE mount). The GCS-client sink is the caller's."""
 
     def _sink(relpath: str, data: bytes) -> None:
-        target = root / relpath
+        target = (root / relpath).resolve()
+        # Defence-in-depth: refuse to write outside root even if a caller passes a
+        # relpath directly (flush_model_usage only ever passes validated templates).
+        if not target.is_relative_to(root.resolve()):
+            raise ValueError(f"fan-in relpath escapes the root: {relpath!r}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
 

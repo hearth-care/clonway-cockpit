@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from clonway_cockpit.gateway import (
     fanin_relpath,
     flush_model_usage,
@@ -100,6 +102,39 @@ def test_flush_swallows_sink_errors(tmp_path):
 
     rel = flush_model_usage(tmp_path, worker="x", run_id="r", date="2026-06-08", sink=boom)
     assert rel is None  # best-effort: never raises
+
+
+def test_flush_rejects_trailing_newline_worker(tmp_path):
+    # regression guard: _SLUG_RE.fullmatch must reject "x\n" (re `$` alone accepts it)
+    _seed_usage(tmp_path)
+    calls: list[str] = []
+    rel = flush_model_usage(
+        tmp_path, worker="x\n", run_id="r", date="2026-06-08", sink=lambda p, d: calls.append(p)
+    )
+    assert rel is None
+    assert calls == []
+
+
+def test_flush_round_trips_bytes_exactly(tmp_path):
+    worker_base = tmp_path / "worker"
+    _seed_usage(worker_base)
+    original = (worker_base / "model_usage.jsonl").read_bytes()
+    captured: dict[str, bytes] = {}
+    flush_model_usage(
+        worker_base,
+        worker="x",
+        run_id="r",
+        date="2026-06-08",
+        sink=lambda p, d: captured.__setitem__("data", d),
+    )
+    assert captured["data"] == original  # byte-identical
+
+
+def test_local_dir_sink_refuses_escaping_relpath(tmp_path):
+    sink = local_dir_sink(tmp_path / "root")
+    with pytest.raises(ValueError, match="escapes"):
+        sink("../escaped.txt", b"x")
+    assert not (tmp_path / "escaped.txt").exists()
 
 
 def test_two_workers_build_a_fanin_tree(tmp_path):
