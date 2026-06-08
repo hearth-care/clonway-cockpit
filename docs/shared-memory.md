@@ -61,8 +61,33 @@ Every read degrades quietly — a missing directory or a malformed file yields f
 facts, never an exception (a persona must not fall over looking something up). Facts
 are loaded once and cached; construct a new `SharedMemory` to pick up on-disk edits.
 
+## Writing (governed)
+
+Writes go through `GovernedWriter`, which enforces the **trust boundary**: a fact is
+promoted to shared memory **only when its `source` is the owner**. Quoted / outsider
+content is refused, never auto-promoted — one poisoned fact must not infect every
+persona.
+
+```python
+from clonway_cockpit.shared_memory import GovernedWriter, OWNER, WriteRefused
+
+writer = GovernedWriter(Path("/path/to/handbook"))
+writer.write(name="acme-supplier", kind="supplier",
+             summary="ACME — PPE; 30-day terms.", source=OWNER,
+             body="Primary PPE supplier.")          # → writes acme-supplier.md, returns the Fact
+
+writer.write(name="bank", kind="preference", summary="...", source="quoted")  # raises WriteRefused
+```
+
+The writer **trusts the `source` it is given** — the caller must set it honestly from
+the message trust boundary (`operator` vs `quoted`); the gate is the backstop. It is
+**fail-closed**: a refused write (non-owner source, a `name` that isn't a safe
+`[a-z0-9][a-z0-9_-]*` slug, or an empty/multi-line `kind`/`summary`) writes nothing.
+A written fact round-trips through `SharedMemory`; writing an existing `name` overwrites
+it (the owner updating shared truth). `as_of` defaults to today (UTC).
+
 ## Scope
 
-Read + format only. The governed write (owner-only promotion, quarantine of
-quoted/outsider content), per-persona private memory, and semantic recall are later
-slices.
+The governed write above is the owner-only promotion gate. Still later: quarantine
+*storage* for refused content, per-persona private memory, an edit/audit history, and
+semantic recall.
