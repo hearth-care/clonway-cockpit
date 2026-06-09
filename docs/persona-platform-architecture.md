@@ -306,7 +306,7 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | queued — needs the operator (Auto-Orchestrator PR #170 + the `xops-chat-retire.py` run) |
 | 3 | **Model gateway** — the config-driven, cost-capped port + adapters | **DONE** (#49 port+telemetry, #52 fleet fan-in, #53 multimodal+caching, #54 LiteLLM adapter, #55 tool-use `complete_tools`) |
 | 4 | **Shared-memory format + read** | **DONE** (#50 — `shared_memory.py`: handbook format + read/recall API) |
-| 5 | **Milo reads shared memory** | read API ready (#50); the xbook-side wiring is not started |
+| 5 | **Milo reads shared memory** | **DONE** — the read/recall API (#50) + Milo's `recall_shared_memory` tool wired in xbook (#664) |
 | 6 | **Governed write** (the owner-only trust boundary) | designed; **PR #51 open, parked on the owner** (not merged) |
 
 **Built beyond the original locked horizon** (each its own PR + docs, FBA-hardened):
