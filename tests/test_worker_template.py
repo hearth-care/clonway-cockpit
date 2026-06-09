@@ -21,6 +21,7 @@ tests or collide with a real installed worker.
 from __future__ import annotations
 
 import importlib
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -54,6 +55,36 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
         unsafe=True,  # template has computed values; we trust our own template
     )
     return dst
+
+
+def _install_generated_worker_against_local_checkout(dst: Path) -> None:
+    """Install the generated worker while pinning clonway-cockpit to this checkout."""
+    cmd = ["uv", "add", f"clonway-cockpit @ file://{_REPO_ROOT}"]
+    try:
+        subprocess.run(
+            cmd,
+            cwd=dst,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise AssertionError(
+            "Generated worker install failed:\n"
+            f"cmd: {cmd!r}\n"
+            f"cwd: {dst}\n"
+            f"stdout:\n{exc.stdout or ''}\n"
+            f"stderr:\n{exc.stderr or ''}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            "Generated worker install timed out:\n"
+            f"cmd: {cmd!r}\n"
+            f"cwd: {dst}\n"
+            f"stdout:\n{exc.stdout or ''}\n"
+            f"stderr:\n{exc.stderr or ''}"
+        ) from exc
 
 
 @contextmanager
@@ -223,6 +254,39 @@ def test_ac_c6_4_generated_worker_serves_agent_and_drives_clean(tmp_path: Path) 
         contract.assert_render_model_parity(cockpit)
         stream = contract.assert_drives_clean(host, ["q"])
         assert stream[0].kind == "home"
+
+
+def test_ac_c6_4_generated_worker_cli_agent_stdio_subprocess_smoke(tmp_path: Path) -> None:
+    from clonway_cockpit import agent, keys
+
+    worker_id = "xgensubproc"
+    dst = _generate(tmp_path, worker_id=worker_id)
+    _install_generated_worker_against_local_checkout(dst)
+
+    with agent.CockpitClient.spawn(
+        ["uv", "run", worker_id, "--agent-stdio"],
+        cwd=str(dst),
+        timeout=10,
+    ) as client:
+        home = client.read_home()
+        preflight = client.press("a")
+        result = client.press(keys.ENTER)
+        returned_home = client.press("x")
+        extra = client.drain()
+
+    frames = [home, preflight, result, returned_home, *extra]
+    screen_frames = [frame for frame in frames if "kind" in frame]
+
+    assert home["kind"] == "home"
+    assert preflight["kind"] == "walk.preflight"
+    assert result["kind"] == "walk.result"
+    assert result["meta"]["ok"] is True
+    assert result["meta"]["message"] == "Done."
+    assert returned_home["kind"] == "home"
+    assert screen_frames, frames
+    assert all(frame["schema_version"] == "1.0" for frame in screen_frames)
+    assert not any(frame["kind"] == "unstructured" for frame in screen_frames)
+    assert client._proc is None or client._proc.poll() is not None
 
 
 def test_ac_c6_4_cli_registers_agent_flags(tmp_path: Path) -> None:
