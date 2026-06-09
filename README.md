@@ -11,10 +11,22 @@ forward-looking `Signal` model and emitter — **and the agent-navigability laye
 that makes every cockpit drivable by an AI agent over the same code path a human
 uses.**
 
+On top of that spine the framework also ships the **persona platform** — the layer that
+turns a worker into a human-named colleague: a provider-agnostic **model gateway**
+(`gateway/` — `complete` / `complete_structured` / `complete_tools` over OpenAI-compatible
+or LiteLLM adapters, with content-free per-call telemetry), worker-agnostic **persona
+identity** (`persona.py`), a **soul + shared constitution** system-prompt layer
+(`persona_soul.py`), a distributed-self-selection **group chat** (`group_chat.py`) and a
+**receptionist** front door (`receptionist.py`), the **colleague** wire that binds
+persona → soul → gateway so a whole *fleet* can converse (`colleague.py`), and a read-only
+shared **company memory** (`shared_memory.py`). See
+[docs/persona-platform-architecture.md](docs/persona-platform-architecture.md).
+
 Workers (xbook, xhr, …) depend on this package and supply their own capabilities,
-probes, and domain screens. The only runtime dependency is
-[`rich`](https://github.com/Textualize/rich); the package never imports any
-worker — it is the substrate they build on, not the other way round.
+probes, and domain screens. The only **required** runtime dependency is
+[`rich`](https://github.com/Textualize/rich) — the model gateway is stdlib-only (urllib),
+and LiteLLM is an optional extra (`clonway-cockpit[litellm]`). The package never imports
+any worker — it is the substrate they build on, not the other way round.
 
 ## Agent-navigable by construction
 
@@ -74,16 +86,27 @@ screen with no model fails the build; a model that never emits on a real path fa
 
 ```
 src/clonway_cockpit/
-  keys.py        prompts.py     registry.py    state.py
-  doctor.py      render.py      walk.py        usage.py    shellout.py
-  model.py       contract.py    agent.py       obs.py      # the agent-navigability layer
+  keys.py        prompts.py     registry.py    state.py     shell.py
+  doctor.py      render.py      walk.py        usage.py     shellout.py
+  model.py       contract.py    agent.py       obs.py        # the agent-navigability layer
   signals/model.py   signals/rank.py   signals/emit.py   signals/horizon.py
+  approval.py    conversation.py   shared_memory.py          # write-authz · operator routing · company memory
+  persona.py  persona_soul.py  group_chat.py  receptionist.py  colleague.py   # the persona platform
+  gateway/gateway.py  gateway/adapters.py  gateway/config.py  gateway/types.py  gateway/telemetry.py
 ```
 
 - `model.py` — the `ScreenModel` contract + `SCHEMA_VERSION`.
 - `contract.py` — the shippable parity + drive-clean gate workers import in CI.
 - `agent.py` — `serve_stdio` / `serve_agent_stdio` (served side), `CockpitClient` /
   `CockpitDriver` (driving side).
+- `gateway/` — the provider-agnostic model port (`Gateway`, `GatewayConfig`) + the
+  OpenAI-compatible / LiteLLM adapters + content-free usage telemetry.
+- `persona.py` / `persona_soul.py` — persona identity (`Persona` / `PersonaRegistry`) and
+  the soul + validated shared constitution (`compose_system_prompt`).
+- `group_chat.py` / `receptionist.py` / `colleague.py` — the group room (distributed
+  self-selection), the front-door receptionist, and the `gateway_responder` wire that lets
+  a fleet of personas converse persona → soul → gateway.
+- `shared_memory.py` — the read-only company handbook (facts with frontmatter, keyword recall).
 
 ## Onboarding & scaffolding
 

@@ -302,13 +302,25 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 
 | # | Slice | Status |
 |---|---|---|
-| 1 | **Architecture design doc** (this document) | in progress (this PR) |
-| 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | queued |
-| 3 | **Model gateway** — the config-driven, cost-capped port + adapters | queued (unblocks live-Milo *and* the xops cost dimension) |
-| 4 | **Shared-memory format + read** | designed, not started |
-| 5 | **Milo reads shared memory** | designed, not started |
-| 6 | **Governed write** (the owner-only trust boundary) | designed, not started |
+| 1 | **Architecture design doc** (this document) | **DONE** (#48) |
+| 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | queued — needs the operator (Auto-Orchestrator PR #170 + the `xops-chat-retire.py` run) |
+| 3 | **Model gateway** — the config-driven, cost-capped port + adapters | **DONE** (#49 port+telemetry, #52 fleet fan-in, #53 multimodal+caching, #54 LiteLLM adapter, #55 tool-use `complete_tools`) |
+| 4 | **Shared-memory format + read** | **DONE** (#50 — `shared_memory.py`: handbook format + read/recall API) |
+| 5 | **Milo reads shared memory** | read API ready (#50); the xbook-side wiring is not started |
+| 6 | **Governed write** (the owner-only trust boundary) | designed; **PR #51 open, parked on the owner** (not merged) |
 
-Then, beyond the locked horizon: per-persona multi-turn memory · persona identity (name / avatar /
-email) · the group-chat space (start with two personas) · surface model spend in the xops cost
-page. Each gets its own slice, its own PR, and its own design note linked back here.
+**Built beyond the original locked horizon** (each its own PR + docs, FBA-hardened):
+
+| Slice | Status |
+|---|---|
+| **Persona identity** (name / handle / domain / email / avatar / voice) — `persona.py` | **DONE** (#56) |
+| **Soul + shared constitution** (the two-layer system prompt) — `persona_soul.py` | **DONE** (#59) |
+| **Group-chat space** (distributed self-selection + orchestration + `GroupSpace`) — `group_chat.py` | **DONE** (#57, #58) |
+| **Receptionist** (the front door that points, never does) — `receptionist.py` | **DONE** (#60) |
+| **Seam-hardening** (the audit's cheap correctness/safety cluster: matcher, constitution check, mentions) | **DONE** (#61) |
+| **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
+
+Still ahead: **per-persona multi-turn memory**; the **live Google Chat transport** (a Workspace
+add-on — the in-memory wire is proven, the production surface is not built); and **surfacing
+model spend in the xops cost page** (the gateway already emits the telemetry). Each gets its own
+slice, its own PR, and its own design note linked back here. **Lock only the next slice.**

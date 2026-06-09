@@ -51,10 +51,15 @@ system_prompt = compose_system_prompt(soul)        # soul stacked on the SHARED 
 ```
 
 `compose_system_prompt(soul, constitution=DEFAULT_CONSTITUTION)` stacks the swappable soul on
-top of the **mandatory constitution** (never fabricate, cite data freshness, owner-only
-commands, the approval gate, internal-first) and **validates the constitution is intact** —
-personality can flavour the voice but can never edit away a guardrail (`SoulError` if a
-required phrase is missing). Two starter souls ship in `examples/souls/` (`milo`, `quill`).
+top of the **mandatory constitution** and **validates the constitution is intact** — so
+personality can flavour the voice but can never edit away a guardrail (`SoulError` if a phrase
+is missing). The validator requires these exact phrases, matched on **word boundaries** (so
+`"disapproval"` does not satisfy `"approval"`): `never fabricate`, `cite their freshness`,
+`owner's words are commands`, `approval`, `internal-first`. It is a **presence check, not a
+semantic guarantee** — it catches an accidentally-truncated constitution, but a deliberately
+adversarial one could keep a phrase while negating the rule, so a *custom* (non-default)
+constitution still warrants human review. Two starter souls ship in `examples/souls/`
+(`milo`, `quill`).
 
 Personality lives in the face, not the hands: a pernickety inspector and a breezy marketer
 call the *same* gated tools; voice is pure presentation. **Worker adoption** — pointing a

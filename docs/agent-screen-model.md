@@ -187,9 +187,11 @@ update.
 
 A worker exposes the cockpit to an agent with two pieces, both inherited from the framework:
 
-1. **`serve_agent_stdio(host, *, allow_apply=False, stdin, stdout)`** — the one-liner the
-   worker's CLI `--agent-stdio` callback calls. It is thin over `serve_stdio`, which forces
-   `agent_mode=True` (dry-run) and wires the guarded-apply handshake when `allow_apply`.
+1. **`serve_agent_stdio(host, *, allow_apply=False, stdin, stdout, on_apply=None, policy=None)`**
+   — the one-liner the worker's CLI `--agent-stdio` callback calls. It is thin over `serve_stdio`,
+   which forces `agent_mode=True` (dry-run) and wires the guarded-apply handshake when
+   `allow_apply`. `on_apply` is an audit callback fired on each apply; `policy` is an optional
+   autonomous-authorization predicate (WS-B) consulted before a guarded apply.
 2. **An agent-mode-aware host factory.** `serve_stdio` sets `agent_mode=True` on the host it
    threads through `run_cockpit`. A worker whose `_host()` is **re-invoked inside its own
    callbacks** loses that flag on the rebuilt instance — so such a worker reads an ambient
