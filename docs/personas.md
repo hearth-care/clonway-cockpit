@@ -59,3 +59,43 @@ required phrase is missing). Two starter souls ship in `examples/souls/` (`milo`
 Personality lives in the face, not the hands: a pernickety inspector and a breezy marketer
 call the *same* gated tools; voice is pure presentation. **Worker adoption** — pointing a
 worker's existing persona-config loader at `compose_system_prompt` — is the per-repo follow-up.
+
+## Colleague — identity + soul, wired to a gateway
+
+`Persona` (the `.toml`) and the soul (the `.md`) are two reps of one colleague; on their own
+nothing binds them, and nothing drives a *fleet* through a model. `clonway_cockpit.colleague`
+is the wire that closes both gaps. **A `Colleague` is a persona bound to its soul**, and
+"add a colleague" becomes one path: drop `<handle>.toml` + `<handle>.md` in a pair of dirs.
+
+```python
+from pathlib import Path
+from clonway_cockpit.colleague import load_colleagues, gateway_responder
+from clonway_cockpit.gateway.config import GatewayConfig
+from clonway_cockpit.gateway.gateway import Gateway
+from clonway_cockpit.group_chat import FakeChatTransport, GroupSpace
+
+fleet = load_colleagues(Path("config/personas"), Path("config/souls"))  # pairs by handle
+fleet.get("milo").system_prompt   # soul stacked on the validated constitution
+fleet.registry                    # the identity-only PersonaRegistry — feeds GroupSpace / route
+
+gw = Gateway(GatewayConfig.from_dict({"roles": {"chat": {
+    "provider": "openai_compatible", "base_url": "http://localhost:11434/v1",  # local Ollama
+    "model": "qwen2.5:0.5b"}}}))
+
+space = GroupSpace(
+    space_id="ops", registry=fleet.registry, transport=FakeChatTransport(),
+    responder=gateway_responder(fleet, gw, role="chat"),   # <- the reference wire
+)
+space.owner_says("can you check our VAT return?")   # the matching colleague replies via the model
+```
+
+`gateway_responder` is the reference `responder` the group room injects in place of the
+`echo_responder` stub: for the persona that self-selects, it composes that persona's **own**
+soul into the system prompt, sends it plus the inbound message through the gateway at `role`,
+and returns the reply — so the *whole fleet* converses, not just a hand-wired Milo. It is
+stateless by design (system + the one message; production layers a per-space transcript on
+top), stays **quiet** when a persona has no soul or the model returns empty, and (by default)
+stays quiet on a `GatewayError` so one colleague's model hiccup doesn't crash the round.
+Nothing here can move money or send — a responder only returns text into the room, and the
+owner-only-command air-gap (`is_command`) is unchanged. Runnable end-to-end demo (no network,
+fake completer): `examples/fleet_chat_demo.py`; swap the fake for a `Gateway` to go live.
