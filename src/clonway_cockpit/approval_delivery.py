@@ -67,3 +67,37 @@ class ApprovalRequest:
             title=_optional_str(meta.get("title")),
             summary=_optional_str(meta.get("summary")),
         )
+
+    def to_policy_proposal(self) -> dict[str, object]:
+        proposal = dict(self.proposal)
+        proposal["token"] = self.token
+        proposal["equivalent_cli"] = self.equivalent_cli
+        return proposal
+
+
+def _money_label(value: bool | None) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "unknown"
+
+
+def render_approval_request(request: ApprovalRequest) -> str:
+    lines = [
+        "Approval request",
+        f"Action: {request.equivalent_cli}",
+        f"Token: {request.token}",
+        f"Money movement: {_money_label(request.money_movement)}",
+    ]
+    if request.capability_key is not None:
+        lines.append(f"Capability: {request.capability_key}")
+    if request.worker is not None:
+        lines.append(f"Worker: {request.worker}")
+    if request.intent is not None:
+        lines.append(f"Intent: {request.intent}")
+    if request.title is not None:
+        lines.append(f"Title: {request.title}")
+    if request.summary is not None:
+        lines.append(f"Summary: {request.summary}")
+    return "\n".join(lines)

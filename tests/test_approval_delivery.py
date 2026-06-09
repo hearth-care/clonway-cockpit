@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from clonway_cockpit.approval_delivery import ApprovalRequest, ApprovalRequestError
+from clonway_cockpit.approval_delivery import (
+    ApprovalRequest,
+    ApprovalRequestError,
+    render_approval_request,
+)
 
 
 def _gate_meta() -> dict[str, object]:
@@ -56,3 +60,42 @@ def test_from_gate_accepts_gate_meta_directly() -> None:
 def test_from_gate_fails_closed_for_malformed_gates(gate: dict[str, object], message: str) -> None:
     with pytest.raises(ApprovalRequestError, match=message):
         ApprovalRequest.from_gate(gate)
+
+
+def test_to_policy_proposal_returns_copy_with_token_guaranteed() -> None:
+    req = ApprovalRequest.from_gate(
+        {"gate": "awaiting_apply", "token": "gate-1", "equivalent_cli": "x"}
+    )
+
+    proposal = req.to_policy_proposal()
+    proposal["token"] = "mutated"
+
+    assert proposal["token"] == "mutated"
+    assert req.to_policy_proposal()["token"] == "gate-1"
+    assert req.to_policy_proposal()["equivalent_cli"] == "x"
+
+
+def test_render_approval_request_includes_reference_fields() -> None:
+    req = ApprovalRequest.from_gate(_gate_meta())
+
+    text = render_approval_request(req)
+
+    assert "Action: xbook bills schedule" in text
+    assert "Token: gate-1" in text
+    assert "Capability: schedule-bills" in text
+    assert "Money movement: no" in text
+    assert "Worker: xbook" in text
+    assert "Intent: schedule bills" in text
+    assert "Title: Schedule bills" in text
+    assert "Summary: Posts planned payment dates." in text
+
+
+def test_render_approval_request_marks_unknown_money_movement() -> None:
+    req = ApprovalRequest.from_gate(
+        {"gate": "awaiting_apply", "token": "gate-1", "equivalent_cli": "x"}
+    )
+
+    text = render_approval_request(req)
+
+    assert "Money movement: unknown" in text
+    assert "Capability:" not in text
