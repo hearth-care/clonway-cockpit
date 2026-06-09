@@ -86,7 +86,15 @@ def serve_stdio(
 
     Protocol (one JSON object per line):
       agent -> app : {"key": "<k>"} | {"cmd": "snapshot"} | {"cmd": "quit"}
+                     | {"input": "<value>"} | {"confirm": true|false}  (capture replies)
       app -> agent : <ScreenModel.to_dict()>  |  {"error": "<reason>"}
+                     | {"input_request": {"prompt": "<text>", "default": "<text>"}}
+                     | {"confirm_request": "<prompt>"}
+    A walk that PROMPTS for typed input (a capture step) emits ``input_request`` /
+    ``confirm_request``; the driver answers with ``{"input": …}`` / ``{"confirm": …}`` —
+    so an agent can drive a capture flow end-to-end instead of the walk blocking on terminal
+    stdin (which dumped an empty crash frame). EOF on a pending input request raises and the
+    walk surfaces a clean error frame; a missing/false confirm reply is a safe NO.
     Stdin EOF unwinds the cockpit (treated as quit). A capability that shells out
     (``ShellOut``) surfaces as a note frame rather than exec'ing a child — agents
     don't get an interactive child shell.
@@ -182,6 +190,41 @@ def serve_stdio(
                 on_apply(proposal)
         return authorized
 
+    def agent_input(prompt_text: str, default: str = "") -> str:
+        # A walk's capture step calls this for each typed field. Emit an input request, then read
+        # ONE reply: {"input": "<value>"} → the value. EOF / a non-input message raises so the
+        # shell's crash-guard surfaces a clean frame instead of looping or hanging (a fail-safe,
+        # mirroring authorize_apply). This is how an AGENT supplies field values — the human cockpit
+        # keeps the worker's own prompt fn (this is only threaded in agent_mode).
+        _write({"input_request": {"prompt": prompt_text, "default": default}})
+        raw = stdin.readline(_MAX_MSG_BYTES)
+        if raw == "":
+            raise RuntimeError("agent input stream closed")
+        line = raw.strip()
+        try:
+            msg = json.loads(line) if line else {}
+        except (ValueError, TypeError, RecursionError):
+            _write({"error": "invalid json"})
+            raise RuntimeError("invalid input message") from None
+        if isinstance(msg, dict) and isinstance(msg.get("input"), str):
+            return msg["input"]
+        _write({"error": 'expected {"input": "<value>"}'})
+        raise RuntimeError("expected an input message")
+
+    def agent_confirm(prompt_text: str) -> bool:
+        # As agent_input, for a yes/no confirm: {"confirm_request": "<prompt>"} → {"confirm": bool}.
+        # A missing / false / garbled reply is a safe NO (never a silent yes).
+        _write({"confirm_request": prompt_text})
+        raw = stdin.readline(_MAX_MSG_BYTES)
+        if raw == "":
+            return False
+        line = raw.strip()
+        try:
+            msg = json.loads(line) if line else {}
+        except (ValueError, TypeError, RecursionError):
+            return False
+        return isinstance(msg, dict) and msg.get("confirm") is True
+
     # Gate authorizer precedence: an injected policy (autonomous) wins; else the token
     # handshake (human-via-driver, allow_apply); else None (pure dry-run — unchanged default).
     if policy is not None:
@@ -196,6 +239,8 @@ def serve_stdio(
         on_screen=on_screen,
         agent_mode=True,
         authorize_apply=gate_authorizer,
+        agent_input_fn=agent_input,
+        agent_confirm_fn=agent_confirm,
     )
     try:
         shell.run_cockpit(agent_host, read_key=read_key, screen=_NullScreen())
@@ -371,6 +416,18 @@ class CockpitClient:
             self._send({"apply": True, "token": token})
         else:
             self._send({"apply": False})
+        return self._next()
+
+    def answer_input(self, value: str) -> dict:
+        """Reply to a ``{"input_request": …}`` frame with a typed field value; return the next
+        frame (the next input_request, or the walk's review/result once capture is done). This is
+        how a driver fills a walk's capture step over the protocol."""
+        self._send({"input": value})
+        return self._next()
+
+    def answer_confirm(self, value: bool) -> dict:  # noqa: FBT001
+        """Reply to a ``{"confirm_request": …}`` frame with yes/no; return the next frame."""
+        self._send({"confirm": bool(value)})
         return self._next()
 
     def drain(self, *, idle: float = 0.1) -> list[dict]:

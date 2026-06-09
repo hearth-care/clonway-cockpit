@@ -200,6 +200,13 @@ class Host:
     # walk ctx so the write gate offers a token handshake instead of a blanket decline.
     # None = no guarded apply = pure dry-run. Only consulted in agent_mode.
     authorize_apply: Callable[[dict], bool] | None = None
+    # Agent-mode capture: in agent_mode the shell swaps a walk's WizardContext ``input_fn`` /
+    # ``confirm_fn`` for these so a walk that PROMPTS for typed values is drivable over the agent
+    # protocol (the driver answers each request) instead of blocking on terminal stdin — which made
+    # a walk's capture step un-drivable by an agent and dumped an empty crash frame. Set by
+    # serve_stdio; None outside agent mode (the live human cockpit keeps the worker's prompts).
+    agent_input_fn: Callable[[str, str], str] | None = None
+    agent_confirm_fn: Callable[[str], bool] | None = None
 
 
 def run_with_progress[T](
@@ -689,6 +696,15 @@ def _open_capability(
             capability_key=spec.key,
             capability_money_movement=spec.money_movement,
         )
+        # In agent mode, route a walk's typed-input / confirm prompts over the protocol so a capture
+        # step is drivable by an agent (the driver answers each request) rather than blocking on
+        # terminal stdin. Only swaps when serve_stdio supplied the agent fns; the live human cockpit
+        # keeps the worker's own prompt functions.
+        if host.agent_mode:
+            if host.agent_input_fn is not None:
+                ctx = replace(ctx, input_fn=host.agent_input_fn)
+            if host.agent_confirm_fn is not None:
+                ctx = replace(ctx, confirm_fn=host.agent_confirm_fn)
         try:
             spec.run(ctx)
         except shellout.ShellOut:
@@ -701,7 +717,10 @@ def _open_capability(
             # taking the whole cockpit down. Surface the crash as a clean result
             # frame and return to the home loop instead. Emit the matching model so an
             # agent driving the walk sees the failure too (not just the human screen).
-            crash_msg = f"{spec.title} hit an error — {e}"
+            # Some exceptions stringify to "" (e.g. click.Abort on an EOF'd prompt) — note an
+            # exception OBJECT is always truthy, so test str(e), not e — fall back to the type name
+            # so the crash frame is never a dangling "… hit an error — " with nothing after it.
+            crash_msg = f"{spec.title} hit an error — {str(e) or type(e).__name__}"
             _safe_emit(host, r.model_walk_result(spec.title, ok=False, message=crash_msg))
             _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return

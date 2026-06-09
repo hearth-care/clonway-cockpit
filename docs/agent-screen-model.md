@@ -120,10 +120,21 @@ same `run_cockpit` core the in-process `CockpitDriver` uses.
 | agent → app | `{"key": "<k>"}` | the next keypress (`up`/`down`/`enter`/`esc`/letters/digits/…) |
 | agent → app | `{"cmd": "snapshot"}` | re-emit the current `ScreenModel` (does not advance) |
 | agent → app | `{"cmd": "quit"}` / stdin EOF | unwind the cockpit |
+| agent → app | `{"input": "<value>"}` | answer a pending `input_request` (a walk's typed-capture field) |
+| agent → app | `{"confirm": true\|false}` | answer a pending `confirm_request` |
 | app → agent | `ScreenModel.to_dict()` | emitted at every draw |
 | app → agent | `{"error": "<reason>"}` | bad JSON / non-object / unknown / non-string `key`; screen held |
+| app → agent | `{"input_request": {"prompt": "<text>", "default": "<text>"}}` | a walk's capture step needs a typed value — answer with `{"input": …}` |
+| app → agent | `{"confirm_request": "<prompt>"}` | a walk needs a yes/no — answer with `{"confirm": …}` |
 | app → agent | `{"kind":"walk.gate","meta":{"status":"declined","reason":"dry_run"}}` | the write gate was reached and declined (dry-run) — the agent's observable proof the gate held |
 | app → agent | `{"kind":"note","meta":{"shellout":true}}` | a capability shelled out; not exec'd in agent mode (session then ends) |
+
+A walk that PROMPTS for typed values (a **capture step**) is drivable end-to-end: it emits
+`input_request` / `confirm_request` and blocks for the driver's `input` / `confirm` reply (a
+request/response handshake, like the apply gate below). `CockpitClient.answer_input(value)` /
+`answer_confirm(bool)` are the driving-side helpers. EOF on a pending input surfaces a clean error
+frame; a missing/false confirm is a safe NO. In agent mode the shell swaps the walk's
+`input_fn`/`confirm_fn` for these — the live human cockpit keeps the worker's own terminal prompts.
 
 Cadence: under piped (non-tty) stdin the loop emits one frame per draw before each
 blocking read — request/response. Inert keys may not redraw (use `snapshot` to re-poll);
