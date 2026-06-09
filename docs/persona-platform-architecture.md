@@ -307,11 +307,11 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | # | Slice | Status |
 |---|---|---|
 | 1 | **Architecture design doc** (this document) | **DONE** (#48) |
-| 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | queued — needs the operator (Auto-Orchestrator PR #170 + the `xops-chat-retire.py` run) |
+| 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | **DONE** — Auto-Orchestrator #170 merged; any infrastructure cleanup script remains operator-run cleanup |
 | 3 | **Model gateway** — the config-driven, cost-capped port + adapters | **DONE** (#49 port+telemetry, #52 fleet fan-in, #53 multimodal+caching, #54 LiteLLM adapter, #55 tool-use `complete_tools`) |
 | 4 | **Shared-memory format + read** | **DONE** (#50 — `shared_memory.py`: handbook format + read/recall API) |
 | 5 | **Milo reads shared memory** | **DONE** — the read/recall API (#50) + Milo's `recall_shared_memory` tool wired in xbook (#664) |
-| 6 | **Governed write** (the owner-only trust boundary) | designed; **PR #51 open, parked on the owner** (not merged) |
+| 6 | **Governed write** (the owner-only trust boundary) | **DONE** (#51 — `GovernedWriter` refuses non-owner provenance and validates fact writes before touching disk) |
 
 **Built beyond the original locked horizon** (each its own PR + docs, FBA-hardened):
 
@@ -325,6 +325,7 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
 
 Still ahead: **per-persona multi-turn memory**; the **live Google Chat transport** (a Workspace
-add-on — the in-memory wire is proven, the production surface is not built); and **surfacing
-model spend in the xops cost page** (the gateway already emits the telemetry). Each gets its own
-slice, its own PR, and its own design note linked back here. **Lock only the next slice.**
+add-on — the in-memory wire is proven, the production surface is not built); **surfacing
+model spend in the xops cost page** (the gateway already emits and fans out telemetry); and
+**consumer adoption / pin rollout** so worker repos inherit the newest platform slices. Each gets
+its own slice, its own PR, and its own design note linked back here. **Lock only the next slice.**
