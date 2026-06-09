@@ -14,8 +14,10 @@ See ``docs/shared-memory.md`` and the design spec
 
 from __future__ import annotations
 
+import re
 import string
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 # A file is only a fact if its frontmatter carries at least these. ``name`` falls
@@ -143,3 +145,99 @@ class SharedMemory:
         if limit is not None:
             result = result[:limit]
         return result
+
+
+# --- Governed write (slice 6) — the owner-only trust boundary -----------------
+
+OWNER = "owner"
+"""The only provenance that becomes shared truth (cf. WS-D's OPERATOR vs QUOTED)."""
+
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+
+class WriteRefused(RuntimeError):
+    """A write was refused — non-owner provenance, or an invalid field. Nothing was written."""
+
+
+def _today() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
+def _single_line(value: str, field: str) -> str:
+    cleaned = value.strip()
+    if not cleaned or "\n" in cleaned or "\r" in cleaned:
+        raise WriteRefused(f"{field} must be a non-empty single line")
+    return cleaned
+
+
+def _render_fact(name: str, kind: str, summary: str, source: str, as_of: str, body: str) -> str:
+    text = (
+        "---\n"
+        f"name: {name}\n"
+        f"kind: {kind}\n"
+        f"summary: {summary}\n"
+        f"source: {source}\n"
+        f"as_of: {as_of}\n"
+        "---\n"
+    )
+    if body:
+        text += body + "\n"
+    return text
+
+
+class GovernedWriter:
+    """Owner-gated writer for a shared handbook.
+
+    Promotes a fact to shared memory ONLY when its ``source`` is the owner; quoted /
+    outsider content is refused, never auto-promoted (one poisoned fact must not infect
+    every persona). The writer trusts the ``source`` it is given — the caller must set it
+    honestly from the message trust boundary (operator vs quoted). Fail-closed: any
+    refusal writes nothing.
+    """
+
+    def __init__(self, base: Path) -> None:
+        self._base = base
+
+    def write(
+        self,
+        *,
+        name: str,
+        kind: str,
+        summary: str,
+        source: str,
+        body: str = "",
+        as_of: str | None = None,
+    ) -> Fact:
+        # 1. Trust gate (first, before any I/O) — the whole point.
+        if source != OWNER:
+            raise WriteRefused(
+                f"refused: source {source!r} is not the owner; quoted/outsider content "
+                "is never promoted to shared memory"
+            )
+        # 2. Validation — also a security boundary, since ``name`` becomes a filename.
+        if not _SLUG_RE.fullmatch(name):  # fullmatch: `$` alone allows a trailing newline
+            raise WriteRefused(
+                f"invalid name {name!r}: must be a lower-case slug [a-z0-9][a-z0-9_-]* "
+                "(rejects path traversal and odd filenames)"
+            )
+        kind = _single_line(kind, "kind")
+        summary = _single_line(summary, "summary")
+        # as_of is also rendered into the frontmatter, so it must be single-line too
+        # (else a newline injects extra keys the reader's last-wins parse would honour).
+        stamp = _single_line(as_of, "as_of") if as_of else _today()
+        clean_body = body.strip()
+        # 3. Write (only now is anything created).
+        self._base.mkdir(parents=True, exist_ok=True)
+        path = self._base / f"{name}.md"
+        path.write_text(
+            _render_fact(name, kind, summary, source, stamp, clean_body), encoding="utf-8"
+        )
+        return Fact(
+            name=name,
+            kind=kind,
+            summary=summary,
+            body=clean_body,
+            source=source,
+            as_of=stamp,
+            path=path,
+        )
