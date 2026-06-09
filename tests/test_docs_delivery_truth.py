@@ -32,3 +32,4 @@ def test_getting_started_has_current_fleet_adoption_matrix() -> None:
         assert repo in text
 
     assert "clonway-cockpit PR #51" not in text
+    assert "has no live caller" not in text

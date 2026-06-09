@@ -34,7 +34,7 @@ and the one that's been paused. Everything below works _locally_ without it.
 |---|---|---|
 | **Daily chat→actions digest** | scheduled (xbook-server) | **Live** — confirm in xops; nothing to do |
 | **Bookkeeping cockpit** (gap, forecast, code-gap, watchdog, …) | `uv run xbook <command>` | **Use now** — production-grade, real data, gated writes |
-| **Milo, conversational** (multi-turn, tools, approval cards) | `python milo_demo.py` in Auto-Bookkeeper (needs `ANTHROPIC_API_KEY` in `.env`) | **Local demo only** — proven engine, but figures are fixtures and it is **not** a deployed bot (`run_turn` has no live caller; `MILO_ENABLED` off) |
+| **Milo, conversational** (multi-turn, tools, approval cards) | `python milo_demo.py` in Auto-Bookkeeper (needs `ANTHROPIC_API_KEY` in `.env`) | **Local / flag-gated only** — proven engine and xbook server seams exist, but this repo has not watched a deployed persona Chat surface; live-data and Chat-transport slices remain separate |
 | **Persona group chat / receptionist** | `uv run python examples/fleet_chat_demo.py` (this repo) | **Local demo only** — no Chat transport; runs headless or against local Ollama |
 | **Receptionist · souls · colleague wire · seam-fixes** | — | **In this repo** — consumers inherit them only after a cockpit rev bump |
 
