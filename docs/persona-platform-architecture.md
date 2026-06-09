@@ -7,8 +7,10 @@ designed vs. coded vs. demonstrably working — read it before assuming any surf
 The persona, the shared memory, the model gateway, and the group-chat transport live here so they
 evolve once and reach every worker on a `rev` bump (the [consumption model](../CLAUDE.md)). The
 workers (xbook/xhr/xletter/xquill/…) supply the domain toolkits; they do not each reinvent this.
-**Companion docs:** [`agent-screen-model.md`](agent-screen-model.md) (the agent channel this drives
-through), [`onboarding-a-worker.md`](onboarding-a-worker.md) (the Fleet Signal layer).
+**Companion docs:** [`persona-platform-getting-started.md`](persona-platform-getting-started.md)
+(the operator on-ramp — what to use today + the pre-launch checklist),
+[`agent-screen-model.md`](agent-screen-model.md) (the agent channel this drives through),
+[`onboarding-a-worker.md`](onboarding-a-worker.md) (the Fleet Signal layer).
 
 ## The north star
 
