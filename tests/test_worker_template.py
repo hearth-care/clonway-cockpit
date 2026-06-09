@@ -59,14 +59,33 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
 
 def _install_generated_worker_against_local_checkout(dst: Path) -> None:
     """Install the generated worker while pinning clonway-cockpit to this checkout."""
-    subprocess.run(
-        ["uv", "add", f"clonway-cockpit @ file://{_REPO_ROOT}"],
-        cwd=dst,
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    cmd = ["uv", "add", f"clonway-cockpit @ file://{_REPO_ROOT}"]
+    try:
+        subprocess.run(
+            cmd,
+            cwd=dst,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise AssertionError(
+            "Generated worker install failed:\n"
+            f"cmd: {cmd!r}\n"
+            f"cwd: {dst}\n"
+            f"stdout:\n{exc.stdout or ''}\n"
+            f"stderr:\n{exc.stderr or ''}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            "Generated worker install timed out:\n"
+            f"cmd: {cmd!r}\n"
+            f"cwd: {dst}\n"
+            f"stdout:\n{exc.stdout or ''}\n"
+            f"stderr:\n{exc.stderr or ''}"
+        ) from exc
 
 
 @contextmanager
