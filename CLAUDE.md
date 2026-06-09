@@ -35,6 +35,30 @@ Full protocol + wiring recipe: `docs/agent-screen-model.md`. The interactive dri
 for sessions/agents lives in the `drive-cockpit` skill. New workers inherit all of the above
 from `worker-template/` — they are born agent-navigable.
 
+## The persona platform — same discipline, the conversational layer
+
+On top of the agent-navigable spine the framework ships a persona platform (model gateway,
+persona identity, soul + constitution, group chat, receptionist, the colleague wire). It obeys
+the same enforce-don't-trust rules. Architecture: `docs/persona-platform-architecture.md`;
+per-module docs: `docs/{model-gateway,personas,group-chat,receptionist}.md`.
+
+- **The model gateway is the single model chokepoint.** Every model call goes through
+  `clonway_cockpit.gateway.Gateway` (`complete` / `complete_structured` / `complete_tools`) —
+  never a raw provider client. Provider/model is config (`role → model`), so a cost or provider
+  switch is an edit, not a code change. Per-call telemetry is **content-free** (counts +
+  metadata only); the default config is **local** (no key, no PII off-box). PII-to-hosted is the
+  worker's fail-closed gate, not the framework's.
+- **Personas compose through the validated constitution.** `compose_system_prompt` is the only
+  way to build a persona system prompt; it stacks the swappable soul on the mandatory
+  constitution and runs `validate_constitution` (a word-bounded *presence* check, not a semantic
+  one). Never bypass it. The fleet's reference responder is
+  `clonway_cockpit.colleague.gateway_responder` (persona → soul → gateway) — don't hand-wire a
+  second one.
+- **The owner-only-command air-gap mirrors the write gate.** In the group room only the owner's
+  messages are commands (`is_command`); everything an agent says is data. An agent can never be
+  talked into an action by another agent — same confused-deputy guard as the money gate, lifted
+  to the message edge. Don't add a path that lets agent chatter trigger a write.
+
 ## Consumption model
 
 Workers pin a `clonway-cockpit` git `rev`. A framework change propagates on the next rev bump,

@@ -7,8 +7,10 @@ just means a persona is silent (or the owner re-asks) — never a mis-route that
 
 `clonway_cockpit.group_chat` owns the **mechanics**, headless. The live Google Chat add-on
 transport is an operator deploy; a `ChatTransport` Protocol + `FakeChatTransport` run the
-whole thing in tests. How a persona composes a reply is an injected `responder` (a gateway
-loop in production; a stub in tests).
+whole thing in tests. How a persona composes a reply is an injected `responder` — in
+production the reference one is **`clonway_cockpit.colleague.gateway_responder`**, which wires
+persona → soul → model gateway → reply for a whole fleet (see [personas.md](personas.md));
+`echo_responder` is the no-model stub for demos/tests.
 
 ## The three safety traps (the shared room is shared blast radius)
 
@@ -39,5 +41,10 @@ owner_msg = ChatMessage.from_text("how much cash do we have?", author="owner", i
 orch.run_round("s", [owner_msg])       # only the persona whose domain matches replies
 ```
 
-The default `domain_matches` is a cheap keyword overlap against the persona's `domain` — a
-placeholder for a real cheap-model self-selection gate, which you inject the same way.
+The default `domain_matches` is `domain_match` — a cheap keyword overlap against the persona's
+`domain`, a placeholder for a real cheap-model self-selection gate you inject the same way. It
+extracts the domain's 2-letter-or-longer words and matches them on **word boundaries**, so a
+short-named specialist (VAT, tax, HR, AR) is reachable by self-selection while a generic word
+isn't falsely triggered (the domain word `ar` matches "ar", not "are"). The **receptionist uses
+the same `domain_match`** (imported from here), so the front desk and the room never disagree —
+inject one smart matcher into both.

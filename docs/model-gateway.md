@@ -127,8 +127,11 @@ or LiteLLM→Anthropic). A model that can't tool-call simply returns text with n
 
 Every call appends one event to `<telemetry_base>/model_usage.jsonl`
 (`ts, role, provider, model, prompt_tokens, completion_tokens, est_cost, ok, err`).
-It is best-effort and never breaks a call. This is the per-call model-spend stream
-surfaced in the xops cost page. Read it back with `load_events(base)`.
+It is **content-free** (no prompt/completion text, tool names or args — only counts and
+metadata) and best-effort, never breaking a call. A **failed** call is recorded too, with
+`ok=false` and `err` set to the exception type (e.g. `GatewayError`), so failures are
+visible fleet-wide. This is the per-call model-spend stream surfaced in the xops cost page.
+Read it back with `load_events(base)`.
 
 ## Fleet fan-in
 

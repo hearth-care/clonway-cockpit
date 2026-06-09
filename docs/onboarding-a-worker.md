@@ -316,3 +316,16 @@ As the worker grows bespoke screens, the rule is simple and CI-enforced: **every
 through the dry-run + guarded-apply gate. Full protocol + the wiring recipe (incl. the ambient
 `_AGENT_MODE` variant for a worker that rebuilds its host) live in
 [`docs/agent-screen-model.md`](agent-screen-model.md).
+
+## Becoming a colleague — the persona platform (optional)
+
+Beyond the cockpit + Signal layers, a worker can become a human-named **colleague** the owner
+DMs/emails. The framework owns the pieces — a provider-agnostic model gateway, persona identity,
+a soul + validated constitution, the group-chat room, the receptionist, and the
+`colleague.gateway_responder` wire — so adoption is config + a couple of files, not new
+machinery: route the worker's model calls through `clonway_cockpit.gateway.Gateway`
+(`role → model` config; default local), and add a `<handle>.toml` identity + `<handle>.md` soul
+that `compose_system_prompt` stacks on the shared constitution. Recipe + the "hire the persona,
+not the program" model: [`docs/persona-platform-architecture.md`](persona-platform-architecture.md)
+and [`docs/personas.md`](personas.md). This layer is **opt-in** — a worker is fully useful with
+just the cockpit + Signal layers above.

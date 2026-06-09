@@ -18,7 +18,18 @@ r.message    # the pointer to show the owner ("That's Milo's — the books. Talk
 ```
 
 `route` matches by `@`-mention first (an explicit address wins), else by domain — the same
-cheap "is this mine?" keyword gate the group space uses, injectable via `domain_matches` for a
-real cheap-model gate. One match → point to it; several → name the candidates and ask; none →
-offer to list the team. This is the same self-selection question as the group chat, asked from
-the front desk instead of in the room — keeping the two consistent (inject the same matcher).
+cheap "is this mine?" keyword gate the group space uses (`domain_match`, imported from
+`group_chat` so the two never disagree), injectable via `domain_matches` for a real cheap-model
+gate. One match → point to it; several → name the candidates and ask; none → offer to list the
+team. This is the same self-selection question as the group chat, asked from the front desk
+instead of in the room — keeping the two consistent (inject the same matcher).
+
+`@`-mentions are handled honestly, never silently dropped:
+
+- **One known handle** → `direct` (point to that persona).
+- **Several known handles** (`@milo @quill …`) → `ambiguous`, with *all* of them in `candidates`
+  ("That's for @milo and @quill — both can chime in.") — it does not route to the first and drop
+  the rest.
+- **An unknown handle** (`@ghost …`) → `none` ("I don't recognise @ghost. Want me to list the
+  team?") — it does **not** fall through to a domain guess and claim a `direct` match, which would
+  make the metadata lie about *how* it matched.
