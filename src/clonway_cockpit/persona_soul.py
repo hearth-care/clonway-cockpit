@@ -18,6 +18,7 @@ at :func:`compose_system_prompt` — is the per-repo follow-up.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 DEFAULT_CONSTITUTION = """\
@@ -29,14 +30,17 @@ These rules are non-negotiable and your character never overrides them:
 - Keep an internal-first tone; the bar rises the moment you face an employee, a family member, or a supplier.
 """
 
-# Lowercased substrings that MUST appear in a constitution. The validating composer enforces
-# these so a hand-edited constitution can't silently drop a guardrail.
+# Clause-level phrases that MUST appear (word-bounded) in a constitution — fuller than
+# 2-word fragments so they aren't satisfied by accident, and word-bounded so "disapproval"
+# does NOT count as "approval". This is a PRESENCE check, not a semantic guarantee (see
+# validate_constitution): a deliberately adversarial constitution can still negate a rule
+# while keeping its phrase, so a CUSTOM (non-default) constitution warrants human review.
 REQUIRED_PHRASES: tuple[str, ...] = (
     "never fabricate",  # honesty
-    "as of",  # data-freshness citation
-    "command",  # owner-only-command trust boundary
+    "cite their freshness",  # data-freshness citation
+    "owner's words are commands",  # owner-only-command trust boundary
     "approval",  # money / write gate
-    "internal",  # internal-first tone
+    "internal-first",  # internal-first tone
 )
 
 _SEPARATOR = (
@@ -49,9 +53,18 @@ class SoulError(ValueError):
 
 
 def validate_constitution(constitution: str) -> None:
-    """Raise :class:`SoulError` if the constitution is missing any required guardrail phrase."""
+    """Raise :class:`SoulError` if the constitution is missing any required guardrail phrase.
+
+    This is a PRESENCE check, not a semantic guarantee. It matches each required phrase on
+    word-character boundaries (so ``"disapproval"`` does NOT satisfy ``"approval"``), but it
+    cannot tell an intact rule from one that keeps the phrase while negating it ("you MAY
+    fabricate … approval is optional"). It catches an accidentally-truncated constitution; a
+    deliberately adversarial one warrants human review. So a CUSTOM (non-default) constitution
+    is not trusted on this check alone — it is a tripwire, not a gate."""
     low = constitution.lower()
-    missing = [p for p in REQUIRED_PHRASES if p not in low]
+    missing = [
+        p for p in REQUIRED_PHRASES if re.search(rf"(?<!\w){re.escape(p)}(?!\w)", low) is None
+    ]
     if missing:
         raise SoulError(f"constitution missing required guardrail phrase(s): {missing}")
 

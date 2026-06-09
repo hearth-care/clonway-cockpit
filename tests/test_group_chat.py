@@ -4,6 +4,7 @@ from clonway_cockpit.group_chat import (
     ChatMessage,
     FakeChatTransport,
     GroupChatOrchestrator,
+    domain_match,
     extract_mentions,
     is_command,
     should_respond,
@@ -33,6 +34,28 @@ def _registry() -> PersonaRegistry:
 def test_extract_mentions_dedupes_and_lowercases():
     assert extract_mentions("@milo and @quill, also @milo again") == ("milo", "quill")
     assert extract_mentions("no mentions here") == ()
+
+
+def test_extract_mentions_ignores_email_addresses():
+    # an email is not an @-mention — the @ is preceded by a word char (M4).
+    assert extract_mentions("forward billing@milo.com to accounts") == ()
+    assert extract_mentions("ask @milo about billing@quill.io") == ("milo",)
+
+
+def test_domain_match_reaches_short_named_specialists():
+    # a persona whose whole domain is a short word (VAT, tax, HR) must still self-select —
+    # the old re.findall(r"[a-z]{4,}") dropped these to an empty keyword set (H1).
+    vat = Persona.from_dict({"handle": "vera", "name": "Vera", "domain": "VAT"})
+    assert domain_match("can you check our vat return?", vat) is True
+    assert domain_match("how's the weather", vat) is False
+
+
+def test_domain_match_is_word_bounded():
+    # a domain word must match on word boundaries — 'ar' (accounts receivable) matches the
+    # word "ar" but not the substring inside "are", so generic words don't trigger it.
+    ar = Persona.from_dict({"handle": "ada", "name": "Ada", "domain": "AR ledger"})
+    assert domain_match("what's in ar this month?", ar) is True
+    assert domain_match("how are you today?", ar) is False  # 'are' must NOT match 'ar'
 
 
 def test_should_respond_rules():
