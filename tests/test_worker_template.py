@@ -21,6 +21,7 @@ tests or collide with a real installed worker.
 from __future__ import annotations
 
 import importlib
+import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -54,6 +55,18 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
         unsafe=True,  # template has computed values; we trust our own template
     )
     return dst
+
+
+def _install_generated_worker_against_local_checkout(dst: Path) -> None:
+    """Install the generated worker while pinning clonway-cockpit to this checkout."""
+    subprocess.run(
+        ["uv", "add", f"clonway-cockpit @ file://{_REPO_ROOT}"],
+        cwd=dst,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
 
 
 @contextmanager
