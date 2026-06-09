@@ -4,9 +4,10 @@ The operator's on-ramp — what you can use today, the one change that makes it 
 pre-launch checklist. Companion to [`persona-platform-architecture.md`](persona-platform-architecture.md)
 (the what/why) and the per-module docs ([`personas.md`](personas.md),
 [`group-chat.md`](group-chat.md), [`receptionist.md`](receptionist.md),
-[`model-gateway.md`](model-gateway.md)). _Status verified against `main` on 2026-06-09._
+[`model-gateway.md`](model-gateway.md)). _Status verified against this repo's `main` and fetched
+sibling repo `origin/main` refs on 2026-06-09._
 
-## The honest status — read this first
+## Current status — read this first
 
 Two different things have been built, at two different levels of "done":
 
@@ -33,9 +34,23 @@ and the one that's been paused. Everything below works _locally_ without it.
 |---|---|---|
 | **Daily chat→actions digest** | scheduled (xbook-server) | **Live** — confirm in xops; nothing to do |
 | **Bookkeeping cockpit** (gap, forecast, code-gap, watchdog, …) | `uv run xbook <command>` | **Use now** — production-grade, real data, gated writes |
-| **Milo, conversational** (multi-turn, tools, approval cards) | `python milo_demo.py` in Auto-Bookkeeper (needs `ANTHROPIC_API_KEY` in `.env`) | **Local demo only** — proven engine, but figures are fixtures and it is **not** a deployed bot (`run_turn` has no live caller; `MILO_ENABLED` off) |
+| **Milo, conversational** (multi-turn, tools, approval cards) | `python milo_demo.py` in Auto-Bookkeeper (needs `ANTHROPIC_API_KEY` in `.env`) | **Local / flag-gated only** — proven engine and xbook server seams exist, but this repo has not watched a deployed persona Chat surface; live-data and Chat-transport slices remain separate |
 | **Persona group chat / receptionist** | `uv run python examples/fleet_chat_demo.py` (this repo) | **Local demo only** — no Chat transport; runs headless or against local Ollama |
-| **Receptionist · souls · colleague wire · seam-fixes** | — | **In this repo only** — xbook pins cockpit at `a75f7a0`, which predates them; needs a rev bump to reach xbook |
+| **Receptionist · souls · colleague wire · seam-fixes** | — | **In this repo** — consumers inherit them only after a cockpit rev bump |
+
+## Fleet adoption matrix
+
+_Observed from fetched sibling repo `origin/main` refs on 2026-06-09. This is repo state, not a
+production traffic claim._
+
+| Worker | Repo | Package | Cockpit pin | Agent channel | Platform adoption note |
+|---|---|---|---|---|---|
+| Bookkeeper | Auto-Bookkeeper | `xbook` | `a75f7a02e9da214d6eb55cd6b6f444d03251b114` | `xbook --agent-stdio` + `--allow-apply` | Has xbook Chat bot, model gateway config, Milo gateway/shared-memory work; needs pin rollout for newest cockpit platform slices |
+| Orchestrator | Auto-Orchestrator | `xops` | `200493cc77d4c3aa0bcb2a8d27ae1cc7f198a259` | `xops bridge --agent-stdio` | Drives workers via `CockpitClient`; oversight pane, not a persona |
+| HR | Auto-HR | `xhr` | `21d68b3527fb37f6f6082324643cc68cf9cd11de` | `xhr --agent-stdio` + `--allow-apply` | Strong cockpit adoption; no live persona surface observed |
+| Marketer | Auto-Marketer | `xletter` | `991b639e2f9d89544f831604c1419a03c877dd8f` | No `--agent-stdio` marker observed | Has Google Chat intake and model gateway telemetry; not yet a cockpit/persona adoption proof |
+| Secretary | Auto-Secretary | `xquill` | `21597f4` | No `--agent-stdio` marker observed | Has its own live Milo forward-concierge and Chat digest; not this platform's cockpit/persona path |
+| Admissions | Auto-Admissions | `xadmissions` | none observed | No `--agent-stdio` marker observed | Early worker; no cockpit pin observed |
 
 ## Recommended next steps, in order
 
@@ -47,12 +62,23 @@ and the one that's been paused. Everything below works _locally_ without it.
    mature part of the persona work — use it to decide whether a live colleague is worth wiring.
 3. **Keep using the cockpit + digest.** They're already the real product; nothing here changes
    them.
-4. **Try the persona group chat locally** (`examples/fleet_chat_demo.py`), then decide if the
-   live Chat surface is worth the one paused build (checklist §C).
+4. **Roll out current cockpit pins deliberately.** The platform slices in this repo reach workers
+   only when their pinned rev moves.
+5. **Try the persona group chat locally** (`examples/fleet_chat_demo.py`), then decide if the
+   live Chat surface is worth the one paused build (checklist §D).
 
-## Pre-launch operator checklist — the things only you can do
+## Pre-launch checklist
 
-### A. To make it _good_ (do this first — small, high-impact)
+### A. Repo-local platform status
+- [x] **Model gateway** — provider-agnostic port, LiteLLM adapter, tool-use turn, multimodal /
+      caching passthrough, content-free telemetry, and fleet fan-in path are built here.
+- [x] **Shared company memory** — read/recall plus governed owner-only write are built here.
+- [x] **Persona spine** — identity, soul/constitution, group space, receptionist, and colleague
+      gateway wire are built here.
+- [ ] **Session memory** — per-space/per-thread durable memory is still a future slice.
+- [ ] **Live Chat transport** — the Workspace add-on surface is still a future slice.
+
+### B. Model/operator config
 - [ ] **Pick a real model and get its API key** (e.g. Anthropic Haiku → `ANTHROPIC_API_KEY`).
 - [ ] **Make the DPA call.** Hosting model calls sends care-home PII (email bodies, invoice text)
       to a third party — a data processor under GDPR Art. 28. Only once a DPA is in place, set
@@ -65,18 +91,18 @@ and the one that's been paused. Everything below works _locally_ without it.
       Auto-Bookkeeper repo root — it prints the model's reply:
       `XBOOK_ALLOW_HOSTED_PII=1 uv run python -c "from dotenv import load_dotenv; load_dotenv('.env'); from xbook.ai import get_gateway; print(get_gateway().complete([{'role':'user','content':'say OK'}], role='chat_intent'))"`
 
-### B. To clear the parked work (two PRs waiting on you)
-- [ ] **clonway-cockpit PR #51** — governed-write (owner-only trust boundary). Review and merge,
-      or close.
-- [ ] **Auto-Orchestrator PR #170** — retire the dead xops-chat router. Merge, then run
-      `~/Developer/xops-chat-retire.py` (it prints each command and confirms before any
-      prod-mutating step).
+### C. Consumer adoption / pin work
+- [ ] **Bump xbook's cockpit pin** from `a75f7a0...` to a current rev when you want the
+      receptionist, souls, colleague wire, and governed-write platform slices in the bookkeeper.
+- [ ] **Decide whether xletter and xquill should become cockpit-drivable workers.** Their current
+      `origin/main` checkouts pin cockpit for shared platform pieces but do not expose
+      `--agent-stdio`.
+- [ ] **Decide whether xadmissions should adopt cockpit at all.** No cockpit pin was observed on
+      `origin/main`.
 - [ ] **xops cost consumer (#171 area)** — so the model spend the gateway now records shows up on
       the xops cost page alongside infra spend (the xbook producer side is already wired).
 
-### C. To actually _go live_ with personas/Milo (the build you paused)
-- [ ] **Bump xbook's cockpit pin** `a75f7a0` → latest so the receptionist, souls, colleague wire,
-      and the seam-fixes reach xbook — they're cockpit-only today.
+### D. Live-surface work
 - [ ] **Build the Google Chat transport** (a Workspace add-on, modelled on Auto-HR's `xhr-server`;
       see the architecture doc's "The Chat transport" section). The one genuinely-missing piece —
       a real build, not a flag flip.
