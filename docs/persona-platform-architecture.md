@@ -240,6 +240,18 @@ Against that bar, as of 2026-06-08:
 - **The foundation is real and merged.** The WS-A/B/C/D gated-write + approval framework, the
   autonomy launcher, and the Milo audit digest are merged and FBA-hardened. That is what the
   persona platform builds *on*.
+- **The persona platform's own spine is built, and the fleet wire is watched working (2026-06-09).**
+  The model gateway (`complete`/`complete_structured`/`complete_tools` + telemetry), the persona
+  identity + registry, the two-layer soul/constitution, the group-chat self-selection room, and
+  the receptionist are all merged. The seams between them were FBA-hardened (PR #61). The missing
+  piece — a reference `responder` that drives a *fleet* through the gateway, not just one
+  hand-wired Milo — now exists as `clonway_cockpit.colleague.gateway_responder`, with
+  `Colleague`/`load_colleagues` reconciling the identity (`.toml`) and soul (`.md`) reps into one
+  "add a colleague" path. Driven live through a `GroupSpace` against a local Ollama
+  (`qwen2.5:0.5b`), two colleagues (`@milo`, `@quill`) each self-selected, composed their **own**
+  soul, and replied in voice through the gateway; per-call telemetry was recorded content-free.
+  Still **not** built: the live Google Chat transport (a Workspace add-on — see below) and
+  per-space multi-turn memory. The wire is proven; the production *surface* is the next slice.
 
 Project: `clonway-care-bookkeeper`, region `europe-west2`.
 
