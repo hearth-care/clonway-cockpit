@@ -50,6 +50,32 @@ def test_at_mention_overrides_domain_inference():
     assert r.persona is not None and r.persona.handle == "quill"
 
 
+def test_multiple_resolvable_mentions_are_ambiguous_not_a_silent_drop():
+    reg = _registry(
+        {"handle": "milo", "name": "Milo", "domain": "invoicing and cash"},
+        {"handle": "quill", "name": "Quill", "domain": "the diary and front desk"},
+    )
+    # addressing two known personas must surface BOTH, not silently route to the first (M3).
+    r = route("@milo @quill can you both look at this?", reg)
+    assert r.kind == "ambiguous"
+    assert r.persona is None
+    assert {p.handle for p in r.candidates} == {"milo", "quill"}
+    assert "@milo" in r.message and "@quill" in r.message
+
+
+def test_unknown_mention_does_not_fall_through_to_a_lying_direct_match():
+    reg = _registry(
+        {"handle": "milo", "name": "Milo", "domain": "invoicing and cash"},
+    )
+    # @ghost is addressed but unknown; the message is about cash (milo's domain). The old code
+    # dropped @ghost, domain-matched milo, and returned kind="direct" — the metadata lied about
+    # how it matched. It must NOT silently claim a direct match (M3).
+    r = route("@ghost what's our cash position?", reg)
+    assert r.kind != "direct"
+    assert r.persona is None
+    assert "ghost" in r.message.lower()
+
+
 def test_domain_matcher_is_injectable():
     reg = _registry({"handle": "milo", "name": "Milo", "domain": "anything"})
     # an injected matcher that always matches -> direct route regardless of keywords

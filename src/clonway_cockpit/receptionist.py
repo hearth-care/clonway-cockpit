@@ -13,24 +13,11 @@ it; several → name the candidates and ask; none → offer to list the team.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .group_chat import extract_mentions
+from .group_chat import domain_match, extract_mentions
 from .persona import Persona, PersonaRegistry
-
-_STOP = frozenset(
-    {"the", "and", "for", "you", "your", "with", "who", "what", "where", "keeps", "points", "right"}
-)
-
-
-def _domain_match(text: str, persona: Persona) -> bool:
-    """Cheap default 'is this <persona>'s?' gate — keyword overlap with the persona's domain.
-    A placeholder for a real cheap-model gate, injectable via ``domain_matches``."""
-    words = {w for w in re.findall(r"[a-z]{4,}", persona.domain.lower()) if w not in _STOP}
-    haystack = text.lower()
-    return any(w in haystack for w in words)
 
 
 @dataclass(frozen=True)
@@ -61,16 +48,25 @@ def route(
 ) -> Route:
     """Point ``text`` at the persona who owns it. ``@``-mention wins; else domain match."""
     # An explicit @-mention is a direct address — honour it over domain inference.
-    mentioned = [p for h in extract_mentions(text) if (p := registry.get(h)) is not None]
-    if mentioned:
-        first = mentioned[0]
+    raw = extract_mentions(text)
+    resolved = [p for h in raw if (p := registry.get(h)) is not None]
+    if len(resolved) == 1:
+        p = resolved[0]
+        return Route(persona=p, candidates=resolved, message=f"That's {p.name} — {p.domain}.")
+    if len(resolved) > 1:
+        names = " and ".join(f"@{p.handle}" for p in resolved)
         return Route(
-            persona=first,
-            candidates=mentioned,
-            message=f"That's {first.name} — {first.domain}.",
+            persona=None, candidates=resolved, message=f"That's for {names} — both can chime in."
+        )
+    if raw:
+        # the owner addressed someone, but no persona has that handle — don't silently
+        # fall through to a domain guess and claim it was a direct match.
+        unknown = ", ".join(f"@{h}" for h in raw)
+        return Route(
+            persona=None, message=f"I don't recognise {unknown}. Want me to list the team?"
         )
 
-    matcher = domain_matches or _domain_match
+    matcher = domain_matches or domain_match
     matches = [p for p in registry.all() if matcher(text, p)]
     if len(matches) == 1:
         p = matches[0]

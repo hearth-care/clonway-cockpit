@@ -31,10 +31,30 @@ from typing import Protocol
 
 from .persona import Persona, PersonaRegistry
 
-_MENTION_RE = re.compile(r"@([a-z0-9][a-z0-9_-]*)")
+# A mention is ``@handle`` NOT preceded by a word char — so an email (``billing@milo.com``)
+# is not a false mention, but ``@milo`` / ``hey @milo`` are.
+_MENTION_RE = re.compile(r"(?<!\w)@([a-z0-9][a-z0-9_-]*)")
 # Cheap domain-keyword stoplist — words that carry no domain signal.
 _STOP = frozenset(
-    {"the", "and", "for", "you", "your", "with", "who", "what", "where", "keeps", "points", "right"}
+    {
+        "the",
+        "and",
+        "for",
+        "you",
+        "your",
+        "with",
+        "who",
+        "what",
+        "where",
+        "keeps",
+        "points",
+        "right",
+        "our",
+        "are",
+        "this",
+        "that",
+        "from",
+    }
 )
 
 
@@ -94,12 +114,17 @@ def extract_mentions(text: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(_MENTION_RE.findall(text.lower())))
 
 
-def _keyword_domain_match(text: str, persona: Persona) -> bool:
-    """Cheap default 'is this mine?' gate: does the message mention a salient word from the
-    persona's domain? A placeholder for a real cheap-model gate (inject via ``domain_matches``)."""
-    words = {w for w in re.findall(r"[a-z]{4,}", persona.domain.lower()) if w not in _STOP}
+def domain_match(text: str, persona: Persona) -> bool:
+    """The cheap default 'is this mine?' gate, shared by the group room (:func:`should_respond`)
+    and the front desk (:func:`clonway_cockpit.receptionist.route`) so they never disagree.
+
+    Does the message contain a salient word from the persona's domain? Words are 2+ letters
+    (so short-but-critical domains — ``vat``, ``tax``, ``hr``, ``ar`` — are not dropped) minus a
+    stoplist, matched on WORD BOUNDARIES (so a domain word ``ar`` matches "ar" but not "are").
+    A placeholder for a real cheap-model gate — inject one via ``domain_matches``."""
+    words = {w for w in re.findall(r"[a-z][a-z]+", persona.domain.lower()) if w not in _STOP}
     haystack = text.lower()
-    return any(w in haystack for w in words)
+    return any(re.search(rf"\b{re.escape(w)}\b", haystack) for w in words)
 
 
 def is_command(message: ChatMessage) -> bool:
@@ -122,7 +147,7 @@ def should_respond(
         return False  # never reply to your own message
     if persona.handle in message.mentions:
         return True
-    matcher = domain_matches or _keyword_domain_match
+    matcher = domain_matches or domain_match
     return bool(message.is_owner and matcher(message.text, persona))
 
 

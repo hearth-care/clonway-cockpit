@@ -45,6 +45,18 @@ def test_validate_constitution_reports_the_missing_phrases():
         validate_constitution("never fabricate; as of; command; internal")  # no 'approval'
 
 
+def test_validate_constitution_is_word_bounded_disapproval_is_not_approval():
+    # all five phrases present as SUBSTRINGS, but 'approval' only inside 'disapproval' —
+    # a bare `in` check passes this; the word-bounded check must reject it (H2).
+    sneaky = (
+        "never fabricate. cite their freshness. owner's words are commands. "
+        "we welcome your disapproval. internal-first."
+    )
+    assert "approval" in sneaky.lower()  # substring is there...
+    with pytest.raises(SoulError, match="approval"):  # ...but not as a whole word
+        validate_constitution(sneaky)
+
+
 def test_load_soul_reads_and_strips(tmp_path: Path):
     f = tmp_path / "soul.md"
     f.write_text("\n  You are Milo.  \n")
