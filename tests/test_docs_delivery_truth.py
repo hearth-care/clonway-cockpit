@@ -9,9 +9,7 @@ def _doc(path: str) -> str:
 
 def test_architecture_delivery_marks_governed_write_done() -> None:
     text = _doc("docs/persona-platform-architecture.md")
-    governed_line = next(
-        line for line in text.splitlines() if "| 6 | **Governed write**" in line
-    )
+    governed_line = next(line for line in text.splitlines() if "| 6 | **Governed write**" in line)
 
     assert "**DONE** (#51" in governed_line
     assert "open" not in governed_line.lower()
