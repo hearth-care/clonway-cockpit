@@ -65,8 +65,7 @@ def _install_generated_worker_against_local_checkout(dst: Path) -> None:
             cmd,
             cwd=dst,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=30,
         )
