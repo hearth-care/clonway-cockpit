@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 
@@ -101,3 +101,16 @@ def render_approval_request(request: ApprovalRequest) -> str:
     if request.summary is not None:
         lines.append(f"Summary: {request.summary}")
     return "\n".join(lines)
+
+
+def apply_approval_request(
+    client,  # noqa: ANN001
+    request: ApprovalRequest,
+    *,
+    approve: Callable[[Mapping[str, object]], bool],
+) -> Mapping[str, object]:
+    return client.apply(
+        request.token,
+        approve=approve,
+        proposal=request.to_policy_proposal(),
+    )

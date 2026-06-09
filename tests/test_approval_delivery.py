@@ -5,6 +5,7 @@ import pytest
 from clonway_cockpit.approval_delivery import (
     ApprovalRequest,
     ApprovalRequestError,
+    apply_approval_request,
     render_approval_request,
 )
 
@@ -99,3 +100,31 @@ def test_render_approval_request_marks_unknown_money_movement() -> None:
 
     assert "Money movement: unknown" in text
     assert "Capability:" not in text
+
+
+class _FakeClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def apply(self, token: str, *, approve, proposal):  # noqa: ANN001
+        self.calls.append({"token": token, "approve": approve, "proposal": proposal})
+        return {"kind": "walk.gate", "meta": {"status": "declined", "token": token}}
+
+
+def test_apply_approval_request_forwards_token_policy_and_proposal() -> None:
+    req = ApprovalRequest.from_gate(_gate_meta())
+    client = _FakeClient()
+
+    def approve(proposal):  # noqa: ANN001
+        return proposal["capability_key"] == "schedule-bills"
+
+    frame = apply_approval_request(client, req, approve=approve)
+
+    assert frame["meta"]["status"] == "declined"
+    assert client.calls == [
+        {
+            "token": "gate-1",
+            "approve": approve,
+            "proposal": req.to_policy_proposal(),
+        }
+    ]
