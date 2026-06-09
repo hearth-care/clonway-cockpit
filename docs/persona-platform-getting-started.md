@@ -61,8 +61,9 @@ and the one that's been paused. Everything below works _locally_ without it.
       then edit xbook's `config/models.yaml` (set `chat_intent` / `inbox_classify` /
       `ledger_period` to `provider: litellm`, `model: anthropic/claude-haiku-4-5`,
       `api_key_env: ANTHROPIC_API_KEY`) and uncomment the `pricing:` block so spend is recorded.
-- [ ] **Verify:** `uv run xbook doctor` surfaces the configured backend and warns on an un-gated
-      hosted role.
+- [ ] **Verify** with one live call (proves the key + flag + model all work), from the
+      Auto-Bookkeeper repo root — it prints the model's reply:
+      `XBOOK_ALLOW_HOSTED_PII=1 uv run python -c "from dotenv import load_dotenv; load_dotenv('.env'); from xbook.ai import get_gateway; print(get_gateway().complete([{'role':'user','content':'say OK'}], role='chat_intent'))"`
 
 ### B. To clear the parked work (two PRs waiting on you)
 - [ ] **clonway-cockpit PR #51** — governed-write (owner-only trust boundary). Review and merge,
