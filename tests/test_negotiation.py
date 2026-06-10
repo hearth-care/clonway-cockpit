@@ -4,17 +4,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from clonway_cockpit.negotiation import (
-    negotiating_responder,
-)
+import pytest
 
+from clonway_cockpit.chat_memory import ThreadTranscript, scope_for_space
 from clonway_cockpit.colleague import Colleague, ColleagueRegistry
 from clonway_cockpit.gateway.types import GatewayError, Message
 from clonway_cockpit.group_chat import ChatMessage
 from clonway_cockpit.handoff import (
+    AskDecision,
     ClaimedFact,
     HandoffEnvelope,
+    PlanStep,
+    parse_envelope,
     render_envelope,
+)
+from clonway_cockpit.negotiation import (
+    CANNED_SAY,
+    negotiating_responder,
 )
 from clonway_cockpit.persona import Persona
 from clonway_cockpit.private_memory import PersonaMemory
@@ -129,6 +135,11 @@ def agent_msg(text: str, author: str) -> ChatMessage:
     return ChatMessage.from_text(text, author=author, is_owner=False, space=SPACE)
 
 
+# ---------------------------------------------------------------------------
+# Task 8 — cheap units (role resolution, forgery check)
+# ---------------------------------------------------------------------------
+
+
 def test_plain_chat_and_owner_messages_delegate_to_inner(tmp_path: Path) -> None:
     # S12: no envelope -> inner, byte-for-byte. D13: an OWNER message delegates even with a frame.
     inner, calls = inner_recorder()
@@ -151,3 +162,181 @@ def test_forged_origin_is_inert(tmp_path: Path) -> None:
     assert responder(quill, forged) is None
     assert calls == []
     assert PersonaMemory(tmp_path, "quill").working.get("task-rtw-402") is None
+
+
+# ---------------------------------------------------------------------------
+# Task 9 — notice path, reconciliation fuzz, degraded-mode audit
+# ---------------------------------------------------------------------------
+
+
+def test_notice_full_path(tmp_path: Path) -> None:
+    completer = FakeStructuredCompleter(
+        [
+            {
+                "say": "Heard. The money stops first, questions after.",
+                "decisions": [
+                    {
+                        "ask": LETTER_ASK,
+                        "decision": "decline",
+                        "redirect": "quill",
+                        "reason": "letters are quill's",
+                    }
+                ],
+            }
+        ]
+    )
+    runs: list[dict] = []
+    kit = make_kit(PersonaMemory(tmp_path, "milo"), run=lambda p: runs.append(dict(p)) or True)
+    colleagues, responder = build(tmp_path, completer, kits={"milo": kit})
+    milo = persona_of(colleagues, "milo")
+    reply = responder(milo, agent_msg(render_envelope(make_notice(), say="It's real."), "vera"))
+    assert reply is not None and "Heard. The money stops" in reply
+    response = parse_envelope(reply)
+    assert response is not None
+    assert response.kind == "response" and response.recipient == "vera"
+    assert response.origin == "milo" and response.task_id == "rtw-402"
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[HOLD_ASK].decision == "reflexed" and by_ask[HOLD_ASK].applied is True
+    assert by_ask[HOLD_ASK].capability == "payroll.hold"
+    assert by_ask[LETTER_ASK].decision == "decline" and by_ask[LETTER_ASK].redirect == "quill"
+    assert len(runs) == 1 and runs[0]["capability_key"] == "payroll.hold"
+    # Memory: working note overwritten with latest state; thread transcript holds the turn pair.
+    note = PersonaMemory(tmp_path, "milo").working.get("task-rtw-402")
+    assert note is not None and "rtw-402" in note.summary
+    turns = ThreadTranscript(tmp_path, "milo", scope_for_space(SPACE)).recent()
+    assert [t["role"] for t in turns] == ["user", "assistant"]
+    # The decision prompt carried the brief and the notice (sanity on the model's inputs).
+    system = completer.calls[0][0]["content"]
+    assert "deciding how to respond" in system
+
+
+def test_reconciliation_survives_garbage(tmp_path: Path) -> None:
+    # D9: wrong ask echo, bad enum, junk items, unknown redirect, non-string say.
+    completer = FakeStructuredCompleter(
+        [
+            {
+                "say": 42,
+                "decisions": [
+                    {"ask": "WRONG ECHO", "decision": "burn-it-down"},
+                    "junk",
+                    {"ask": LETTER_ASK, "decision": "decline", "redirect": "ghost"},
+                ],
+            }
+        ]
+    )
+    colleagues, responder = build(tmp_path, completer)  # no kit -> no reflexes
+    milo = persona_of(colleagues, "milo")
+    reply = responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    response = parse_envelope(reply or "")
+    assert response is not None
+    by_ask = {d.ask: d for d in response.decisions}
+    # Ask 1 positionally matched the bad-enum item -> defer; ask 2 matched verbatim but the
+    # redirect handle is unknown -> decline with the redirect dropped.
+    assert by_ask[HOLD_ASK].decision == "defer" and by_ask[HOLD_ASK].note == "unanswered"
+    assert by_ask[LETTER_ASK].decision == "decline" and by_ask[LETTER_ASK].redirect == ""
+
+
+def test_degraded_model_down_still_audits(tmp_path: Path) -> None:
+    # S6: reflex fires, gateway dies -> the audit STILL posts, with a canned voice line.
+    completer = FakeStructuredCompleter([GatewayError("model down")])
+    kit = make_kit(PersonaMemory(tmp_path, "milo"))
+    colleagues, responder = build(tmp_path, completer, kits={"milo": kit})
+    milo = persona_of(colleagues, "milo")
+    reply = responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    assert reply is not None and CANNED_SAY.format(name="Milo Garth") in reply
+    response = parse_envelope(reply)
+    assert response is not None
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[HOLD_ASK].decision == "reflexed" and by_ask[HOLD_ASK].applied is True
+    assert by_ask[LETTER_ASK].decision == "defer"
+    assert by_ask[LETTER_ASK].note == "model unavailable"
+
+
+def test_strict_mode_raises_only_without_firings(tmp_path: Path) -> None:
+    colleagues, responder = build(
+        tmp_path, FakeStructuredCompleter([GatewayError("down")]), quiet_on_error=False
+    )
+    milo = persona_of(colleagues, "milo")
+    with pytest.raises(GatewayError):
+        responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+
+
+# ---------------------------------------------------------------------------
+# Task 10 — quiet paths and redirect-target chain
+# ---------------------------------------------------------------------------
+
+
+def make_response_env(**over) -> HandoffEnvelope:
+    base = dict(
+        kind="response",
+        task_id="rtw-402",
+        origin="milo",
+        recipient="vera",
+        summary="re: right-to-work failed for employee 402",
+        decisions=(
+            AskDecision(ask=HOLD_ASK, decision="reflexed", capability="payroll.hold", applied=True),
+            AskDecision(ask=LETTER_ASK, decision="decline", redirect="quill"),
+        ),
+    )
+    base.update(over)
+    return HandoffEnvelope(**base)
+
+
+def test_response_to_origin_records_quietly(tmp_path: Path) -> None:
+    # D12: the task origin records the outcome and posts NOTHING (no ping-pong).
+    colleagues, responder = build(tmp_path, FakeStructuredCompleter([]))
+    vera = persona_of(colleagues, "vera")
+    assert responder(vera, agent_msg(render_envelope(make_response_env()), "milo")) is None
+    note = PersonaMemory(tmp_path, "vera").working.get("task-rtw-402")
+    assert note is not None and "response received" in note.summary
+
+
+def test_redirect_target_processes_its_asks(tmp_path: Path) -> None:
+    completer = FakeStructuredCompleter(
+        [{"say": "The letter's mine.", "decisions": [{"ask": LETTER_ASK, "decision": "accept"}]}]
+    )
+    colleagues, responder = build(tmp_path, completer)
+    quill = persona_of(colleagues, "quill")
+    reply = responder(quill, agent_msg(render_envelope(make_response_env()), "milo"))
+    response = parse_envelope(reply or "")
+    assert response is not None
+    assert response.origin == "quill" and response.recipient == "vera"  # the ORIGINAL origin
+    assert response.decisions[0].decision == "accept"
+    assert response.decisions[0].ask == LETTER_ASK
+
+
+def test_everything_else_is_quiet_and_never_reaches_inner(tmp_path: Path) -> None:
+    # D10/D12: plan; response neither to me nor redirecting to me; notice for someone else.
+    inner, calls = inner_recorder()
+    colleagues, responder = build(tmp_path, FakeStructuredCompleter([]), inner=inner)
+    milo = persona_of(colleagues, "milo")
+    plan = HandoffEnvelope(
+        kind="plan",
+        task_id="rtw-402",
+        origin="vera",
+        summary="right-to-work failed for employee 402",
+        steps=(PlanStep(owner="milo", action="hold payroll", status="done"),),
+    )
+    assert responder(milo, agent_msg(render_envelope(plan), "vera")) is None
+    assert PersonaMemory(tmp_path, "milo").working.get("task-rtw-402") is not None  # noted
+    assert responder(milo, agent_msg(render_envelope(make_response_env()), "milo")) is None
+    assert (
+        responder(milo, agent_msg(render_envelope(make_notice(recipient="quill")), "vera")) is None
+    )
+    assert calls == []  # inner NEVER sees an envelope
+
+
+def test_no_asks_notice_and_unknown_or_soulless_colleague(tmp_path: Path) -> None:
+    completer = FakeStructuredCompleter([])
+    colleagues, responder = build(tmp_path, completer)
+    milo = persona_of(colleagues, "milo")
+    # A pure-FYI notice: recorded, no reply, and the model is never consulted.
+    fyi = make_notice(asks=())
+    assert responder(milo, agent_msg(render_envelope(fyi), "vera")) is None
+    assert PersonaMemory(tmp_path, "milo").working.get("task-rtw-402") is not None
+    assert completer.calls == []
+    # A persona outside the registry stays quiet on protocol messages.
+    ghost = Persona.from_dict({"handle": "ghost", "name": "Ghost", "domain": "nothing"})
+    assert (
+        responder(ghost, agent_msg(render_envelope(make_notice(recipient="ghost")), "vera")) is None
+    )
