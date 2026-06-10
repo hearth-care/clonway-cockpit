@@ -4,8 +4,8 @@ the load-bearing guarantee is isolation, and the owner-only shared boundary stay
 """
 
 import pytest
-from clonway_cockpit.private_memory import WORKING, PersonaMemory, PrivateScope
 
+from clonway_cockpit.private_memory import WORKING, PersonaMemory, PrivateScope
 from clonway_cockpit.shared_memory import OWNER, GovernedWriter, SharedMemory, WriteRefused, today
 
 # --- round-trip: a persona remembers within its own scope -----------------------------------
