@@ -31,6 +31,7 @@ from .group_chat import (
     ChatTransport,
     GroupChatOrchestrator,
     PostedReply,
+    domain_match,
     is_command,
 )
 from .persona import Persona, PersonaRegistry
@@ -73,6 +74,13 @@ def _as_dict(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _text(value: object) -> str:
+    """A string field from an untrusted envelope — only a real ``str`` is kept; anything else
+    (a dict/list/int Google never sends here, or a malicious payload) becomes ``""`` rather than
+    a surprising ``repr`` that could leak structure or falsely match downstream."""
+    return value if isinstance(value, str) else ""
+
+
 def _extract(*, kind: str, source: dict, raw: dict) -> NormalizedChatEvent:
     """Pull the common ``{message, space, user}`` fields out of ``source`` (the add-on inner payload,
     or the classic flat event) into a :class:`NormalizedChatEvent`."""
@@ -82,13 +90,14 @@ def _extract(*, kind: str, source: dict, raw: dict) -> NormalizedChatEvent:
     sender = _as_dict(message.get("sender"))
     return NormalizedChatEvent(
         kind=kind,
-        text=str(message.get("text") or ""),
-        space_id=str(space.get("name") or ""),
-        space_type=str(space.get("type") or ""),
+        text=_text(message.get("text")),
+        space_id=_text(space.get("name")),
+        # case-normalised so a "dm"/"Dm" can't slip past the "DM" routing check downstream.
+        space_type=_text(space.get("type")).upper(),
         # user.email is the add-on sender; fall back to message.sender.email (classic shape).
-        sender_email=str(user.get("email") or sender.get("email") or ""),
-        sender_name=str(user.get("displayName") or sender.get("displayName") or ""),
-        message_id=str(message.get("name") or ""),
+        sender_email=_text(user.get("email")) or _text(sender.get("email")),
+        sender_name=_text(user.get("displayName")) or _text(sender.get("displayName")),
+        message_id=_text(message.get("name")),
         raw=raw,
     )
 
@@ -163,13 +172,25 @@ class ChatOutcome:
     ignored: str = ""
 
 
-def _responds_in_dm(message: ChatMessage, persona: Persona) -> bool:
-    """In a DM the persona is implicitly addressed, so it answers the OWNER (a command) or an
-    explicit @mention — never its own message. A non-operator's DM is data (``is_owner=False``), so
-    without a mention it draws no reply: the air-gap holds in DMs too."""
+def _responds_in_dm(
+    message: ChatMessage,
+    persona: Persona,
+    *,
+    sole: bool,
+    matcher: Callable[[str, Persona], bool],
+) -> bool:
+    """Whether ``persona`` replies in a DM. DMs engage **only the owner**: a non-operator's DM is
+    data (``is_command`` is False), so it draws no reply — the air-gap holds, and no model turn is
+    spent on an outsider. For the owner: an explicit @mention wins; otherwise the **sole** persona
+    this deployment serves answers (the common 1:1 DM), or — in a multi-persona DM — only the
+    **domain-relevant** persona (not a blanket fan-out to everyone)."""
     if persona.handle == message.author:
         return False
-    return is_command(message) or persona.handle in message.mentions
+    if not is_command(message):
+        return False
+    if persona.handle in message.mentions:
+        return True
+    return sole or matcher(message.text, persona)
 
 
 @dataclass
@@ -195,8 +216,10 @@ class ChatRouter:
     mark_handled: Callable[[str], None] | None = None
 
     def handle_event(self, event: dict) -> ChatOutcome:
-        """Normalise, dedupe, bridge, and route one inbound event. Never raises on a bad envelope —
-        a non-message or unknown shape is acked and ignored."""
+        """Normalise, dedupe, bridge, and route one inbound event. Never raises on a malformed
+        envelope (a non-message / unknown shape is acked and ignored); a failure from the injected
+        ``responder``/``transport`` **does** propagate — the event is left un-marked so Chat's
+        redelivery retries it, rather than being silently dropped."""
         norm = normalize_event(event)
         if norm.kind != MESSAGE:
             # v1 acts only on messages; everything else is acked and ignored, never mis-handled.
@@ -207,19 +230,26 @@ class ChatRouter:
             and self.already_handled(norm.message_id)
         ):
             return ChatOutcome(MESSAGE, [], norm.space_id, ignored="duplicate")
-        if norm.message_id and self.mark_handled is not None:
-            self.mark_handled(norm.message_id)
         message = to_chat_message(norm, self.allowlist)
         if norm.space_type == "DM":
             replies = self._handle_dm(message)
         else:
             replies = self._handle_space(message)
+        # Mark handled ONLY after routing + delivery succeeded. If the responder or transport.post
+        # raised above, this line is skipped and the event stays un-marked, so a redelivery retries
+        # it — at-least-once on failure (a transient error risks a duplicate reply, never a dropped
+        # message). Marking *before* delivery would silence a message whose delivery failed.
+        if norm.message_id and self.mark_handled is not None:
+            self.mark_handled(norm.message_id)
         return ChatOutcome(MESSAGE, replies, norm.space_id)
 
     def _handle_dm(self, message: ChatMessage) -> list[PostedReply]:
+        personas = self.registry.all()
+        sole = len(personas) == 1
+        matcher = self.domain_matches or domain_match
         replies: list[PostedReply] = []
-        for persona in self.registry.all():
-            if not _responds_in_dm(message, persona):
+        for persona in personas:
+            if not _responds_in_dm(message, persona, sole=sole, matcher=matcher):
                 continue
             reply = self.responder(persona, message)
             if reply is None:

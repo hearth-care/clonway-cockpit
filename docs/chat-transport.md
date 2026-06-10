@@ -27,7 +27,10 @@ from clonway_cockpit.group_chat import ChatTransport           # your Chat REST 
 
 router = ChatRouter(
     registry=registry,                 # the personas this deployment serves
-    responder=gateway_responder,       # persona → soul → gateway (a stub in tests)
+    # gateway_responder is a FACTORY — call it to get the responder callable (persona → soul →
+    # gateway). `colleagues`/`completer` are the worker's fleet + model gateway; `role` picks the
+    # gateway model. Tests inject a stub responder instead.
+    responder=gateway_responder(colleagues, completer, role="chat"),
     transport=chat_rest_poster,        # posts replies back to a space (worker-supplied)
     allowlist=load_allowlist(),        # CLONWAY_CHAT_OPERATORS — the operator-email trust boundary
     already_handled=seen.__contains__, # optional idempotency (Chat redelivers)
@@ -44,8 +47,11 @@ outcome = router.handle_event(event_dict)   # event_dict = the parsed JSON body 
   or a classic flat event — into `{kind, text, space_id, space_type, sender_email, sender_name,
   message_id, raw}`. It is **best-effort and never-raise**: an unknown/malformed shape →
   `kind="UNKNOWN"`, which the router acks and ignores.
-- `ChatRouter.handle_event` routes a **DM** (`space_type == "DM"`) to the persona(s) this deployment
-  serves and a **named space** (`"ROOM"`) through distributed self-selection (`GroupChatOrchestrator`).
+- `ChatRouter.handle_event` routes a **DM** (`space_type == "DM"`, case-normalised) to the
+  persona(s) this deployment serves and a **named space** (`"ROOM"`) through distributed
+  self-selection (`GroupChatOrchestrator`). In a DM only the **owner** is answered (a non-operator's
+  DM draws no reply — no command, no model turn spent); the @mentioned persona wins, else the sole
+  persona, else the domain-relevant one — never a blanket fan-out.
 
 ## The air-gap (the headline safety property)
 
@@ -55,6 +61,11 @@ the transport is ever a command**; it is data. A persona's reply re-enters the r
 `is_owner=False`. There is no path by which Chat traffic triggers a write except the owner's own word;
 the write gate (`confirm_apply`) is untouched and downstream. The trust boundary is **fail-closed**: an
 unconfigured allowlist (`CLONWAY_CHAT_OPERATORS` unset) trusts **no one**.
+
+The *write* air-gap is the guarantee; in a named space a non-operator can still make a persona
+**talk** if it self-selects (data, not a command — by design, the office is a shared room). In a
+**DM**, though, a non-operator is ignored entirely (no reply, no model turn) — so an outsider can
+neither command nor cost you a DM response.
 
 There is deliberately **no JWT / audience / issuer check** at the app layer — pinning an audience
 *rejects* the real add-on traffic. The network-layer gate is Cloud Run invoker IAM (below); the
@@ -69,9 +80,18 @@ app-layer gate is the email allowlist.
   ends; the *when/how* of the async is the worker's wiring. For a fast/stub responder, call
   `handle_event` synchronously and return `text_response(reply)`.
 - **Idempotency.** Chat can redeliver an event. Inject `already_handled(message_id) -> bool` +
-  `mark_handled(message_id)` (keyed on `message.name`); a redelivered id is acked and ignored. Use a
-  durable store in production (a file / GCS object, as `xhr-server` does); the default (no hooks) does
-  no dedup.
+  `mark_handled(message_id)` (keyed on `message.name`); a redelivered id is acked and ignored. The
+  event is **marked handled only after routing + delivery succeed** — if the responder or transport
+  raises, the event is left un-marked so the redelivery retries (at-least-once on failure: a
+  transient error risks a duplicate reply, never a dropped message). Use a **durable** store in
+  production (a file / GCS object, as `xhr-server` does); with **no hooks** there is no dedup, so
+  delivery is at-least-once (a worker that can't tolerate a duplicate reply must inject a store, and
+  a message with no `message.name` is never deduped).
+
+> **No DM memory yet.** Each DM turn is currently a **fresh one-shot** — the persona does not
+> remember earlier turns in the same DM/space. Per-space multi-turn memory is the next slice (the
+> private-memory tier now exists, PR #77; wiring `PersonaMemory.thread(slug(space_id))` into this
+> transport is separate). Set operator expectations accordingly until then.
 
 ## What the worker supplies
 
@@ -94,9 +114,12 @@ add-on**, mirroring `xhr-server`:
    cannot invoke the endpoint.
 3. **NO audience / JWT pin.** Do **not** configure an "Authentication Audience" or verify a Bearer
    `aud`/`iss` — that is the *classic* model and it rejects real add-on traffic.
-4. **Declare the triggers.** In the add-on deployment manifest, declare that it **receives messages**
-   (and is **added to / removed from spaces** as needed). If it is not configured to receive
-   messages, **DMs never reach Cloud Run** — the #1 "deployed but dead" cause.
+4. **Declare the triggers.** In the add-on deployment manifest (`gcloud workspace-add-ons` /
+   `addOns.chat`), declare the message-receipt trigger (the Chat add-on's `MESSAGE` /
+   added-to-space events) so the add-on actually dispatches DMs to your endpoint. If it is not
+   configured to receive messages, **DMs never reach Cloud Run** — the #1 "deployed but dead" cause.
+   Copy the working manifest + deploy steps from the reference, Auto-HR `xhr-server`
+   (`src/xhr/chat/`, `src/xhr/webhook/app.py:/chat-events`).
 5. **Operator allowlist.** Set `CLONWAY_CHAT_OPERATORS` to the comma-separated operator email(s). An
    empty/unset value trusts no one (fail-closed) — the transport will ack but never treat anything as
    a command.

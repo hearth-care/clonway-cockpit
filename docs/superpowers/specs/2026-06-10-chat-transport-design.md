@@ -78,6 +78,7 @@ class NormalizedChatEvent:
     space_type: str               # "DM" | "ROOM" | "" (unknown)
     sender_email: str             # user.email (or message.sender.email); "" when absent
     sender_name: str              # user.displayName; ""
+    message_id: str               # message.name (e.g. "spaces/AAAA/messages/BBBB") — the dedup key
     raw: dict                     # the original event, untouched (for the worker / audit)
 ```
 
@@ -131,8 +132,11 @@ no path by which transport traffic triggers a write except the owner's own word;
   synchronously.
 - **Idempotency.** Chat can redeliver an event. `ChatRouter` takes an optional
   `already_handled: Callable[[str], bool]` + `mark_handled: Callable[[str], None]` keyed on the
-  message id (`message.name`); a redelivered event is ignored with an ack. Default: an in-process
-  set (a worker injects a durable store, like xhr's file/GCS idempotency).
+  message id (`message.name`); a redelivered event is ignored with an ack. **Marked only after
+  routing + delivery succeed** — a responder/transport failure leaves the event un-marked so the
+  redelivery retries (at-least-once on failure; never a silently-dropped message). With **no hooks**
+  there is no dedup (at-least-once); a worker injects a durable store, like xhr's file/GCS
+  idempotency, and a message with no `message.name` is never deduped.
 
 ## API (`clonway_cockpit/chat_transport.py`)
 
