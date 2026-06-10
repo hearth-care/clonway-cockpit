@@ -1,39 +1,37 @@
-        # Fold statutory hooks into worker template if needed
+# Fold statutory hooks into worker template if needed
 
-        Generated: 2026-06-10
+Generated: 2026-06-10
 
-        Source: `/Users/olliepage/Developer/.Codex/state/auto-worker-quarter-review.md`
+Source: `/Users/olliepage/Developer/.Codex/state/auto-worker-quarter-review.md`
 
-        ## Context
+## Context
 
-        The review says the leverage in statutory hooks is a single canonical worker template and hook path, not another support repo.
+The review says the leverage in statutory hooks is a single canonical worker template and hook path, not another support repo.
 
-        ## Work
+## Work
 
-        - Decide which statutory hook primitives belong in the shared worker template.
+- Decide which statutory hook primitives belong in the shared worker template.
 - Keep worker-specific statutory policy outside the framework.
 - Add template smoke tests for any hook that becomes standard.
 
-        ## What's Left
+## What's Left
 
-        - Complete statutory-hooks consolidation first.
+- Complete statutory-hooks consolidation first.
 - Define framework hook contracts versus domain policy examples.
 - Update `docs/onboarding-a-worker.md` if the template changes.
 
-        ## References
+## References
 
-        - Fleet review: clonway-cockpit-statutory-hooks highest-leverage note
+- Fleet review: clonway-cockpit-statutory-hooks highest-leverage note
 - clonway-cockpit `worker-template/`
 - `docs/onboarding-a-worker.md`
 
-        ## Acceptance Criteria
+## Acceptance Criteria
 
-        - New workers inherit only generic hooks that apply fleet-wide.
+- New workers inherit only generic hooks that apply fleet-wide.
 - Domain statutory rules stay in the worker repos.
 - Template CI proves the generated worker still runs.
 
-        ## Notes For Implementers
+## Notes For Implementers
 
-        This is intentionally docs-only. Use this branch/PR as the assignment brief, then open one
-        or more implementation PRs as needed. Preserve the repo's safety invariants and verification
-        gates when turning this workstream into code.
+This is intentionally docs-only. Use this branch/PR as the assignment brief, then open one or more implementation PRs as needed. Preserve the repo's safety invariants and verification gates when turning this workstream into code.
