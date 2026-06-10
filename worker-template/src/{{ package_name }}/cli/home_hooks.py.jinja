@@ -1,0 +1,40 @@
+"""Optional {{ worker_id }} home-screen extensions.
+
+The framework owns the generic extension seam:
+
+- ``extra_selectables`` adds worker-owned rows to the home cursor order.
+- ``extra_regions`` adds worker-owned Rich renderables between needs-you and toolkit.
+- ``handle_extra_key`` lets the worker claim keys for rows it owns.
+
+The generated worker starts with no extensions. Keep shared framework/template code
+domain-neutral; put worker-specific policy and wording in this module when {{ worker_id }}
+needs an extra home panel.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from clonway_cockpit.state import CockpitState
+from rich.console import RenderableType
+
+
+def extra_selectables(state: CockpitState) -> list[tuple[str, object]]:
+    """Additional arrow-navigable home rows owned by {{ worker_id }}."""
+    return []
+
+
+def extra_regions(state: CockpitState) -> list[RenderableType]:
+    """Additional home regions owned by {{ worker_id }}."""
+    return []
+
+
+def handle_extra_key(
+    state: CockpitState,
+    selection: tuple[str, object] | None,
+    key: str,
+    screen: object,
+    read_key: Callable[[], str],
+) -> bool:
+    """Return True only when {{ worker_id }} handled ``key`` for an owned row."""
+    return False
