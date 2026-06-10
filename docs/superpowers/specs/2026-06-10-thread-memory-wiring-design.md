@@ -186,7 +186,31 @@ memory eviction/retention policy beyond `recent(limit)` at read time (the store 
 disk — a retention sweep is its own slice); persisting the transcript through the live Chat REST
 deploy (operator-gated, unchanged by this slice).
 
+## Deploy prerequisites (surfaced by the final-boss audit)
+
+These cannot bite while the live transport is operator-gated (not deployed), but are **required** when
+it ships — documented in `docs/thread-memory.md` and enforced by the wiring snippet:
+
+- **Redelivery dedup is mandatory with memory on.** Chat is at-least-once; the router dedupes only via
+  injected `already_handled`/`mark_handled` (a **durable** store). Without it a redelivered message
+  records the turn pair twice and the duplicate evicts real history from the `recent(limit)` window.
+  (The store stays additive — dedup lives at the router, where #78 already put it; memory only raises
+  the stakes of not wiring it.)
+- **Single writer per `(persona, space)`.** `record` reads the max turn index then writes the next; v1
+  assumes one writer at a time per thread (the `xhr-server` fast-ack + single background-post pattern).
+  Concurrent writers on one thread can collide on an index; coordinated/atomic append lands with the
+  live-deploy slice.
+- **Append is O(turns-in-thread).** A turn is recorded by scanning the thread's existing turns —
+  negligible behind the per-turn model completion at realistic lengths; unbounded growth is the
+  retention/compaction slice.
+
+The cheap correctness items the audit raised are **fixed in this slice** (regression-tested): numeric
+turn ordering (correct past the zero-pad width); a single `_turn_index` shared by `recent()` and the
+counter (a non-numeric `turn-*` fact is neither replayed nor counted); an **atomic** USER+PERSONA pair
+(orphan rolled back if the reply write fails); and a soul-less colleague staying **quiet** instead of
+raising. Full audit: `.claude/state/final-boss-audit-thread-memory.md`.
+
 ## Dependency packaging
 
 **Zero new runtime dependency** — stdlib (`hashlib`, `pathlib`) + the merged `private_memory`,
-`shared_memory`, `group_chat`, `colleague` modules. The framework stays `rich`-only.
+`shared_memory`, `group_chat`, `colleague`, `persona_soul` modules. The framework stays `rich`-only.

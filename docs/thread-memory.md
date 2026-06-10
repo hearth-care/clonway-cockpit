@@ -16,21 +16,34 @@ It adds nothing to the router, the orchestrator, the owner-only-command air-gap,
 — a worker just chooses a different responder.
 
 ```python
+import os
 from pathlib import Path
 from clonway_cockpit.chat_memory import remembering_responder
 from clonway_cockpit.chat_transport import ChatRouter
 
+# A durable, cockpit-owned, gitignored directory — NOT a repo path, and NOT Cloud Run's
+# ephemeral /tmp (wiped on every cold start → silent amnesia). Mount a persistent volume / GCS
+# FUSE / a host path and point this at it. See docs/private-memory.md → "directory discipline".
+memory_base = Path(os.environ["COCKPIT_PRIVATE_ROOT"])
+
 router = ChatRouter(
     registry=colleagues.registry,
-    responder=remembering_responder(colleagues, gateway, role="chat", memory_base=Path("…/private")),
+    responder=remembering_responder(colleagues, gateway, role="chat", memory_base=memory_base),
     transport=chat_rest_poster,
     allowlist=load_allowlist(),
+    # REQUIRED with memory: Chat is at-least-once (it retries on 5xx / cold start). Without these
+    # dedup hooks a redelivered message records the turn pair TWICE and corrupts later prompts.
+    # Back them with a DURABLE store (a file / GCS object), as xhr-server does — an in-memory set
+    # is lost on restart, which is exactly when Chat redelivers.
+    already_handled=seen.contains,   # def contains(message_id) -> bool
+    mark_handled=seen.add,           # def add(message_id) -> None
 )
 ```
 
 Swap `gateway_responder(…)` → `remembering_responder(…)` and DMs **and** named spaces both gain
 per-conversation memory, because both flow through `responder(persona, message)` with `message.space`
-populated. Keep `gateway_responder` where one-shot replies are wanted.
+populated. Keep `gateway_responder` where one-shot replies are wanted. **Wiring the router's
+`already_handled`/`mark_handled` dedup is not optional once memory is on** — see "Scope & limits".
 
 ## The three units (`clonway_cockpit/chat_memory.py`)
 
@@ -80,11 +93,46 @@ quiet in a group round stores nothing for that turn (a v1 boundary; see below).
   becomes shared truth — promotion still requires `GovernedWriter(source=OWNER)`. (A regression test
   asserts a full conversation leaves a `SharedMemory` reader empty.)
 
+## Data at rest
+
+Conversation turns are persisted as **plaintext markdown** under `<memory_base>/<handle>/threads/<scope>/`
+— a new disclosure surface the stateless `gateway_responder` did not have (it kept nothing). Turns may
+contain PII. Keep `memory_base` **cockpit-owned and gitignored**, never a repo path; encryption-at-rest
+and a retention sweep are the consumer's directory discipline / a later slice (same posture as the
+shared handbook — see [`private-memory.md`](private-memory.md)).
+
+## Deploy prerequisites (must be true before the live transport carries this)
+
+The live Chat transport is operator-gated and not yet deployed, so these cannot bite until it ships —
+but they are **required** when it does:
+
+- **Redelivery dedup is mandatory.** Chat is at-least-once. Wire the router's
+  `already_handled`/`mark_handled` with a **durable** store (see the snippet above). Without it a
+  redelivered message records the turn pair twice and the duplicate evicts real history from the
+  `recent(limit)` window. (Memory raises the stakes of a gap the stateless responder merely showed as
+  a duplicate *reply*.)
+- **Single writer per (persona, space).** `record` reads the current max turn index and writes the
+  next; v1 assumes one writer at a time per thread (the reference `xhr-server` fast-acks then posts
+  from a single background task). Genuinely concurrent writers on the *same* thread (≥2 Cloud Run
+  instances handling one space at once) can collide on an index. Coordinated/atomic appends land with
+  the live-deploy slice.
+- **Append cost is O(turns-in-thread) per message** (a turn is recorded by scanning the thread's
+  existing turns). It is dwarfed by the per-turn model completion at realistic conversation lengths;
+  unbounded growth is the retention/compaction slice's job.
+
 ## Scope & limits (v1)
 
-- Remembers only conversations a persona **engaged in** (a turn it stayed quiet on is not stored).
-- `recent(limit)` bounds the prompt window at read time; every turn is still kept on disk — a
-  retention/eviction sweep is a later slice.
+- **Engaged-only memory.** A persona remembers only conversations it **replied in** (a turn it stayed
+  quiet on is not stored). So in a group space a persona does *not* recall an exchange between the
+  owner and another colleague: if you then say *"Milo, invoice for what we just discussed"*, Milo is
+  amnesiac about it — repeat the context in a DM, or promote the fact to shared memory.
+- **Per-`(persona, space)` silos — separate from each other and from email.** The *same* Milo has a
+  DM transcript and a group-space transcript, each isolated; there is no cross-space recall. *"Like we
+  discussed in our DM"* said from the group room gets a blank stare. To carry a fact across surfaces,
+  promote it to **shared** memory via `GovernedWriter` (owner-gated).
+- **`history_turns` (default 12 ≈ 6 exchanges)** bounds the replayed window. Raise it (e.g. 20–30) for
+  a long single task — mind the token cost — or, better, promote recurring facts to
+  `PersonaMemory.working` so they persist regardless of window. Every turn is still kept on disk; only
+  the *replayed* window is bounded.
 - No memory *reflector/summariser* (compacting an old transcript into durable notes) and no
   semantic/embedding recall — the store's keyword `recall` already exists for the latter.
-- Memory is per `(persona, space)`; there is no cross-space recall.

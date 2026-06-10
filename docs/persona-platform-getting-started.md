@@ -75,7 +75,8 @@ production traffic claim._
 - [x] **Shared company memory** — read/recall plus governed owner-only write are built here.
 - [x] **Persona spine** — identity, soul/constitution, group space, receptionist, and colleague
       gateway wire are built here.
-- [ ] **Session memory** — per-space/per-thread durable memory is still a future slice.
+- [ ] **Session memory** — per-space/per-thread durable memory: framework wiring in review (#79,
+      `chat_memory.py` / [`thread-memory.md`](thread-memory.md)); watched-working awaits the live transport + a worker pin bump.
 - [ ] **Live Chat transport** — the Workspace add-on surface is still a future slice.
 
 ### B. Model/operator config

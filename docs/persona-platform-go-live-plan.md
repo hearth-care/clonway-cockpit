@@ -53,12 +53,14 @@ so treat it as the risk centre.
 - **Takes:** the one real build. Reference: Auto-HR `xhr-server` + the architecture transport
   section. Highest-risk slice.
 
-### Slice C — Per-space session memory (true multi-turn)
-- **Does:** persist `ThreadMemory` keyed by Chat space/thread, so a conversation remembers across
+### Slice C — Per-space session memory (true multi-turn) — **in review (#79)**
+- **Does:** persist a transcript keyed by Chat space/thread, so a conversation remembers across
   messages instead of each DM being a fresh one-shot.
 - **Greens:** makes Milo feel like a colleague, not a stateless Q&A box.
-- **Takes:** a storage-backed memory PR. Medium; the engine has `ThreadMemory`, it needs to persist
-  + key by space.
+- **Status:** the framework wiring is built — `chat_memory.py` (`remembering_responder` +
+  `ThreadTranscript` over the merged #77 store), in review as #79 ([`thread-memory.md`](thread-memory.md)).
+  Remaining before it's *watched-working*: the live transport deploy (Slice B) wiring in
+  `remembering_responder` + its dedup hooks, and a worker pin bump.
 
 ### Slice D — The group chat, live (the fleet) — a PROGRAM, not a slice
 - **Does:** a real `ChatTransport` backed by the Chat API (the framework has the Protocol +

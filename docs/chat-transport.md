@@ -92,7 +92,10 @@ app-layer gate is the email allowlist.
 > `gateway_responder` and each persona remembers earlier turns in the same DM/space — it splices the
 > recent transcript between the soul system prompt and the new message, keyed by
 > `scope_for_space(message.space)`, isolated per `persona.handle`. No router change; the default
-> `gateway_responder` stays stateless for callers that want one-shot. See `docs/thread-memory.md`.
+> `gateway_responder` stays stateless for callers that want one-shot. **With memory on, the
+> `already_handled`/`mark_handled` dedup below is mandatory** — a redelivered message would otherwise
+> record the turn pair twice and corrupt later prompts (not just a duplicate reply). See
+> `docs/thread-memory.md`.
 
 ## What the worker supplies
 
