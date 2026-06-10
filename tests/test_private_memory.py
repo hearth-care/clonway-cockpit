@@ -170,3 +170,64 @@ def test_working_and_thread_return_private_scopes(tmp_path):
     pm = PersonaMemory(tmp_path, "milo")
     assert isinstance(pm.working, PrivateScope)
     assert isinstance(pm.thread("t"), PrivateScope)
+
+
+# --- audit regressions (Final Boss Audit) ---------------------------------------------------
+
+
+def test_forget_propagates_real_oserror_not_swallowed(tmp_path, monkeypatch):
+    # FBA-03: a permission-denied delete must NOT be reported as "wasn't there".
+    import pathlib
+
+    w = PersonaMemory(tmp_path, "milo").working
+    w.remember(name="pii", kind="note", summary="sensitive note to erase")
+
+    def boom(self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(pathlib.Path, "unlink", boom)
+    with pytest.raises(PermissionError):
+        w.forget("pii")
+
+
+def test_crlf_body_roundtrips_as_lf(tmp_path):
+    # FBA-04: a CRLF body must round-trip (the reader rejoins with \n, so we normalise on write).
+    w = PersonaMemory(tmp_path, "milo").working
+    w.remember(name="multi", kind="note", summary="s", body="line1\r\nline2\r\nline3")
+    got = PersonaMemory(tmp_path, "milo").working.get("multi")
+    assert "\r" not in got.body
+    assert got.body == "line1\nline2\nline3"
+
+
+def test_overlong_name_refused_before_any_io(tmp_path):
+    # FBA-08: a valid-charset but overlong name is a ValueError before mkdir — no bare OSError,
+    # no orphan scope directory.
+    w = PersonaMemory(tmp_path, "milo").working
+    with pytest.raises(ValueError, match="slug"):
+        w.remember(name="a" * 200, kind="k", summary="s")
+    assert PersonaMemory(tmp_path, "milo").working.all() == []
+    assert not (tmp_path / "milo" / WORKING).exists()
+
+
+def test_source_is_advisory_and_roundtrips(tmp_path):
+    # FBA-07: optional advisory provenance on a private note round-trips; default is None.
+    w = PersonaMemory(tmp_path, "milo").working
+    w.remember(name="tip", kind="note", summary="resident pays late", source="the daughter")
+    assert PersonaMemory(tmp_path, "milo").working.get("tip").source == "the daughter"
+    w.remember(name="plain", kind="note", summary="no source given")
+    assert PersonaMemory(tmp_path, "milo").working.get("plain").source is None
+
+
+def test_source_must_be_single_line(tmp_path):
+    w = PersonaMemory(tmp_path, "milo").working
+    with pytest.raises(ValueError, match="source"):
+        w.remember(name="n", kind="k", summary="s", source="line1\nline2")
+
+
+def test_thread_scope_from_normalised_chat_id(tmp_path):
+    # FBA-02: the transport slice must slugify a raw Chat space id before calling thread().
+    raw_chat_space_id = "spaces/AAAAbCdEf"
+    scope = raw_chat_space_id.lower().replace("/", "-")  # the documented normalisation
+    pm = PersonaMemory(tmp_path, "milo")
+    pm.thread(scope).remember(name="turn1", kind="note", summary="owner asked for the Q2 figures")
+    assert [f.name for f in pm.thread(scope).recall("Q2 figures")] == ["turn1"]

@@ -45,9 +45,10 @@ as_of: 2026-06-10
 Recovery codes are in the safe. Dana set this up in March.
 ```
 
-`source` on a private note is **advisory** — it records provenance for the persona's own benefit
-("the resident's daughter said…") but carries no promotion power. A private note never becomes
-shared truth without going back through the owner-gated `GovernedWriter` (see below).
+`source` on a private note is an **optional, advisory** field — it records provenance for the
+persona's own benefit ("the resident's daughter said…") but carries no promotion power. A private
+note never becomes shared truth without going back through the owner-gated `GovernedWriter` (see
+below).
 
 ## Using it
 
@@ -59,17 +60,24 @@ mem = PersonaMemory(Path("/configured/private-root"), "milo")   # handle is slug
 
 # persona-global working memory
 mem.working.remember(name="xero-mfa", kind="note",
-                     summary="Xero login uses MFA on the office phone.")
+                     summary="Xero login uses MFA on the office phone.",
+                     source="the daughter")    # source is optional, advisory provenance
 mem.working.recall("xero login")        # keyword recall, best matches first
 mem.working.get("xero-mfa")             # one note by name, or None
 mem.working.all(kind="note")            # every note of a kind, sorted by name
 mem.working.forget("xero-mfa")          # delete; True if it existed
 
-# per-thread/space session memory (multi-turn) — `scope` is the Chat space/thread id
-mem.thread("space-AAA").remember(name="ask", kind="note",
-                                summary="owner asked for the Q2 figures")
-mem.thread("space-AAA").recall("Q2 figures")
+# per-thread/space session memory (multi-turn). `scope` must be a SLUG, so a raw Chat space
+# id is normalised first — the transport slice (#73) owns that step:
+scope = "spaces/AAAAbCdEf".lower().replace("/", "-")   # -> "spaces-aaaabcdef"
+mem.thread(scope).remember(name="ask", kind="note",
+                           summary="owner asked for the Q2 figures")
+mem.thread(scope).recall("Q2 figures")
 ```
+
+`thread(scope)` validates `scope` as a slug, so a raw Google Chat space id (`spaces/AAAA…`, which
+has `/` and mixed case) is **not** accepted as-is — the caller normalises it to a slug first (lower
++ replace `/`, or hash). That normalisation contract belongs to the Chat transport slice.
 
 `recall` is the **same** dependency-free keyword scorer as `SharedMemory` (+2 per query word in a
 note's `name`/`summary`, +1 in its `kind`/`body`; non-matches excluded; sorted by score then name;
@@ -78,15 +86,21 @@ empty query → `[]`). `all`, `get`, and `recall` accept an optional `kind` filt
 ## Reads never crash; writes validate
 
 Every **read** degrades quietly — a missing root / handle / scope directory yields no notes, and a
-malformed file is skipped, never raised (a persona must not fall over looking something up). Notes
-load once per scope and are cached; open a fresh scope (`mem.working` / `mem.thread(...)`) to pick up
-on-disk edits — the same contract as `SharedMemory`.
+malformed file is skipped, never raised (a persona must not fall over looking something up). That
+skip is **silent**: an empty result from `all()`/`recall()` can mean a missing directory, an empty
+one, *or* every file malformed — they are indistinguishable by design (the calm-and-robust contract).
+Notes load once per scope and are cached; open a fresh scope (`mem.working` / `mem.thread(...)`) to
+pick up on-disk edits — the same contract as `SharedMemory`. For a sequence of reads, hold one scope
+in a local rather than re-accessing `mem.working` each time (each access reloads the directory).
 
-`remember` **validates before touching disk** and is fail-closed: `name` must be a safe slug (it
-becomes a filename — this rejects path traversal), and `kind`/`summary`/`as_of` must be single-line
-(else a newline would inject extra frontmatter keys). Invalid input raises **`ValueError`** and
-writes nothing. Writing an existing `name` overwrites it (updating a note); `as_of` defaults to
-today (UTC). `forget(name)` returns `True` if the note existed, `False` otherwise, and never raises.
+`remember` **validates before touching disk** and is fail-closed: `name` must be a safe slug —
+lower-case, bounded length, so it both rejects path traversal and can't overflow a filename — and
+`kind`/`summary`/`source`/`as_of` must be single-line (else a newline would inject extra frontmatter
+keys). A CRLF `body` is normalised to `\n` so it round-trips exactly. Invalid input raises
+**`ValueError`** and writes nothing. Writing an existing `name` overwrites it (updating a note);
+`as_of` defaults to today (UTC). `forget(name)` returns `True` if the note existed, `False` if it
+did not — a genuine filesystem error (e.g. a permission denial) **propagates** rather than being
+mistaken for "wasn't there".
 
 Why `ValueError` and not `WriteRefused`? Because private writes are **not a trust boundary** — a bad
 private write is a programming error in the persona's own code, not an attempt to poison shared
@@ -101,6 +115,13 @@ nothing into the shared handbook, and the only way a fact becomes shared truth r
 `GovernedWriter(source=OWNER)`. So "tell once, all learn" stays owner-governed, while each persona
 still keeps its own private working memory. Secrets/PII discipline is the consumer's: a real private
 root lives in a configured, gitignored directory, never in a repo.
+
+Persona isolation is enforced at the API: `handle`, `scope`, and note `name` are all slug-validated,
+so no value supplied through the interface can traverse out of a persona's subtree, and the API only
+ever creates files (it never follows or creates symlinks across personas). The one assumption it
+*does* make is that the injected root is trusted — if a process can pre-plant a symlink inside the
+root, that is filesystem access outside this module's threat model (the same caveat applies to the
+shared handbook). Keep the root owned and writable only by the cockpit.
 
 ## Scope
 

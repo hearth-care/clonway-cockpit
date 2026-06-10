@@ -96,3 +96,18 @@ def test_render_fact_roundtrips_through_load_fact(tmp_path):
 
 def test_today_is_utc_iso_date():
     assert today() == datetime.now(UTC).date().isoformat()
+
+
+def test_is_safe_slug_bounds_length():
+    # FBA-08: a valid-charset but overlong slug is rejected (so it never reaches the filesystem
+    # as an ENAMETOOLONG OSError).
+    assert is_safe_slug("a" * 128)
+    assert not is_safe_slug("a" * 129)
+
+
+def test_render_fact_normalises_crlf_body(tmp_path):
+    # FBA-04: render normalises body line endings to \n so it matches what the reader returns.
+    text = render_fact("n", "k", "s", "owner", "2026-06-10", "a\r\nb\rc")
+    assert "\r" not in text
+    fact = load_fact(_write(tmp_path, "n.md", text))
+    assert fact.body == "a\nb\nc"

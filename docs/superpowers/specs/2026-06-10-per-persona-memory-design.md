@@ -33,12 +33,21 @@ bleed into another.
 2. **Thread/space scoping (multi-turn).** Within a persona, memory is partitioned into:
    - **working** — persona-global notes that persist across all of the persona's conversations (the
      Xero notes, the campaign state).
-   - **thread(scope)** — per-thread/space session memory for true multi-turn, keyed by the Chat
-     space/thread id (slug-validated).
+   - **thread(scope)** — per-thread/space session memory for true multi-turn, keyed by a
+     **slug** derived from the Chat space/thread id. A raw Google Chat space id (`spaces/AAAA…`)
+     is not a slug (it has `/` and mixed case), so **the transport slice (#73) normalises it to a
+     slug** — lower-case + replace `/`, or a hash — before calling `thread(scope)`. That
+     normalisation contract is the transport's, not this module's; here `scope` is validated as a
+     slug like every other path segment.
 
    On disk: `<base>/<handle>/working/` and `<base>/<handle>/threads/<scope>/`. The `working/` vs
    `threads/` split means a thread literally named `working` can never collide with the
    persona-global store.
+
+   **"True multi-turn" here is a per-thread fact ledger, not a transcript accumulator.** A scope
+   accumulates the notes a persona chooses to remember within that conversation and recalls them
+   later in the same scope; it is **not** a raw turn-by-turn conversation log replayed back (that —
+   a transcript store — is a separate, later concern, and is *not* a goal of this slice).
 
 ## Scope
 
@@ -111,8 +120,12 @@ class PrivateScope:
 - **Cross-thread:** a note in `thread("t1")` is not returned by `thread("t2")` or by `working`;
   `working` notes are not returned by any `thread(...)`.
 - **Path traversal:** a `handle` or `scope` that isn't a safe slug (`..`, `a/b`, `/abs`, `has.dot`,
-  empty) is refused at construction (`ValueError`) — the store can never escape the persona's
-  subtree. A note `name` that isn't a safe slug is refused by `remember`.
+  empty, or over-long) is refused at construction (`ValueError`); a note `name` that isn't a safe
+  slug is refused by `remember` before any I/O. So no value supplied *through the API* can traverse
+  out of a persona's subtree, and the module only ever creates files (it never follows or creates
+  symlinks). The residual assumption is that the **injected root is trusted** — a pre-planted
+  symlink inside the root is filesystem access outside this module's threat model (the same caveat
+  the shared handbook carries); the consumer keeps the root owned and writable only by the cockpit.
 - **The shared boundary holds:** a `PrivateScope.remember(...)` writes nothing into the shared
   handbook; a fact becomes shared truth **only** via `GovernedWriter(source=OWNER)`. (Regression
   test: a private write is not visible through `SharedMemory` pointed at the shared dir.)

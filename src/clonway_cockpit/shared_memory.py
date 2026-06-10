@@ -89,13 +89,13 @@ def score(fact: Fact, tokens: list[str]) -> int:
     """Keyword score: +2 per token in the high-signal name/summary, +1 in kind/body."""
     name_l, summary_l = fact.name.lower(), fact.summary.lower()
     kind_l, body_l = fact.kind.lower(), fact.body.lower()
-    score = 0
+    total = 0
     for tok in tokens:
         if tok in name_l or tok in summary_l:
-            score += 2
+            total += 2
         elif tok in kind_l or tok in body_l:
-            score += 1
-    return score
+            total += 1
+    return total
 
 
 class SharedMemory:
@@ -153,13 +153,18 @@ OWNER = "owner"
 """The only provenance that becomes shared truth (cf. WS-D's OPERATOR vs QUOTED)."""
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_MAX_SLUG_LEN = 128
+"""Upper bound so a valid-charset-but-overlong slug is rejected *before* any I/O, rather than
+surfacing a bare ``OSError`` (ENAMETOOLONG) from the filesystem after a directory was created
+(a note name + the ``.md`` suffix must fit a filename; 128 leaves comfortable headroom)."""
 
 
 def is_safe_slug(value: str) -> bool:
-    """True iff ``value`` is a lower-case slug ``[a-z0-9][a-z0-9_-]*`` — path-safe (rejects
-    traversal, absolute paths, dots, whitespace, a trailing newline). The single rule both
-    memory tiers use to validate any string that becomes a path segment or filename."""
-    return bool(_SLUG_RE.fullmatch(value))
+    """True iff ``value`` is a lower-case slug ``[a-z0-9][a-z0-9_-]*`` within the length bound —
+    path-safe (rejects traversal, absolute paths, dots, whitespace, a trailing newline, and
+    overlong names). The single rule both memory tiers use to validate any string that becomes a
+    path segment or filename."""
+    return len(value) <= _MAX_SLUG_LEN and bool(_SLUG_RE.fullmatch(value))
 
 
 class WriteRefused(RuntimeError):
@@ -184,7 +189,15 @@ def single_line(value: str, field: str) -> str:
 
 def render_fact(name: str, kind: str, summary: str, source: str, as_of: str, body: str) -> str:
     """Render one fact to the on-disk markdown + frontmatter format. The inverse of
-    :func:`load_fact`/:func:`parse_frontmatter` — the format is rendered here, parsed there."""
+    :func:`load_fact`/:func:`parse_frontmatter` — the format is rendered here, parsed there.
+
+    Body line endings are normalised to ``\\n`` so the rendered bytes match what the reader
+    returns (``parse_frontmatter`` splits on lines and rejoins with ``\\n``, which would otherwise
+    strip ``\\r`` from a ``\\r\\n`` body and break round-trip fidelity). The single-line frontmatter
+    values must be pre-validated by the caller (e.g. via :func:`single_line`) — a newline in one
+    would inject extra keys the reader honours; the two writers (`GovernedWriter`, `PrivateScope`)
+    do exactly that before calling here."""
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
     text = (
         "---\n"
         f"name: {name}\n"

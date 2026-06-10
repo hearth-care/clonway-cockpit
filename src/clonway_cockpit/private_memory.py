@@ -91,45 +91,50 @@ class PrivateScope:
         kind: str,
         summary: str,
         body: str = "",
+        source: str = "",
         as_of: str | None = None,
     ) -> Fact:
         """Write (or overwrite) one private note. ``name`` becomes the filename, so it must be a
-        safe slug; ``kind``/``summary``/``as_of`` must be single-line (else a newline would inject
-        extra frontmatter keys). Invalid input raises ``ValueError`` and writes nothing. ``as_of``
-        defaults to today (UTC). The note round-trips through :meth:`get`/:meth:`recall`."""
+        safe slug; ``kind``/``summary``/``source``/``as_of`` must be single-line (else a newline
+        would inject extra frontmatter keys). Invalid input raises ``ValueError`` and writes
+        nothing. ``source`` is optional **advisory** provenance ("the resident's daughter said…")
+        — it carries NO promotion power: a private note never becomes shared truth, which still
+        requires ``GovernedWriter(source=OWNER)``; the boundary is the *directory*, not this field.
+        ``as_of`` defaults to today (UTC). The note round-trips through :meth:`get`/:meth:`recall`."""
         _require_slug(name, "name")
         kind = single_line(kind, "kind")
         summary = single_line(summary, "summary")
+        clean_source = single_line(source, "source") if source else ""
         stamp = single_line(as_of, "as_of") if as_of else today()
         clean_body = body.strip()
         self._base.mkdir(parents=True, exist_ok=True)
         path = self._base / f"{name}.md"
-        # source is empty for a private note — provenance carries no promotion power here, and the
-        # boundary that keeps this out of shared truth is the *directory*, not this field.
-        path.write_text(render_fact(name, kind, summary, "", stamp, clean_body), encoding="utf-8")
+        path.write_text(
+            render_fact(name, kind, summary, clean_source, stamp, clean_body), encoding="utf-8"
+        )
         self._reader = SharedMemory(self._base)  # refresh: reads-after-write are consistent
         return Fact(
             name=name,
             kind=kind,
             summary=summary,
             body=clean_body,
-            source=None,
+            source=clean_source or None,
             as_of=stamp,
             path=path,
         )
 
     def forget(self, name: str) -> bool:
-        """Delete one note, returning ``True`` if it existed, ``False`` otherwise. Never raises on
-        a missing note or scope. An unsafe ``name`` simply isn't a real note → ``False`` (it can
-        never resolve to a path outside this scope)."""
+        """Delete one note, returning ``True`` if it existed, ``False`` if it did not. An unsafe
+        ``name`` is never a real note → ``False``. A genuine filesystem error (e.g. a permission
+        denial) is **not** swallowed — it propagates, so a failed delete is never silently reported
+        as "wasn't there" (which would falsely assure a persona that a note it tried to erase is
+        gone)."""
         if not is_safe_slug(name):
             return False
         path = self._base / f"{name}.md"
         try:
             path.unlink()
         except FileNotFoundError:
-            return False
-        except OSError:
             return False
         self._reader = SharedMemory(self._base)  # refresh after the delete
         return True
@@ -146,11 +151,17 @@ class PersonaMemory:
 
     @property
     def working(self) -> PrivateScope:
-        """The persona-global working store (``<base>/<handle>/working``)."""
+        """The persona-global working store (``<base>/<handle>/working``). Each access returns a
+        **fresh** scope (so it reflects on-disk edits, like constructing a new ``SharedMemory``) —
+        hold the returned scope in a local for a sequence of reads rather than re-accessing
+        ``.working`` each time, which reloads the directory."""
         return PrivateScope(self._base / self._handle / WORKING)
 
     def thread(self, scope: str) -> PrivateScope:
         """A per-thread/space scoped store (``<base>/<handle>/threads/<scope>``) for multi-turn
-        session memory. ``scope`` (a Chat space/thread id) must be a safe slug."""
+        session memory. ``scope`` must be a safe slug: a **raw Chat space id** (e.g.
+        ``spaces/AAAAbCdEf``) is not a slug, so the transport slice (#73) is responsible for
+        normalising it into one (e.g. lower-casing + replacing ``/`` with ``-``, or hashing) before
+        calling here. Each call returns a **fresh** scope; hold it in a local for a read sequence."""
         _require_slug(scope, "scope")
         return PrivateScope(self._base / self._handle / _THREADS / scope)
