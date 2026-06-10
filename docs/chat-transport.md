@@ -88,19 +88,23 @@ app-layer gate is the email allowlist.
   delivery is at-least-once (a worker that can't tolerate a duplicate reply must inject a store, and
   a message with no `message.name` is never deduped).
 
-> **No DM memory yet.** Each DM turn is currently a **fresh one-shot** — the persona does not
-> remember earlier turns in the same DM/space. Per-space multi-turn memory is the next slice (the
-> private-memory tier now exists, PR #77; wiring `PersonaMemory.thread(slug(space_id))` into this
-> transport is separate). Set operator expectations accordingly until then.
+> **Per-space DM memory is available.** Inject `remembering_responder` (`chat_memory.py`) in place of
+> `gateway_responder` and each persona remembers earlier turns in the same DM/space — it splices the
+> recent transcript between the soul system prompt and the new message, keyed by
+> `scope_for_space(message.space)`, isolated per `persona.handle`. No router change; the default
+> `gateway_responder` stays stateless for callers that want one-shot. **With memory on, the
+> `already_handled`/`mark_handled` dedup below is mandatory** — a redelivered message would otherwise
+> record the turn pair twice and corrupt later prompts (not just a duplicate reply). See
+> `docs/thread-memory.md`.
 
 ## What the worker supplies
 
 This module is transport-agnostic. The worker provides: (1) the **HTTP route** (`POST /chat-events`)
 that parses the JSON body and calls `handle_event`; (2) a `ChatTransport` whose `post(space, text)`
 calls the Chat REST `spaces.messages.create` as the Chat-app service account; (3) the **deploy**
-(below). Per-space **multi-turn memory** is a future slice — the transport is exactly where a later
-change attaches `PersonaMemory.thread(slug(space_id))` (the private-memory tier now exists, PR #77),
-but it is not wired here.
+(below). Per-space **multi-turn memory** is now available framework-side: inject `remembering_responder`
+(`chat_memory.py`), which attaches `PersonaMemory.thread(scope_for_space(message.space))` around the
+reply — the worker only chooses the responder and supplies the private-memory root.
 
 ## Operator deploy runbook (the load-bearing other half)
 
@@ -135,4 +139,5 @@ watched working).
 Normalisation never raises (unknown shape → ignored). The router acts only on `MESSAGE` events in v1;
 `ADDED_TO_SPACE` / `REMOVED_FROM_SPACE` / `CARD_CLICKED` are surfaced (so a worker can handle them
 deliberately) but acked-and-ignored here. Cards/buttons, the outbound Chat REST client, the HTTP
-route, the live deploy, and per-space multi-turn memory are out of this slice (worker-side or later).
+route, and the live deploy are out of this slice (worker-side or later); per-space multi-turn memory
+is its own merged slice (`chat_memory.py`, `docs/thread-memory.md`).
