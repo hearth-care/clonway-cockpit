@@ -120,6 +120,7 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
         "src/xgenlayout/obs.py",
         "src/xgenlayout/cli/__init__.py",
         "src/xgenlayout/cli/cockpit.py",
+        "src/xgenlayout/cli/home_hooks.py",
         "src/xgenlayout/cli/signals.py",
         "src/xgenlayout/signals/build.py",
         "src/xgenlayout/signals/emit.py",
@@ -186,6 +187,44 @@ def test_ac_c6_1_cockpit_opens_three_region_shell(tmp_path: Path) -> None:
         assert "needs you" in frame
         assert "toolkit" in frame
         assert "xgencockpit" in frame  # the worker's identity
+
+
+def test_template_home_hooks_are_generic_noops(tmp_path: Path) -> None:
+    from clonway_cockpit import keys
+    from clonway_cockpit.state import CockpitState
+
+    dst = _generate(tmp_path, worker_id="xgenhooks")
+    hook_source = (dst / "src/xgenhooks/cli/home_hooks.py").read_text()
+    assert "statutory" not in hook_source.lower()
+    assert "cqc" not in hook_source.lower()
+
+    with _importable(dst, "xgenhooks"):
+        hooks = importlib.import_module("xgenhooks.cli.home_hooks")
+        state = CockpitState(tenant_name="Clonway")
+
+        assert hooks.extra_selectables(state) == []
+        assert hooks.extra_regions(state) == []
+        assert (
+            hooks.handle_extra_key(state, ("shelf", "A"), keys.ENTER, object(), lambda: "q")
+            is False
+        )
+
+
+def test_template_host_wires_generic_home_hooks(tmp_path: Path) -> None:
+    from clonway_cockpit.state import CockpitState
+
+    dst = _generate(tmp_path, worker_id="xgenhosthooks")
+    with _importable(dst, "xgenhosthooks"):
+        cockpit = importlib.import_module("xgenhosthooks.cli.cockpit")
+        hooks = importlib.import_module("xgenhosthooks.cli.home_hooks")
+
+        host = cockpit._host()
+        state = CockpitState(tenant_name="Clonway")
+
+        assert host.extra_selectables is hooks.extra_selectables
+        assert host.extra_regions is hooks.extra_regions
+        assert host.handle_extra_key is hooks.handle_extra_key
+        assert host.extra_selectables(state) == []
 
 
 # --- AC-C6-2 — emits the C0 wire shape, flag-guarded -----------------------

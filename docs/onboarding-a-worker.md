@@ -317,6 +317,20 @@ through the dry-run + guarded-apply gate. Full protocol + the wiring recipe (inc
 `_AGENT_MODE` variant for a worker that rebuilds its host) live in
 [`docs/agent-screen-model.md`](agent-screen-model.md).
 
+## Optional home-screen extension hooks
+
+Generated workers also include `src/<worker>/cli/home_hooks.py`, wired into the
+framework `Host` by default. It starts as three no-ops:
+
+- `extra_selectables(state)` for worker-owned rows in the home cursor order.
+- `extra_regions(state)` for worker-owned Rich panels between needs-you and toolkit.
+- `handle_extra_key(state, selection, key, screen, read_key)` for keys on rows the worker owns.
+
+This is the generic hook path for domain-specific home panels, including statutory heads-up cards.
+The shared worker template must stay policy-neutral: new workers inherit the seam, not another
+worker's statutory rules. Put CQC/payroll/admissions-specific labels, thresholds, and actions in the
+worker repo's `home_hooks.py`, and keep the generated scaffold empty until that worker needs it.
+
 ## Becoming a colleague — the persona platform (optional)
 
 Beyond the cockpit + Signal layers, a worker can become a human-named **colleague** the owner

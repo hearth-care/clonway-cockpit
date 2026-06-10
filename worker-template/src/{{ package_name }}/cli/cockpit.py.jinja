@@ -31,6 +31,7 @@ from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 from clonway_cockpit.walk import Step, StepResult, make_walk_handler
 from rich.console import Console, RenderableType
 
+from {{ package_name }}.cli import home_hooks
 from {{ package_name }}.signals import emit as signals_emit
 
 _APP_LABEL = "{{ worker_id }}"
@@ -210,6 +211,9 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         on_open=_on_open,
         app_label=_APP_LABEL,
         agent_mode=agent_mode,
+        extra_selectables=home_hooks.extra_selectables,
+        extra_regions=home_hooks.extra_regions,
+        handle_extra_key=home_hooks.handle_extra_key,
     )
 
 
