@@ -28,4 +28,17 @@ Load-bearing details:
 - The wire is pinned: `schema_version` + a byte-exact shape-pin test force a version bump on any
   breaking change.
 
-(Reflex, negotiation, ledger sections land with their PRs.)
+(Negotiation, ledger sections land with their PRs.)
+
+## The safe-direction reflex (`clonway_cockpit.reflex`)
+
+A worker's own pre-registered, blocking-only rule reacting to an agent-claimed fact. **The reflex
+is an `ApprovalPolicy`, not a new write path** — the worker's gated drive presents a proposal at
+its existing `confirm_apply` gate; `ReflexPolicy` is the policy that may say yes. Checks (all
+fail-safe, exact-identity): registered capability, `money_movement is False`, `blocking is True`,
+non-empty provenance from a fact claimed by the origin, slug task id, not previously applied,
+under the session cap. Idempotency keys on `(task_id, capability_key)`, survives restart via a
+working-memory note, and an already-applied reflex is *reported* ("previously applied") rather
+than skipped — so a redelivered message still posts a true audit. The executor (`ReflexRule.run`)
+is worker code; its exceptions are caught and reported as `applied=False`, never crash the round.
+Matchers are pure and deterministic — a model never decides to fire a write path.
