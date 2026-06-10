@@ -442,6 +442,31 @@ def test_responder_rolls_back_orphan_user_turn_on_reply_write_failure(tmp_path, 
     assert ThreadTranscript(tmp_path, "milo", scope_for_space(space)).recent() == []
 
 
+def test_end_to_end_redelivery_with_dedup_hooks_records_once(tmp_path):
+    # Chat is at-least-once. With the router's dedup hooks wired — as docs/thread-memory.md now
+    # mandates once memory is on — a redelivered message is handled once, so the turn pair is
+    # recorded once and the transcript is not corrupted. (Closes the audit's #1 finding.)
+    reg = _registry("milo")
+    comp = RecordingCompleter("noted")
+    seen: set[str] = set()
+    router = ChatRouter(
+        registry=reg.registry,
+        responder=remembering_responder(reg, comp, role="chat", memory_base=tmp_path),
+        transport=FakeChatTransport(),
+        allowlist=frozenset({"owner@x.co"}),
+        already_handled=seen.__contains__,
+        mark_handled=seen.add,
+    )
+
+    event = _owner_dm("spaces/AAA", "remember this")
+    router.handle_event(event)
+    router.handle_event(event)  # redelivery of the exact same message
+
+    assert len(comp.calls) == 1  # handled once, not twice
+    recalled = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA")).recent()
+    assert [m["content"] for m in recalled] == ["remember this", "noted"]  # one pair, not doubled
+
+
 def test_responder_soulless_colleague_stays_quiet_not_crash(tmp_path):
     # The docstring promises a soul-less colleague stays quiet; an un-caught SoulError would escape
     # handle_event, leave the event un-marked, and make Chat redeliver forever. (ACC doc-drift)
