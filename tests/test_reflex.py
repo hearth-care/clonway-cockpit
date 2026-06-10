@@ -214,3 +214,30 @@ def test_fire_reflexes_one_firing_per_ask() -> None:
 def test_reflex_firing_dataclass() -> None:
     f = ReflexFiring(ask="x", capability_key="k", applied=True, note="ok")
     assert f.applied is True
+
+
+def test_d5_run_succeeds_then_memory_write_fails_then_retry(tmp_path, monkeypatch):
+    # Dragon D5: run succeeds, then the idempotency-note PERSISTENCE raises, then the SAME envelope
+    # is redelivered in the SAME process. The in-memory mark (set before the write) must make the
+    # retry report "previously applied" with NO second run — exactly one run invocation total.
+    runs: list = []
+    memory = PersonaMemory(tmp_path, "milo")
+    kit = make_kit(run=lambda proposal: runs.append(proposal) or True, memory=memory)
+
+    def boom(self, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("clonway_cockpit.private_memory.PrivateScope.remember", boom)
+
+    # First delivery: the reflex applies, the in-memory mark is taken, then persistence raises
+    # and propagates (the live transport would then leave the event un-marked and redeliver).
+    with pytest.raises(RuntimeError):
+        fire_reflexes(make_notice(), kit)
+    assert len(runs) == 1
+    assert kit.log.seen("rtw-402", "payroll.hold")  # the in-memory mark survived the write failure
+
+    # Same-process retry of the same envelope: no second run, audit reports "previously applied".
+    again = fire_reflexes(make_notice(), kit)
+    assert len(runs) == 1
+    assert [f.note for f in again] == ["previously applied"]
+    assert again[0].applied is True
