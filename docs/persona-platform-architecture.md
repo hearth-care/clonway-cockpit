@@ -304,6 +304,20 @@ document is the running architecture-decision thread so nothing is lost between 
 walking skeleton first, then thicken; **lock only the next slice** and re-plan after each. Work in a
 worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squash-merge.
 
+**Status vocabulary — read before trusting a row.** A four-rung ladder, so a row never over-claims:
+**designed** (a spec exists) → **coded** (merged here, gated + tested — this is what **DONE** means in
+this table) → **deployed** (running on real infrastructure) → **watched-working** (an operator has
+observed it do the real thing on real data). **DONE = coded + merged, NOT live.** A framework slice can
+be fully merged and still have its production surface unbuilt — so no row is called *deployed* or
+*watched-working* until that has actually been observed (e.g. the Chat transport *core* is DONE/coded;
+the live add-on is neither deployed nor watched-working).
+
+**The update rule — keep this table honest.** This table is the **canonical platform state**; worker
+PRs and planning link *here*, not to scattered PR descriptions. So: every slice updates its own row
+**in the same PR that lands it** (coded → the row flips to DONE with the PR number), and a row only
+advances to *deployed* / *watched-working* in the PR or note that records the observed run — never on
+optimism. Audit the table against the merged PRs before locking the next slice.
+
 | # | Slice | Status |
 |---|---|---|
 | 1 | **Architecture design doc** (this document) | **DONE** (#48) |
@@ -325,11 +339,19 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
 | **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
 | **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
-| **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **In review** (#79 — open for owner review; the deferred half of the #74 brief) |
+| **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **DONE** (#79 — coded + merged, the deferred half of #74; not watched-working until the live transport carries it) |
 
-Still ahead: the **live Google Chat transport deploy** (the framework transport core is merged
-(#78) — but the production surface is not watched-working until the operator deploys the add-on and
-a real DM lands); **surfacing
+Still ahead: the **live Google Chat transport deploy** (the framework transport core **and** the
+per-thread memory wiring are now both merged (#78, #79) — but the production surface is not
+watched-working until the operator deploys the add-on, wires `remembering_responder` + its dedup hooks
+into a worker's Chat edge, and a real DM lands); **surfacing
 model spend in the xops cost page** (the gateway already emits and fans out telemetry); and
 **consumer adoption / pin rollout** so worker repos inherit the newest platform slices. Each gets
 its own slice, its own PR, and its own design note linked back here. **Lock only the next slice.**
+
+**Next locked slice → the live Chat transport deploy.** Everything it needs framework-side is coded
+(transport core #78, memory wiring #79); it is now a worker-edge + operator-deploy step, not a
+framework one. See [`persona-platform-go-live-plan.md`](persona-platform-go-live-plan.md) (Slice B/C)
+and [`chat-transport.md`](chat-transport.md) → "Operator deploy runbook" + the `remembering_responder`
+dedup prerequisites in [`thread-memory.md`](thread-memory.md). Watched-working = one real DM, in voice,
+remembered across two turns.
