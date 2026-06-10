@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xsource · Auto-Procurer — user journey walkthrough</title>
+<style>
+  :root{
+    --amber:#d18d54; --blue:#7a9cc6; --ok:#7faa7f; --err:#e06c6c;
+    --dim:#8a8178; --dimmer:#6b655e; --termbg:#161310; --termborder:#4a4238;
+    --page:#0e0c0a; --panel:#1c1814; --ink:#e8e2da; --card:#211d18;
+    --accent-soft:rgba(209,141,84,.14);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--page);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 28px 120px}
+  a{color:var(--amber)}
+
+  /* masthead */
+  header.mast{padding:64px 0 24px;border-bottom:1px solid #2a251f;margin-bottom:8px}
+  .kicker{color:var(--amber);font-size:13px;letter-spacing:.18em;text-transform:uppercase;font-weight:600}
+  h1{font-size:40px;margin:10px 0 6px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--dim);font-size:18px;max-width:760px}
+  .meta{color:var(--dimmer);font-size:13px;margin-top:14px}
+  .meta b{color:var(--dim);font-weight:600}
+
+  /* journey strip */
+  .strip{display:flex;flex-wrap:wrap;gap:6px;margin:28px 0 8px}
+  .strip a{display:flex;align-items:center;gap:8px;background:var(--panel);
+    border:1px solid #2a251f;border-radius:8px;padding:7px 12px;font-size:13px;
+    color:var(--ink);text-decoration:none;transition:border-color .15s}
+  .strip a:hover{border-color:var(--amber)}
+  .strip .n{color:var(--amber);font-family:ui-monospace,monospace;font-size:12px}
+
+  h2.section{font-size:15px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);
+    margin:72px 0 4px;font-weight:700}
+  h2.section + p.lead{margin-top:6px;color:var(--dim);max-width:780px}
+
+  /* frame block */
+  .frame{margin:44px 0 0;}
+  .frame h3{font-size:24px;margin:0 0 2px;font-weight:650}
+  .frame h3 .stepno{color:var(--amber);font-family:ui-monospace,monospace;font-size:15px;
+    vertical-align:2px;margin-right:10px}
+  .frame .intent{color:var(--dim);margin:4px 0 18px;max-width:780px}
+
+  /* terminal */
+  .term{background:var(--termbg);border:1px solid var(--termborder);border-radius:10px;
+    padding:18px 26px;overflow-x:auto;box-shadow:0 14px 40px rgba(0,0,0,.45)}
+  .term pre{margin:0;font:13.5px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:#d9d2c9;white-space:pre}
+  .term .a{color:var(--amber)} .term .b{color:var(--blue)}
+  .term .d{color:var(--dim)} .term .dd{color:var(--dimmer)}
+  .term .ok{color:var(--ok)} .term .er{color:var(--err)}
+  .term .w{color:#fff;font-weight:700}
+  .term .bold{color:#f1ece4;font-weight:700}
+  .term .inv{background:var(--amber);color:#141008;font-weight:700;padding:0 4px;border-radius:2px}
+  .term .chip{background:#2e2a24;color:#cfc8bf;padding:0 6px;border-radius:3px}
+  .term .ul{text-decoration:underline;color:var(--amber)}
+  .termcap{color:var(--dimmer);font-size:12.5px;margin:8px 2px 0;font-family:ui-monospace,monospace}
+
+  /* sheet mock */
+  .sheet{background:#f6f4ef;border-radius:10px;border:1px solid #c9c2b4;overflow-x:auto;
+    box-shadow:0 14px 40px rgba(0,0,0,.45)}
+  .sheet .bar{background:#e7e2d6;padding:10px 16px;font:600 13px/1 -apple-system,sans-serif;
+    color:#3c372e;border-bottom:1px solid #c9c2b4;display:flex;gap:10px;align-items:center}
+  .sheet .bar .dotg{width:9px;height:9px;border-radius:50%;background:#5b9a68;display:inline-block}
+  .sheet table{border-collapse:collapse;width:100%;font:12.5px/1.45 -apple-system,sans-serif;color:#26221b}
+  .sheet th{background:#eee9dd;border:1px solid #d4cec0;padding:6px 10px;text-align:left;
+    font-weight:700;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:#5a5344}
+  .sheet td{border:1px solid #ddd7c9;padding:6px 10px;white-space:nowrap}
+  .sheet td.note{white-space:normal;min-width:170px}
+  .pillg,.pilla,.pillb{display:inline-block;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600}
+  .pillg{background:#dcebdc;color:#2c5e34} .pilla{background:#f4e3cd;color:#8a5318}
+  .pillb{background:#dde6f2;color:#2d4a73}
+
+  /* annotation / AC cards */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+  @media(max-width:880px){.duo{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid #2c2620;border-radius:10px;padding:18px 22px}
+  .card h4{margin:0 0 10px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--blue);font-weight:700}
+  .card.ac h4{color:var(--amber)}
+  .card ul{margin:0;padding-left:0;list-style:none}
+  .card li{margin:7px 0;padding-left:22px;position:relative;font-size:14.5px;color:#d5cec5}
+  .card li::before{content:"▸";position:absolute;left:2px;color:var(--blue)}
+  .card.ac li::before{content:"☐";color:var(--amber);font-size:13px;top:1px}
+  .card li code, .intent code, p code, td code{font:12.5px ui-monospace,monospace;background:#2a251f;
+    padding:1px 5px;border-radius:3px;color:#e8ddcf}
+  .card li b{color:#fff;font-weight:600}
+
+  /* callout */
+  .callout{background:var(--accent-soft);border:1px solid rgba(209,141,84,.35);border-radius:10px;
+    padding:16px 22px;margin:26px 0;color:#e6d9c8;font-size:15px}
+  .callout b{color:var(--amber)}
+
+  table.plain{border-collapse:collapse;width:100%;margin:18px 0;font-size:14.5px}
+  table.plain th{color:var(--amber);text-align:left;font-size:12px;letter-spacing:.1em;
+    text-transform:uppercase;border-bottom:1px solid #352e26;padding:8px 12px 8px 0}
+  table.plain td{border-bottom:1px solid #241f1a;padding:9px 12px 9px 0;vertical-align:top;color:#d5cec5}
+  table.plain td:first-child{color:#fff;font-weight:600;white-space:nowrap}
+
+  footer{margin-top:90px;border-top:1px solid #2a251f;padding-top:24px;color:var(--dimmer);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <div class="kicker">Clonway fleet · design artifact · spec input</div>
+  <h1>xsource <span style="color:var(--dim);font-weight:400">·</span> Auto-Procurer</h1>
+  <p class="sub">High-fidelity walkthrough of the cockpit user journey: from “a tree has come down”
+  to a pre-filled shortlist Sheet, drafted quote-request emails, and a black book that compounds.
+  Every frame below is an acceptance target for the build agents — the TUI should render like this.</p>
+  <div class="meta"><b>worker_id</b> xsource &nbsp;·&nbsp; <b>worker_title</b> Auto-Procurer &nbsp;·&nbsp;
+  <b>deploy_shape</b> local &nbsp;·&nbsp; <b>v0.2</b> 10 Jun 2026 &nbsp;·&nbsp; status: design for approval</div>
+</header>
+
+<div class="strip">
+  <a href="#s1"><span class="n">01</span> Home</a>
+  <a href="#s2"><span class="n">02</span> Preflight</a>
+  <a href="#s3"><span class="n">03</span> Describe the need</a>
+  <a href="#s4"><span class="n">04</span> Triage</a>
+  <a href="#s5"><span class="n">05</span> Research</a>
+  <a href="#s6"><span class="n">06</span> Review shortlist</a>
+  <a href="#s7"><span class="n">07</span> Write gate</a>
+  <a href="#s8"><span class="n">08</span> Result</a>
+  <a href="#s9"><span class="n">09</span> The Sheet</a>
+  <a href="#s10"><span class="n">10</span> Reply → Sheet</a>
+  <a href="#s11"><span class="n">11</span> Sync &amp; black book</a>
+  <a href="#s12"><span class="n">12</span> Signals</a>
+</div>
+
+<div class="callout"><b>How to read this:</b> dark frames are the xsource cockpit exactly as Rich will
+render it (palette, glyphs and footer legends match the clonway-cockpit framework — amber <code>#d18d54</code>,
+blue <code>#7a9cc6</code>, <code>❯</code> cursor, <code>▸</code> joints, braille spinner, no emoji).
+Each frame carries <b>design notes</b> (why it is this way) and <b>acceptance criteria</b>
+(what the build must demonstrably do). The ☐ boxes are the contract.</div>
+
+<div class="callout"><b>Operating model (v0.2):</b> the <b>Google Sheet is the operator's surface</b> —
+outreach status, supplier replies, quotes and the final choice all live there, and the black book
+syncs <i>from</i> the Sheet automatically. The TUI is the engine room: fire requests, browse the
+black book, doctor. Outreach drafting and reply-parsing <b>reuse Auto-Secretary's milo engine</b>
+(<code>xquill/milo/</code>: poll-cycle daemon, <code>compose_system_prompt</code> stance+constitution,
+provenance dumps, a Safe client boundary that can draft but structurally cannot send) — xsource adds
+a procurement stance and a thread-watcher, not a new email stack.</div>
+
+<!-- ================================================== 01 HOME -->
+<h2 class="section" id="s1">The journey</h2>
+<p class="lead">One scenario threads the whole walkthrough: <i>a tree has come down across the back
+garden and needs chipping and removing this week.</i></p>
+
+<div class="frame">
+<h3><span class="stepno">01</span>Home — the cockpit at rest</h3>
+<p class="intent">Standard fleet home screen. The pulse strip shows the worker’s vital signs; the
+needs-you list is where open procurement loops surface; the toolkit is the shelf grid.</p>
+<div class="term"><pre>
+<span class="bold">xsource · Auto-Procurer</span>                              <span class="a">Tue 10 Jun 2026 · 14:32</span>
+<span class="dd">Clonway · Hearth Care</span>
+<span class="dd">────────────────────────────────────────────────────────────────────────────</span>
+<span class="d">pulse</span>     <span class="ok">●</span> black book        <span class="d">47 suppliers · 12 categories</span>
+          <span class="a">◐</span> open requests     <span class="d">2 awaiting quotes</span>
+          <span class="ok">●</span> signals           <span class="d">emitted 07:15 · 1 active</span>
+          <span class="ok">●</span> research budget   <span class="d">£0.42 this month · caps healthy</span>
+          <span class="ok">●</span> reply watcher     <span class="d">3 live threads · last poll 60s ago</span>
+
+<span class="d">needs you</span> <span class="inv"> 2 </span>
+  <span class="a">❯</span> <span class="bold">1. Tree chipping — 0 of 3 quotes back</span>              <span class="dd">opened today</span>
+    2. Boiler service due in 21 days                    <span class="dd">Smith Heating · £180 last yr</span>
+
+<span class="d">toolkit</span>
+  <span class="a">❯</span> <span class="b">A.</span> <span class="bold">New request</span>          <span class="b">C.</span> Black book           <span class="b">E.</span> Doctor
+    <span class="b">B.</span> Requests             <span class="b">D.</span> Publish directory    <span class="b">F.</span> Help
+
+<span class="dd">────────────────────────────────────────────────────────────────────────────</span>
+<span class="a">▸</span> <span class="d">Press</span> <span class="w">↑↓←→</span> <span class="d">to move ·</span> <span class="w">⏎</span> <span class="d">to open / sync ·</span> <span class="w">A–F</span> <span class="d">to browse ·</span> <span class="w">/</span> <span class="d">to filter ·</span> <span class="w">?</span> <span class="d">for help ·</span> <span class="w">q</span> <span class="d">to quit</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>The <b>research budget pill</b> is xsource-specific: live API spend this month against config caps. Procurement is the first worker with per-run external API costs, so cost is a first-class vital sign, not buried telemetry.</li>
+    <li><b>Needs-you</b> is the request lifecycle surfaced: any request in status <code>open</code> with outstanding quotes appears here, mirroring its signal.</li>
+    <li>Recurring-service nudges (boiler) come from black book <code>recurs_every</code> hints — the compounding payoff visible on day one.</li>
+    <li>The <b>reply watcher pill</b> is the health of the milo-pattern daemon that turns supplier replies into sheet rows; a stale watcher is a broken promise, so it's on the pulse.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Home renders pulse, needs-you, toolkit regions via the framework home builder; <code>assert_render_model_parity</code> passes (human render ↔ <code>ScreenModel kind="home"</code>).</li>
+    <li>Open requests with zero recorded quotes appear in needs-you with age; selecting one opens the request card.</li>
+    <li>Research-budget pill turns <code>◐</code> amber at 75% of monthly cap, <code>✗</code> red at 100% (and walks refuse to start new research at 100%).</li>
+    <li>All six toolkit entries open; no dead controls (final-boss acceptance head will drive every one).</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 02 PREFLIGHT -->
+<div class="frame" id="s2">
+<h3><span class="stepno">02</span>Preflight — what “New request” will and won’t do</h3>
+<p class="intent">Fleet convention: every walk declares its blast radius before running. The
+negation line is the trust anchor — xsource drafts, it never sends.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request</span>                                  <span class="dd">step 1 of 5 · ‹esc› cancel</span>
+
+<span class="d">what this does:</span>
+  Researches providers for a good or service you describe, ranks a
+  shortlist, and prepares everything needed to get real quotes.
+
+<span class="d">what changes:</span>
+  · creates one Google Sheet in <span class="chip">Procurement/</span> — the request's home page
+  · drafts quote-request emails in milo.garth's Gmail (Auto-Secretary engine)
+  · <span class="a">does NOT</span> send any email — you press send in Gmail
+  · upserts suppliers and this request into the xsource black book
+
+<span class="d">preconditions:</span>
+  <span class="ok">✓</span> Places API key           <span class="dd">Secret Manager · ok</span>
+  <span class="ok">✓</span> research role            <span class="dd">web search via gateway seam · ok</span>
+  <span class="ok">✓</span> Drive/Sheets token       <span class="dd">ok · expires in 41d</span>
+  <span class="ok">✓</span> milo draft engine        <span class="dd">milo.garth token ok · draft-only boundary</span>
+  <span class="ok">✓</span> black book store         <span class="dd">gs://…/state/xsource · 47 suppliers</span>
+  <span class="ok">✓</span> research budget          <span class="dd">£0.42 / £10.00 monthly cap</span>
+
+<span class="d">equivalent CLI:</span>  <span class="chip"> xsource request new --need "…" --radius 15 </span>
+
+<span class="a">▸</span> <span class="d">Continue?</span>  <span class="w">[Y]es</span> <span class="d">·</span> <span class="w">[n]o</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>Negation tokens (<code>NOT</code>) get the framework’s amber <code>_NOT_STYLE</code> emphasis automatically.</li>
+    <li>Six preconditions = the worker’s full external surface. Any <code>✗</code> blocks the walk with the standard “fix the above first” footer.</li>
+    <li><b>Outreach reuses milo</b> (<code>Auto-Secretary/xquill/milo/</code>): <code>compose_system_prompt</code> stacks a new procurement <code>stance.md</code> on the shared constitution; drafting and provenance dumps come for free. xsource adds a <code>SafeOutreachClient</code> sibling of <code>SafeMiloClient</code> exposing <code>create_draft()</code> only — drafts addressed to suppliers, sent by you. Auto-send is a later graduation, not a v1 behaviour.</li>
+    <li>Budget appears as a precondition so a blown cap is discovered <i>before</i> typing the need, not after.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Preflight lists exactly these four change lines; the “does NOT send” line renders with amber negation emphasis.</li>
+    <li>Each precondition has a real probe (not hard-coded ✓); killing a credential in test flips it to <code>✗</code> and blocks the walk.</li>
+    <li>Equivalent-CLI chip works as a real command with identical behaviour.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 03 NEED ENTRY -->
+<div class="frame" id="s3">
+<h3><span class="stepno">03</span>Describe the need — plain English in, constraints visible</h3>
+<p class="intent">The operator types what they’d say on the phone. Constraints are pre-filled
+from config defaults and only edited when they matter.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request</span>                                  <span class="dd">step 2 of 5 · ‹esc› cancel</span>
+
+<span class="d">describe what you need (plain English):</span>
+
+  <span class="dd">┌────────────────────────────────────────────────────────────────┐</span>
+  <span class="dd">│</span> A tree has come down across the back garden at Rowan House.    <span class="dd">│</span>
+  <span class="dd">│</span> Need it cut up and chipped or removed, this week if possible.  <span class="dd">│</span>
+  <span class="dd">│</span> <span class="a">▎</span>                                                              <span class="dd">│</span>
+  <span class="dd">└────────────────────────────────────────────────────────────────┘</span>
+
+<span class="d">constraints:</span>
+  radius       <span class="bold">15 mi</span> <span class="dd">around TQ12 4QQ</span>          <span class="dd">(default)</span>
+  needed by    <span class="bold">Fri 13 Jun</span>                      <span class="dd">(optional)</span>
+  budget       <span class="dd">—</span>                               <span class="dd">(optional)</span>
+  shortlist    <span class="bold">5</span> <span class="dd">providers</span>                     <span class="dd">(default)</span>
+
+<span class="a">▸</span> <span class="d">Continue?</span>  <span class="w">[Y]es</span> <span class="d">·</span> <span class="w">[e]dit</span> <span class="d">constraints ·</span> <span class="w">[n]o</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>Home postcode and default radius come from worker config (<code>XSOURCE_HOME_POSTCODE</code>, <code>XSOURCE_DEFAULT_RADIUS</code>) — set once at onboarding, never re-typed.</li>
+    <li>Free text is the only mandatory field. Everything else has a sane default; “needed by” feeds both the email drafts and the chase-quotes signal clock.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Walk completes with need text alone (all defaults accepted) — the 30-second happy path.</li>
+    <li><code>[e]dit</code> opens each constraint for inline change; edited values flow into triage and drafts.</li>
+    <li>Agent projection (<code>walk.preflight</code>/step frames) exposes the same fields with stable row ids so the fleet bridge could file a request programmatically.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 04 TRIAGE -->
+<div class="frame" id="s4">
+<h3><span class="stepno">04</span>Triage — the LLM shows its reading before spending money</h3>
+<p class="intent">One structured-output call turns prose into a search plan. It is shown for
+correction <i>before</i> any paid API call fires — wrong category caught here costs nothing.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request</span>                                  <span class="dd">step 3 of 5 · ‹esc› cancel</span>
+
+<span class="d">here's how I read it:</span>                              <span class="dd">research role · 1.2s</span>
+
+  category      <span class="bold">trees &amp; grounds</span> <span class="dd">→ tree surgery / chipping &amp; removal</span>
+  job shape     <span class="dd">one-off · urgent-ish · domestic garden access</span>
+  searches      <span class="dd">“tree surgeon”, “tree removal”, “wood chipping service”</span>
+                <span class="dd">near TQ12 · 15 mi</span>
+  also try      <span class="dd">chipper hire (DIY fallback) · grounds maintenance firms</span>
+  black book    <span class="ok">1 match</span> <span class="dd">· Westcountry Tree Care · last used Oct 2024</span>
+
+<span class="a">▸</span> <span class="d">Look right?</span>  <span class="w">[Y]es, research</span> <span class="d">·</span> <span class="w">[e]dit</span> <span class="d">·</span> <span class="w">[n]o</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>Implemented as <code>Gateway.complete_structured</code> against a fixed triage schema (category, search_terms[], also_try[], email_template_vars). Deterministic shape, testable with a mocked gateway.</li>
+    <li>The black book match is shown here so a known supplier reframes the run (“just get Westcountry back?”) before any web spend.</li>
+    <li>“Also try” captures the goods/hire duality from the brief — a fallen tree is both a trade job and a possible chipper hire.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Triage output validates against the schema; malformed LLM output retries then fails the walk cleanly (<code>✗</code> result, no partial state).</li>
+    <li>Zero paid discovery calls (Places / web search) occur before this screen is confirmed.</li>
+    <li>Black book matching is category + tag based and is shown even when zero matches (“no matches — all new research”).</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 05 RESEARCH -->
+<div class="frame" id="s5">
+<h3><span class="stepno">05</span>Research — staged progress with the meter running</h3>
+<p class="intent">Standard staged-progress screen (tree connectors, braille spinner). The cap
+line keeps spend visible while the three discovery sources run.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request</span>                                  <span class="dd">step 4 of 5 · q cancel</span>
+
+<span class="a">⠹</span> <span class="bold">researching providers</span>                                        <span class="dd">00:14</span>
+
+  <span class="ok">✓</span> black book           <span class="dd">1 match · Westcountry Tree Care</span>
+  <span class="ok">✓</span> Google Places        <span class="dd">11 candidates · 8 with phone · 6 with site</span>
+  <span class="a">⠹</span> directories          <span class="dd">yell.com · 4 found ⠹ checkatrade.com · 3 found</span>
+  <span class="dd">·</span> web sweep            <span class="dd">price ranges · local mentions · pending</span>
+  <span class="dd">·</span> rank &amp; dedupe        <span class="dd">+ Companies House cross-check · pending</span>
+
+  <span class="dd">caps: 6/10 Places calls · 3/8 web searches · est £0.11 this run</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li><b>Four-source discovery:</b> black book → Places (structured: names, ratings, phone) → <b>directories</b> → web sweep (indicative price ranges, review-less locals, parish/FB mentions).</li>
+    <li>The <b>directories stage</b> is site-targeted LLM web search (<code>site:yell.com</code>, <code>site:checkatrade.com</code> + trade + town) reading their public listing pages the way a human searcher does — the long-tail coverage and vetting fidelity of those directories without scraper infrastructure. Direct APIs were verified absent (Jun 2026): Yell has none and prohibits automated copying; Checkatrade’s partner API is lead-submission only (parked, phase 4).</li>
+    <li><b>How directory parsing works:</b> search → schema-forced extraction → code validation. The model is the parser (no CSS selectors, so site redesigns can’t break it): structured output against a fixed candidate schema where every candidate needs a <code>source_url</code> and every field is nullable (“report only what the listing shows”). Then deterministic validators gate entry to the shortlist: profile URL on the right domain, phone normalises as UK, rating within the directory’s native scale, dedupe vs Places. Failed fields are nulled, never guessed.</li>
+    <li><b>Companies House is demoted to a ranking cross-check:</b> free SIC + postcode lookup that confirms legitimacy (“incorporated 2019”, flags dissolved firms) and occasionally surfaces incorporated trades with zero web presence.</li>
+    <li>Per-run caps are config (<code>max_places_calls</code>, <code>max_web_searches</code>); hitting a cap degrades gracefully — stage shows <code>⚠ capped</code>, run continues with what it has.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Each source is a separate stage; one source failing (e.g. Places 403) renders <code>⚠ skipped</code> and the run still completes from remaining sources.</li>
+    <li>Directory-sourced candidates carry their listing URL as provenance (lands in the sheet’s Source link) and their directory rating where present.</li>
+    <li>Directory extraction validates in code before anything reaches the shortlist: domain-checked <code>source_url</code>, UK-normalised phone, rating bounds per directory scale; a candidate failing validation is dropped or field-nulled (unit-tested against recorded fixtures — tests pin the validator, not exact LLM output).</li>
+    <li>Cap line shows live counts; exceeding a cap never happens (assert in tests, not just UI).</li>
+    <li><code>q</code> cancels cleanly mid-research: no sheet, no drafts, no black book writes, request not created.</li>
+    <li>Run cost estimate is written to obs telemetry (xops cost tracking picks it up).</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 06 REVIEW -->
+<div class="frame" id="s6">
+<h3><span class="stepno">06</span>Review — the shortlist, before anything is created</h3>
+<p class="intent">The decision screen. Ranked, deduped, source-labelled. The operator can
+inspect or exclude rows; nothing exists yet outside this screen.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request — review shortlist</span>                <span class="dd">step 5 of 5 · ‹esc› cancel</span>
+
+  <span class="a">❯</span> <span class="bold">1. Westcountry Tree Care</span>   <span class="b">book</span>  <span class="d">★4.9 (31)</span>  01626 332…  <span class="ok">✉ draft</span>   <span class="d">£150–250</span>
+    2. TQ Tree Services        <span class="b">maps</span>  <span class="d">★4.8 (57)</span>  01626 870…  <span class="ok">✉ draft</span>   <span class="d">£150–250</span>
+    3. Haldon Arb Ltd          <span class="b">maps</span>  <span class="d">★4.7 (12)</span>  01392 421…  <span class="ok">✉ draft</span>   <span class="d">£180–300</span>
+    4. D. Mortimer Tree Work   <span class="b">yell</span>  <span class="d">★4.6 (9)</span>   07712 90…   <span class="a">☎ call</span>    <span class="dd">—</span>
+    5. Teign Trees &amp; Grounds   <span class="b">chk</span>   <span class="d">9.4 (12)</span>   <span class="dd">via profile</span> <span class="ok">✉ draft</span>   <span class="dd">—</span>
+
+  <span class="d">indicative for this job:</span> <span class="bold">£150–£400</span> <span class="dd">· regional typical · 3 web sources</span>
+
+  <span class="d">will create:</span>  1 sheet <span class="chip"> Procurement — tree chipping — 10 Jun </span> · 4 Gmail drafts
+  <span class="d">will</span> <span class="a">NOT</span> <span class="d">send anything.</span>
+
+<span class="a">▸</span> <span class="inv"> a </span><span class="d">pply ·</span> <span class="w">[1-5]</span> <span class="d">inspect ·</span> <span class="w">[x]</span> <span class="d">exclude row ·</span> <span class="w">[q]</span> <span class="d">cancel</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li><b>Ranking:</b> black-book history first, then rating × review volume (Google, Yell and Checkatrade scores shown in their native scales), then proximity. Source tags (<code>book/maps/yell/chk/web/CH</code>) keep provenance explicit, each linking to the listing.</li>
+    <li>Rows split into <code>✉ draft</code> (email or directory contact form known → milo-engine draft prepared, in your voice from the procurement stance) and <code>☎ call</code> (phone-first trades). The sheet makes the call list obvious for staff.</li>
+    <li>Dedupe is fuzzy (phone normalised, domain match, name similarity) so “TQ Tree Services” from Places and the same firm’s Yell listing don’t appear twice — cross-listed firms merge with all provenance kept.</li>
+    <li>The inverse-amber <code>[a]</code> is the framework’s escalated apply key — visually distinct from ordinary confirms.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Review emits <code>ScreenModel kind="walk.review"</code> with stable row ids <code>supplier:&lt;id&gt;</code> and per-row meta (source, rating, contact, draft|call).</li>
+    <li><code>[x]</code> excludes a row; excluded rows appear in neither sheet nor drafts nor request shortlist.</li>
+    <li><code>[1-5]</code> opens a supplier inspect card (full details + the draft email text for ✉ rows) and returns to review.</li>
+    <li>Indicative price range cites its source count; absent data renders <code>—</code>, never a fabricated number.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 07 GATE -->
+<div class="frame" id="s7">
+<h3><span class="stepno">07</span>Write gate — one door for all side effects</h3>
+<p class="intent">Pressing <b>a</b> goes through the fleet’s single write gate. In agent mode the
+same moment is a <code>walk.gate</code> frame with a one-time token — dry-run by default, always.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">New request — apply</span>
+
+<span class="d">about to create:</span>
+  · Google Sheet <span class="chip"> Procurement — tree chipping — 10 Jun </span> <span class="dd">in Procurement/</span>
+  · 4 drafts in milo.garth's Gmail <span class="dd">(Westcountry · TQ Tree · Haldon · Teign)</span>
+  · request <span class="chip"> r-0042 </span> + 4 new suppliers in the black book · watcher armed
+
+<span class="a">▸</span> <span class="d">Apply?</span>  <span class="inv"> a </span> <span class="d">to apply ·</span> <span class="w">any other key</span> <span class="d">cancels</span>
+</pre></div>
+<p class="termcap">agent projection of the same moment (ScreenModel JSON on the drive channel):</p>
+<div class="term"><pre><span class="dd">{
+  "schema_version": "1.0",
+  "kind": "walk.gate",
+  "meta": {
+    "gate": "awaiting_apply",
+    "token": "gate-7",
+    "capability_key": "request.new",
+    "equivalent_cli": "xsource request new --need … --apply",
+    "side_effects": ["sheets.create", "gmail.drafts.create", "blackbook.upsert"],
+    "money_movement": "none"
+  }
+}</span></pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>All side effects ride <b>one</b> gate — there is no path where drafts exist but the request record doesn’t. Applying also arms the reply watcher with the new thread ids.</li>
+    <li><code>money_movement: "none"</code> is true and stays true: xsource never pays anyone; it only prepares asks.</li>
+    <li>Drafts-only is enforced below the gate too: <code>SafeOutreachClient</code> (sibling of milo’s <code>SafeMiloClient</code>) exposes <code>create_draft()</code> only — no send method exists to call. Graduating to auto-send later means consciously adding one behind this same gate, not flipping config.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Agent drive without <code>--allow-apply</code> + token receives <code>walk.gate</code> and can go no further; nothing is created (the standard <code>test_safety.py</code> contract, extended to all three effects).</li>
+    <li>Grep-level guarantee in CI: no call sites for Gmail send endpoints anywhere in the package.</li>
+    <li>Apply is atomic-ish with honest failure: if drafts succeed and the sheet fails, result screen says exactly what exists and the request record captures partial state for retry — never a silent half-success.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 08 RESULT -->
+<div class="frame" id="s8">
+<h3><span class="stepno">08</span>Result — everything you need, one screen</h3>
+<p class="intent">The payoff frame: links out to the Sheet and Gmail, and a plain statement of
+what to do next (send drafts, ring the call-only rows).</p>
+<div class="term"><pre>
+<span class="ok">✓</span> <span class="bold">Shortlist ready.</span>
+
+  <span class="d">sheet</span>       Procurement — tree chipping — 10 Jun        <span class="ul">open in Drive</span>
+  <span class="d">drafts</span>      4 waiting in milo.garth Gmail <span class="dd">· xsource/outbox</span> <span class="ul">open Gmail</span>
+  <span class="d">call list</span>   1 phone-first provider flagged on the sheet
+  <span class="d">black book</span>  4 suppliers added · 1 updated <span class="dd">· request r-0042 open</span>
+
+  <span class="dd">next: send the drafts you're happy with — the watcher takes it from</span>
+  <span class="dd">there. Replies are parsed onto the sheet automatically.</span>
+
+<span class="dd">press any key to return</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>Links are OSC-8 hyperlinks in the terminal (framework convention, as xbook’s “view in Xero”).</li>
+    <li>Drafts get an <code>xsource/outbox</code> Gmail label so they’re findable as a batch on a phone.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Result reports real created-artifact ids/URLs (verified by integration smoke), not assumed success.</li>
+    <li>Request <code>r-0042</code> now appears on Home needs-you and in <code>request.list</code> with status <code>open</code>.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 09 SHEET -->
+<div class="frame" id="s9">
+<h3><span class="stepno">09</span>The Sheet — the request’s home page</h3>
+<p class="intent">Fixed template, one tab, shown here just after creation. This is the operator
+surface for the whole lifecycle: outreach, replies, quotes and the decision all land here.
+Worker-written and human-edited columns are explicit and never move.</p>
+<div class="sheet">
+  <div class="bar"><span class="dotg"></span> Procurement — tree chipping — 10 Jun 2026 &nbsp;·&nbsp; shared: office@ &nbsp;·&nbsp; created by xsource · r-0042 &nbsp;·&nbsp; xsource last checked 15:58</div>
+  <table>
+    <tr><th>#</th><th>Provider</th><th>Source</th><th>Rating</th><th>Phone</th><th>Email</th><th>Indicative</th><th>Status</th><th>Asked</th><th>Reply</th><th>Quote £</th><th>Chosen</th><th>Updated</th><th>Notes</th></tr>
+    <tr><td>1</td><td><b>Westcountry Tree Care</b></td><td><span class="pillg">black book</span></td><td>★4.9 (31)</td><td>01626 332…</td><td>info@westcountry…</td><td>£150–250</td><td><span class="pilla">Draft ready</span></td><td></td><td></td><td></td><td></td><td>10 Jun 15:58</td><td class="note">Used Oct 2024 — fast, tidy. Preferred.</td></tr>
+    <tr><td>2</td><td>TQ Tree Services</td><td><span class="pillb">Google</span></td><td>★4.8 (57)</td><td>01626 870…</td><td>hello@tqtrees…</td><td>£150–250</td><td><span class="pilla">Draft ready</span></td><td></td><td></td><td></td><td></td><td>10 Jun 15:58</td><td class="note"></td></tr>
+    <tr><td>3</td><td>Haldon Arb Ltd</td><td><span class="pillb">Google</span></td><td>★4.7 (12)</td><td>01392 421…</td><td>quotes@haldonarb…</td><td>£180–300</td><td><span class="pilla">Draft ready</span></td><td></td><td></td><td></td><td></td><td>10 Jun 15:58</td><td class="note"></td></tr>
+    <tr><td>4</td><td>D. Mortimer Tree Work</td><td><span class="pillb">Yell</span></td><td>★4.6 (9)</td><td>07712 90…</td><td>—</td><td>—</td><td><span class="pilla">To call</span></td><td></td><td></td><td></td><td></td><td>10 Jun 15:58</td><td class="note">Phone-first. Yell listing linked.</td></tr>
+    <tr><td>5</td><td>Teign Trees &amp; Grounds</td><td><span class="pillb">Checkatrade</span></td><td>9.4 (12)</td><td>—</td><td>via profile</td><td>—</td><td><span class="pilla">Draft ready</span></td><td></td><td></td><td></td><td></td><td>10 Jun 15:58</td><td class="note">Vetted member since 2021. Profile linked.</td></tr>
+    <tr><td colspan="14" style="background:#efe9db;color:#6b6353;font-size:11.5px">Job: fallen tree, cut/chip/remove · Rowan House, TQ12 · needed by Fri 13 Jun · indicative £150–£400 (regional) · request r-0042</td></tr>
+  </table>
+</div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li><b>Column contract:</b> worker-written — Provider, Source (linked), Rating, contacts, Indicative, Asked, Reply, <b>Updated</b>, and Status auto-flips (Draft ready → Asked when the watcher sees the draft sent → Replied/Quoted when a reply is parsed). <b>Human-edited</b> — Chosen, Notes, plus Quote £/Status for phone quotes. Fixed template, data-validated Status — the occupancy-tracker drift lesson, applied.</li>
+    <li><b>Two observability timestamps:</b> per-row <b>Updated</b> (stamped on every xsource write — what happened, when) and the header-bar <b>heartbeat</b> (“xsource last checked HH:MM”, refreshed while the watcher polls, throttled to hourly when idle — proves the watcher is alive even when nothing changed). Reply in the inbox + fresh heartbeat + stale row = parse bug; stale heartbeat = watcher down.</li>
+    <li>This sheet, not a TUI screen, is where the lifecycle is read and recorded — phone-friendly, staff-shareable, zero training.</li>
+    <li>The bar and footer carry the request id so the sheet is always traceable back to the store.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Sheet is created from a fixed template (column order, validation, footer); a golden-file test pins the layout.</li>
+    <li>Sync reads only the human-editable columns back into the store and tolerates unknown rows (warns, never crashes); worker columns are never overwritten by sync, human columns never by the worker (except Status auto-flips, which yield to a human-set value).</li>
+    <li>Sheet shares with the configured staff group on creation.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 10 RECORD QUOTE -->
+<h2 class="section" id="s10">After the run — the hands-free loop</h2>
+<p class="lead">The shortlist is minutes; quotes take days. From here the loop runs itself:
+you send the drafts, replies land on the sheet, the sheet feeds the black book.</p>
+
+<div class="frame">
+<h3><span class="stepno">10</span>Reply lands — parsed onto the sheet, no typing</h3>
+<p class="intent">The watcher (milo’s daemon pattern: 60s poll, SQLite idempotency, provenance
+dumps) follows the threads xsource opened. A supplier reply is parsed and the sheet row updates
+itself. Shown here as its doctor/status view in the TUI.</p>
+<div class="term"><pre>
+<span class="d">card</span> <span class="bold">Reply watcher</span>                                <span class="dd">Wed 11 Jun · 09:42 · poll 60s</span>
+
+<span class="d">watching 4 threads</span> <span class="dd">· milo.garth · request r-0042</span>
+
+  <span class="ok">✓</span> TQ Tree Services        <span class="dd">replied 09:38 · parsed:</span>
+      <span class="bold">quote £185</span> <span class="d">incl. removal · available Thu 12 Jun</span>
+      <span class="dd">→ sheet row 2 · Status</span> <span class="bold">Quoted</span> <span class="dd">· Reply + Quote £ filled</span>
+  <span class="a">◐</span> Haldon Arb Ltd          <span class="dd">replied 08:55 · no number — asking to visit</span>
+      <span class="dd">→ sheet row 3 · Status</span> <span class="bold">Replied</span> <span class="dd">· summary filled, Quote £ left blank</span>
+  <span class="dd">·</span> Westcountry Tree Care   <span class="dd">no reply yet · asked 10 Jun 16:02</span>
+  <span class="dd">·</span> Teign Trees &amp; Grounds   <span class="dd">no reply yet · asked 10 Jun 16:02</span>
+
+  <span class="dd">provenance: ~/.claude-inbox/xsource/provenance/&lt;msg-id&gt;.json</span>
+
+<span class="dd">press any key to return</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>The watcher is xsource’s own daemon <b>keyed strictly by stored thread ids</b> — it never reads milo’s forwards and milo’s operator whitelist never sees suppliers. Same reused parts: poll cycle, processed-message idempotency store, provenance dump per parse.</li>
+    <li><b>Thread capture is structural, not cosmetic:</b> the Gmail API returns <code>threadId</code> at draft <i>creation</i>, so the request record holds it before anything is sent — no subject-line reference numbers. Replies thread via <code>In-Reply-To</code>/<code>References</code> automatically.</li>
+    <li><b>Off-thread fallback:</b> some suppliers reply as a <i>fresh</i> email (quoting software, retyped address). A secondary pass matches recent messages by sender address/domain against shortlisted suppliers on open requests — flagged as “possible reply — needs a look” (needs-you item), never auto-parsed, because the match is inferred not structural. A quiet <code>ref r-0042</code> in the email body footer helps this matcher and phone follow-ups.</li>
+    <li>Parsing is structured extraction (amount, what’s included, availability, conditions) with a <b>no-fabrication rule</b>: an ambiguous reply becomes Status <code>Replied</code> + a one-line summary; Quote £ is only filled when a number was actually quoted.</li>
+    <li>Sent-detection is the same watcher noticing your message on the thread — Status flips to <code>Asked</code> with the timestamp; nothing to record manually.</li>
+    <li>Phase 4 graduation: the watcher can also draft the <i>follow-up</i> (“thanks — when could you start?”) via the milo engine, still draft-only.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>A reply on a watched thread updates the correct sheet row within one poll interval; re-running the cycle is a no-op (idempotency test).</li>
+    <li>Emails outside watched threads are never auto-parsed; the primary watch is thread-id-bounded, and the off-thread fallback only surfaces sender-matched candidates for human review.</li>
+    <li><code>threadId</code> is captured at draft creation and persisted on the request record before send; an off-thread reply from a shortlisted supplier’s address appears as a needs-you item within one poll interval.</li>
+    <li>Quoted-with-number, replied-without-number, and decline (“too busy”) replies each map to the right Status; fabricated quote values are impossible by construction (extraction schema requires a quoted source span).</li>
+    <li>Every parse writes a provenance JSON (raw message, extraction, sheet write) for post-hoc diagnosis.</li>
+    <li>Every watcher write to a row stamps that row’s <b>Updated</b> cell in the same batch update (a row can never change without its timestamp changing).</li>
+    <li>The sheet heartbeat advances on every poll cycle with live threads (throttled to hourly when no activity); the diagnostic triple — reply present, heartbeat fresh, row stale beyond one poll interval — is reproducible in an integration test and points at the provenance file.</li>
+    <li>Watcher stale &gt;2h with live threads → home pill flips <code>◐</code> and an <code>anomaly.detected</code> signal is emitted.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 11 BLACK BOOK -->
+<div class="frame" id="s11">
+<h3><span class="stepno">11</span>Sheet → black book — filing happens by itself</h3>
+<p class="intent">You mark <b>Chosen ✓</b> on the sheet (and staff jot phone quotes straight into
+it). The nightly sync extracts everything into the black book — nobody enters data in the TUI.</p>
+<div class="term"><pre>
+<span class="d">walk</span> <span class="bold">Sync requests</span>                                <span class="dd">nightly · or on demand</span>
+
+<span class="ok">✓</span> <span class="bold">r-0042 tree chipping</span> <span class="dd">· sheet read · 5 rows · 0 drift warnings</span>
+
+    Chosen <span class="ok">✓</span> TQ Tree Services · <span class="bold">£185</span> <span class="dd">· done Thu 12 Jun</span>   <span class="dd">→ request closed</span>
+    Westcountry quoted £190                                <span class="dd">→ price history</span>
+    Haldon wanted a site visit first                       <span class="dd">→ supplier note</span>
+    D. Mortimer — no answer ×2 <span class="dd">(staff note)</span>               <span class="dd">→ supplier note</span>
+    <span class="dd">5 suppliers enriched · sheet archived · link kept on request</span>
+
+<span class="dd">press any key to return</span>
+</pre></div>
+<p class="termcap">and the payoff, two years on — the black book card the next request starts from:</p>
+<div class="term"><pre>
+<span class="d">card</span> <span class="bold">Westcountry Tree Care</span>                        <span class="dd">trees &amp; grounds · supplier s-0017</span>
+
+  <span class="ok">●</span> <span class="d">preferred</span>      <span class="dd">set 12 Oct 2024</span>
+  <span class="d">phone</span>   01626 332…        <span class="d">email</span>   info@westcountrytreecare.co.uk
+  <span class="d">site</span>    westcountrytreecare.co.uk        <span class="d">rating</span>  ★4.9 (31) <span class="dd">· Places</span>
+
+  <span class="d">history</span>
+    <span class="dd">Oct 2024</span>   fallen branch, front drive          <span class="bold">£220</span>  <span class="ok">✓ used</span>
+    <span class="dd">Jun 2026</span>   tree chipping r-0042                <span class="bold">£190</span>  <span class="dd">quoted</span>
+
+  <span class="d">notes</span>
+    <span class="dd">“fast, tidy, took the logs away” — OP, Oct 2024</span>
+
+<span class="dd">press any key to return · [n] add note · [p] toggle preferred</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li><b>The sheet is the entry path; the store is the memory.</b> Sync extracts the human-editable columns (Chosen, Quote £, Status, Notes) into the request record and supplier histories. TUI book screens are browse/QA only — <code>[n]</code> add note and <code>[p]</code> preferred remain as conveniences, never requirements.</li>
+    <li>Store is worker-owned JSONL at <code>gs://clonway-orchestrator-eu-west2/state/xsource/</code> (<code>suppliers.jsonl</code>, <code>requests.jsonl</code>) — same bucket conventions as fleet telemetry/signals; single operator, single writer.</li>
+    <li>Conflict rule: human columns — sheet wins; worker columns — store wins. Deterministic, no merge UI.</li>
+    <li><code>book.import</code> seeds from your existing black book (CSV/Sheet, one-off). <code>book.publish</code> renders a read-only directory Sheet for staff. Supplier records carry optional <code>recurs_every</code> (boiler service: 12 months) — fuel for horizon signals.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li>Marking Chosen ✓ on the sheet → after sync: request <code>closed</code>, winner’s <code>last_used</code> + <code>price_history</code> stamped, losers’ quotes kept as history, needs-you and chase signal cleared. The full loop is one integration test.</li>
+    <li>Sync is idempotent and drift-tolerant: re-run is a no-op; a renamed/moved column warns and skips, never mis-files.</li>
+    <li>Round-trip property test on the store: upsert → reload → identical; corrupt line quarantined with a warning, never a crash.</li>
+    <li><code>book.search</code> finds suppliers by name, category, or tag in &lt;1s from local cache; offline (no GCS) degrades to read-only cache with a visible warn pill.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== 12 SIGNALS -->
+<div class="frame" id="s12">
+<h3><span class="stepno">12</span>Signals — xsource in the morning briefing</h3>
+<p class="intent">The mandatory <code>@scan_horizon</code> contract, and genuinely earned here:
+procurement has natural deadlines. This is the xops fleet view, where xsource gets its pill.</p>
+<div class="term"><pre>
+<span class="bold">xops · fleet</span>                                        <span class="a">Wed 13 Jun 2026 · 07:20</span>
+
+<span class="d">pulse</span>   <span class="ok">●</span> xbook    <span class="dd">clean</span>      <span class="a">◐</span> <span class="bold">xsource</span>  <span class="dd">2 signals</span>     <span class="ok">●</span> xhr      <span class="dd">clean</span>
+        <span class="ok">●</span> xletter  <span class="dd">clean</span>      <span class="ok">●</span> xquill   <span class="dd">clean</span>
+
+<span class="d">needs you</span>
+  <span class="a">❯</span> <span class="bold">1. xsource · chase quotes — tree chipping</span>
+       <span class="dd">action.required · 1 of 3 replies after 3 days · needed by Fri</span>
+    2. xsource · boiler service due in 18 days
+       <span class="dd">deadline.approaching · Smith Heating · £180 last year · recurs yearly</span>
+</pre></div>
+<div class="duo">
+  <div class="card"><h4>Design notes</h4><ul>
+    <li>Three signal builders: <b>chase-quotes</b> (open request, outstanding asks after N days, sharpened by <code>needed_by</code>), <b>recurring-service</b> (black book <code>recurs_every</code> coming due), and <b>watcher-health</b> (<code>anomaly.detected</code> when the reply watcher goes stale with live threads).</li>
+    <li>Stable dedup keys (<code>xsource|chase|r-0042</code>) so the daily scan re-emits without re-alerting; emitted to <code>signals/xsource/latest.jsonl</code> per fleet convention.</li>
+    <li>Daily scan runs via launchd with <code>XSOURCE_EMIT_SIGNALS=1</code> (the xquill local precedent); xsource joins the xops <code>ROSTER</code>.</li>
+  </ul></div>
+  <div class="card ac"><h4>Acceptance criteria</h4><ul>
+    <li><code>build_xsource_signals(today, now)</code> is pure and unit-tested across: fresh request (no signal), 3-day-old unanswered (signal), all-quoted (no signal), recurs due in ≤21d (signal).</li>
+    <li>Emit honours the flag default-OFF contract and writes empty <code>latest.jsonl</code> on clean days (clears stale set).</li>
+    <li>xsource pill renders in the xops fleet cockpit after roster registration.</li>
+  </ul></div>
+</div>
+</div>
+
+<!-- ================================================== GLOBAL -->
+<h2 class="section">Global acceptance criteria</h2>
+<p class="lead">Cross-cutting contract for the build, on top of the per-frame boxes.</p>
+
+<table class="plain">
+  <tr><th>Area</th><th>Criterion</th></tr>
+  <tr><td>Factory contract</td><td>Generated via <code>copier copy</code> (worker_id <code>xsource</code>, deploy_shape <code>local</code>); all template contract tests pass unmodified: render↔model parity, drives-clean, write-gate safety, signals flag/degrade.</td></tr>
+  <tr><td>Dry-run default</td><td>No capability creates a sheet, draft, or store write without the guarded-apply token. Agent-mode drive of every walk in dry-run leaves the world untouched (verified by the acceptance audit, not assumed).</td></tr>
+  <tr><td>Drafts only (v1)</td><td><code>SafeOutreachClient</code> exposes <code>create_draft()</code> only; Gmail send endpoints are absent from the xsource codebase (CI grep gate). Auto-send is a deliberate later graduation behind the same write gate, never a config flip.</td></tr>
+  <tr><td>milo reuse</td><td>Outreach drafting and reply parsing reuse Auto-Secretary’s milo machinery — <code>compose_system_prompt</code> (procurement stance + shared constitution), poll-cycle daemon pattern, SQLite idempotency, provenance dumps. No parallel email stack is built; milo’s own forward-handling path is untouched.</td></tr>
+  <tr><td>Sheet contract</td><td>The Sheet is the operator surface: fixed template, explicit worker-written vs human-edited columns, lifecycle data flows Sheet → black book via sync. No TUI data entry is ever required to close the loop.</td></tr>
+  <tr><td>Cost ceilings</td><td>Per-run and per-month caps enforced in code with tests; budget state visible on Home; 100% cap blocks new research walks with a clear message.</td></tr>
+  <tr><td>Honest data</td><td>No fabricated contact details, ratings, prices, or quotes: every shortlist cell traces to a source (book/maps/yell/chk/web/CH) or renders <code>—</code>; parsed quotes require a quoted source span in the reply. Indicative ranges always cite source count.</td></tr>
+  <tr><td>Source posture</td><td>Discovery uses Places API, site-targeted Anthropic web search (reading yell.com / checkatrade.com public listings as a searcher does), and Companies House. No scraper infrastructure or bulk copying (their ToS prohibit it and neither offers a search API — verified Jun 2026); Checkatrade’s lead-submission affiliate API parked as the phase-4 partner option.</td></tr>
+  <tr><td>Fleet conventions</td><td>Obs telemetry + signals JSONL to the orchestrator bucket; secrets in Secret Manager; no PII in gateway telemetry; xops roster entry; doctor probes for every credential, the store, and the watcher.</td></tr>
+</table>
+
+<h2 class="section">Phasing</h2>
+<table class="plain">
+  <tr><th>Phase</th><th>Ships</th><th>Frames</th></tr>
+  <tr><td>P1 · Research</td><td>Scaffold, black book store + import/seed, <code>request.new</code> through to the Sheet (no outreach), doctor probes</td><td>01–06, 08–09 (sheet only), book card</td></tr>
+  <tr><td>P2 · Outreach</td><td>milo-engine drafts (procurement stance, <code>SafeOutreachClient</code>) behind the write gate, outbox label, sent-detection flips Asked</td><td>06–08 complete</td></tr>
+  <tr><td>P3 · Hands-free loop</td><td>Reply watcher + parse-to-sheet, nightly Sheet→book sync + sync walk, all three signal builders, launchd scan, xops roster</td><td>10, 11, 12, Home needs-you</td></tr>
+  <tr><td>P4 · Later</td><td>Auto-send graduation (write-gated), follow-up drafting on replies, email/chat trigger, Checkatrade affiliate API (partner agreement; write-gated — creates real leads)</td><td>—</td></tr>
+</table>
+
+<footer>
+  xsource · Auto-Procurer — design walkthrough v0.2 · 10 Jun 2026 · companion to the written spec
+  (clonway-cockpit <code>docs/superpowers/specs/</code>) · frames follow clonway-cockpit render
+  conventions: <code>#d18d54</code> amber accent · <code>#7a9cc6</code> blue · ok <code>#7faa7f</code> ·
+  err <code>#e06c6c</code> · box.ROUNDED dim frames · no emoji.
+</footer>
+
+</div>
+</body>
+</html>
