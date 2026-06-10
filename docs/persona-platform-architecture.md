@@ -340,6 +340,7 @@ optimism. Audit the table against the merged PRs before locking the next slice.
 | **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
 | **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
 | **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **DONE** (#79 — coded + merged, the deferred half of #74; not watched-working until the live transport carries it) |
+| **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | **DONE** (PR A of the negotiation slice family — see `docs/cross-worker-handoffs.md`) |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core **and** the
 per-thread memory wiring are now both merged (#78, #79) — but the production surface is not
