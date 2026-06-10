@@ -323,10 +323,12 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | **Receptionist** (the front door that points, never does) — `receptionist.py` | **DONE** (#60) |
 | **Seam-hardening** (the audit's cheap correctness/safety cluster: matcher, constitution check, mentions) | **DONE** (#61) |
 | **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
-| **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **IN REVIEW** (#77 — built + tested; owner reviewing the private/shared boundary, not yet merged) |
+| **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
+| **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
 
-Still ahead: the **live Google Chat transport** (a Workspace
-add-on — the in-memory wire is proven, the production surface is not built); **surfacing
+Still ahead: the **live Google Chat transport deploy** (the framework transport core is merged
+(#78) — but the production surface is not watched-working until the operator deploys the add-on and
+a real DM lands); **surfacing
 model spend in the xops cost page** (the gateway already emits and fans out telemetry); and
 **consumer adoption / pin rollout** so worker repos inherit the newest platform slices. Each gets
 its own slice, its own PR, and its own design note linked back here. **Lock only the next slice.**
