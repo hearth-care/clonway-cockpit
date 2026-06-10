@@ -13,8 +13,14 @@ layers a per-space transcript on top". :func:`remembering_responder` is that pro
 signature, plus per-thread memory — so swapping it in is the entire integration. Nothing here touches
 the router, the orchestrator, the owner-only-command air-gap, or the private-memory store.
 
-See ``docs/thread-memory.md`` and the design spec
-``docs/superpowers/specs/2026-06-10-thread-memory-wiring-design.md``.
+**Redelivery + concurrency (read before deploying live).** Google Chat is at-least-once: it
+redelivers on a 5xx / cold start. ``ChatRouter`` dedupes only when the worker injects its
+``already_handled`` / ``mark_handled`` hooks — **wire them (a durable store) when you use this**, or a
+redelivered message records the turn pair twice and corrupts later prompts. Likewise this records a
+turn by reading the current max index and writing the next; **v1 assumes a single writer per
+(persona, space)** (the reference ``xhr-server`` fast-acks then posts from one background task) —
+truly concurrent writers on one thread can collide. See ``docs/thread-memory.md`` → "Scope & limits"
+and the design spec ``docs/superpowers/specs/2026-06-10-thread-memory-wiring-design.md``.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from .colleague import ColleagueRegistry, Completer
 from .gateway.types import GatewayError, Message
 from .group_chat import ChatMessage
 from .persona import Persona
+from .persona_soul import SoulError
 from .private_memory import PersonaMemory, PrivateScope
 
 # Turn roles (the ``kind`` a recorded turn carries on disk, and the basis for the replay role).
@@ -48,8 +55,9 @@ leaving the debuggable head of the space id intact."""
 
 _TURN_PREFIX = "turn-"
 _TURN_DIGITS = 6
-"""Zero-pad turn indices so the store's name-sorted ``all()`` reads back in chronological order
-(``turn-000009`` sorts before ``turn-000010``); 6 digits = 1M turns of headroom per thread."""
+"""Zero-pad turn indices so a thread's turn files read in chronological order. Ordering is by parsed
+*integer* index (:func:`_turn_index`), not raw filename, so it stays correct even past the
+zero-pad width; the padding only keeps the common case lexically tidy on disk."""
 _PREVIEW_MAX = 120
 """Cap the single-line ``summary`` preview a turn carries (the full text lives in the body)."""
 
@@ -77,6 +85,17 @@ def _preview(text: str) -> str:
     return first[:_PREVIEW_MAX]
 
 
+def _turn_index(name: str) -> int | None:
+    """The integer index of a turn filename (``turn-000007`` → ``7``), or ``None`` if ``name`` is not
+    a numeric turn. The **single** definition of "what is a turn", used for BOTH ordering and the
+    next-index counter so the two can never disagree (a non-numeric ``turn-*`` fact is not a turn —
+    it is neither replayed nor counted)."""
+    if not name.startswith(_TURN_PREFIX):
+        return None
+    suffix = name[len(_TURN_PREFIX) :]
+    return int(suffix) if suffix.isdigit() else None
+
+
 class ThreadTranscript:
     """A turn-by-turn conversation transcript for one (persona, thread/space), projected onto the
     merged #77 per-thread store. The transcript shape #77 deferred ("a separate, later concern") —
@@ -96,37 +115,44 @@ class ThreadTranscript:
     def _view(self) -> PrivateScope:
         return self._memory.thread(self._scope)
 
-    def record(self, role: str, text: str) -> None:
-        """Append one turn (``role`` is :data:`USER` or :data:`PERSONA`). Blank text is **not**
-        recorded — an empty model reply or a whitespace-only message leaves no turn (so a declined
-        round writes nothing)."""
+    def record(self, role: str, text: str) -> str | None:
+        """Append one turn (``role`` is :data:`USER` or :data:`PERSONA`); returns the turn name
+        written, or ``None`` if nothing was. Blank text is **not** recorded — an empty model reply or
+        a whitespace-only message leaves no turn (so a declined round writes nothing). The returned
+        name lets a caller roll the turn back (see :meth:`forget`) if a paired write then fails."""
         body = text.strip()
         if not body:
-            return
+            return None
         view = self._view()
         name = f"{_TURN_PREFIX}{self._next_index(view):0{_TURN_DIGITS}d}"
         view.remember(name=name, kind=role, summary=_preview(body), body=body)
+        return name
+
+    def forget(self, name: str) -> bool:
+        """Delete one recorded turn by name (used to roll back a half-written turn pair). Returns
+        ``True`` if it existed."""
+        return self._view().forget(name)
 
     def recent(self, limit: int = DEFAULT_TURNS) -> list[Message]:
         """The last ``limit`` turns in **chronological** order as gateway messages — a
         :data:`PERSONA` turn replays as ``assistant``, anything else as ``user`` — ready to splice
-        between the system prompt and the current message. A missing/empty thread yields ``[]``."""
-        turns = [f for f in self._view().all() if f.name.startswith(_TURN_PREFIX)]
+        between the system prompt and the current message. Ordered by parsed integer index (correct
+        at any scale), and non-turn facts are ignored. A missing/empty thread yields ``[]``."""
+        indexed = sorted(
+            ((idx, f) for f in self._view().all() if (idx := _turn_index(f.name)) is not None),
+            key=lambda pair: pair[0],
+        )
         out: list[Message] = []
-        for fact in turns[-limit:]:
+        for _idx, fact in indexed[-limit:]:
             role = "assistant" if fact.kind == PERSONA else "user"
             out.append({"role": role, "content": fact.body or fact.summary})
         return out
 
     @staticmethod
     def _next_index(view: PrivateScope) -> int:
-        """The next monotonic turn index — ``max(existing) + 1`` parsed from the turn filenames, so a
-        gap never reuses an index and ordering stays stable."""
-        indices = [
-            int(fact.name[len(_TURN_PREFIX) :])
-            for fact in view.all()
-            if fact.name.startswith(_TURN_PREFIX) and fact.name[len(_TURN_PREFIX) :].isdigit()
-        ]
+        """The next monotonic turn index — ``max(existing) + 1``, parsed from the turn filenames via
+        :func:`_turn_index`, so a gap never reuses an index and ordering stays stable."""
+        indices = [idx for fact in view.all() if (idx := _turn_index(fact.name)) is not None]
         return max(indices) + 1 if indices else 0
 
 
@@ -146,27 +172,34 @@ def remembering_responder(
 
     Per call it derives the thread scope from ``message.space``, splices the recent transcript between
     the persona's soul system prompt and the incoming message, completes, and — **only on a non-empty
-    reply** — records the engaged turn pair (the inbound message, then the reply). So each persona's
-    transcript is exactly the conversation *it participated in*, isolated under its own handle.
+    reply** — records the engaged turn pair (the inbound message, then the reply) **atomically**: if
+    the reply write fails, the just-written user turn is rolled back so a lone user turn can never
+    desync future replay. Each persona's transcript is exactly the conversation *it participated in*,
+    isolated under its own handle.
 
     Boundary-preserving by construction: memory is downstream of routing (the owner-only-command
     air-gap already decided whether this message is acted on), turns reach only the **private** tier
     (a session turn never becomes shared truth — that still requires ``GovernedWriter(source=OWNER)``),
     and an empty ``message.space`` degrades to **stateless** (identical to ``gateway_responder`` — no
-    bogus shared bucket). An unknown/soul-less colleague stays quiet (``None``); a ``GatewayError``
-    under ``quiet_on_error`` (default) makes *that* persona quiet without discarding the round's other
-    replies, and records nothing."""
+    bogus shared bucket). An unknown **or soul-less** colleague stays quiet (``None``) rather than
+    raise — an escaping ``SoulError`` would leave the event un-marked and make Chat redeliver forever.
+    A ``GatewayError`` under ``quiet_on_error`` (default) makes *that* persona quiet without discarding
+    the round's other replies, and records nothing."""
 
     def respond(persona: Persona, message: ChatMessage) -> str | None:
         col = colleagues.get(persona.handle)
         if col is None:
             return None
+        try:
+            system_prompt = col.system_prompt
+        except SoulError:
+            return None  # un-constituted → stays quiet (never crash the round / loop redelivery)
         transcript = (
             ThreadTranscript(memory_base, persona.handle, scope_for_space(message.space))
             if message.space
             else None
         )
-        messages: list[Message] = [{"role": "system", "content": col.system_prompt}]
+        messages: list[Message] = [{"role": "system", "content": system_prompt}]
         if transcript is not None:
             messages.extend(transcript.recent(history_turns))
         messages.append({"role": "user", "content": message.text})
@@ -180,8 +213,13 @@ def remembering_responder(
         if not text:
             return None
         if transcript is not None:
-            transcript.record(USER, message.text)
-            transcript.record(PERSONA, text)
+            user_turn = transcript.record(USER, message.text)
+            try:
+                transcript.record(PERSONA, text)
+            except Exception:  # noqa: BLE001 — roll back the orphan, then re-raise (never swallow)
+                if user_turn is not None:
+                    transcript.forget(user_turn)
+                raise
         return text
 
     return respond
