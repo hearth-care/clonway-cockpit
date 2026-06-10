@@ -54,11 +54,13 @@ def make_response(**over) -> HandoffEnvelope:
                 decision="reflexed",
                 capability="payroll.hold",
                 applied=True,
+                note="held pending RTW evidence",
             ),
             AskDecision(
                 ask="write to employee 402 requesting evidence",
                 decision="decline",
                 redirect="quill",
+                note="quill handles all employee correspondence",
             ),
         ),
     )
@@ -74,7 +76,12 @@ def make_plan(**over) -> HandoffEnvelope:
         summary="right-to-work failed for employee 402",
         steps=(
             PlanStep(owner="milo", action="hold June payroll for employee 402", status="done"),
-            PlanStep(owner="", action="write to employee 402", status="unassigned"),
+            PlanStep(
+                owner="quill",
+                action="write to employee 402 requesting evidence",
+                status="needs-approval",
+            ),
+            PlanStep(owner="", action="await employee response", status="unassigned"),
         ),
     )
     base.update(over)
@@ -214,5 +221,45 @@ def test_shape_pin() -> None:
         '"text": "RTW check failed — employee 402 (M. Okafor)"}], '
         '"kind": "notice", "origin": "vera", "recipient": "milo", '
         '"schema_version": 1, "steps": [], '
+        '"summary": "right-to-work failed for employee 402", "task_id": "rtw-402"}'
+    )
+
+
+def test_shape_pin_response() -> None:
+    # Maximal response envelope: both decision variants fully populated (reflexed with
+    # capability+applied+note; decline with redirect+note).  A serialisation change to
+    # decisions[] is caught here.
+    import json as _json
+
+    payload = _json.dumps(to_payload(make_response()), sort_keys=True, ensure_ascii=False)
+    assert payload == (
+        '{"asks": [], '
+        '"decisions": ['
+        '{"applied": true, "ask": "@milo — hold June payroll for employee 402", '
+        '"capability": "payroll.hold", "decision": "reflexed", '
+        '"note": "held pending RTW evidence", "redirect": ""}, '
+        '{"applied": false, "ask": "write to employee 402 requesting evidence", '
+        '"capability": "", "decision": "decline", '
+        '"note": "quill handles all employee correspondence", "redirect": "quill"}], '
+        '"facts": [], "kind": "response", "origin": "milo", "recipient": "vera", '
+        '"schema_version": 1, "steps": [], '
+        '"summary": "re: right-to-work failed for employee 402", "task_id": "rtw-402"}'
+    )
+
+
+def test_shape_pin_plan() -> None:
+    # Maximal plan envelope: all three status values (done / needs-approval / unassigned),
+    # owner set and empty.  A serialisation change to steps[] is caught here.
+    import json as _json
+
+    payload = _json.dumps(to_payload(make_plan()), sort_keys=True, ensure_ascii=False)
+    assert payload == (
+        '{"asks": [], "decisions": [], "facts": [], '
+        '"kind": "plan", "origin": "vera", "recipient": "", '
+        '"schema_version": 1, '
+        '"steps": ['
+        '{"action": "hold June payroll for employee 402", "owner": "milo", "status": "done"}, '
+        '{"action": "write to employee 402 requesting evidence", "owner": "quill", "status": "needs-approval"}, '
+        '{"action": "await employee response", "owner": "", "status": "unassigned"}], '
         '"summary": "right-to-work failed for employee 402", "task_id": "rtw-402"}'
     )
