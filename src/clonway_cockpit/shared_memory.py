@@ -64,7 +64,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return meta, body
 
 
-def _load_fact(path: Path) -> Fact | None:
+def load_fact(path: Path) -> Fact | None:
     """Parse one file into a ``Fact``, or ``None`` if it isn't a valid fact (missing
     ``kind``/``summary``) or can't be read. Never raises."""
     try:
@@ -85,17 +85,17 @@ def _load_fact(path: Path) -> Fact | None:
     )
 
 
-def _score(fact: Fact, tokens: list[str]) -> int:
+def score(fact: Fact, tokens: list[str]) -> int:
     """Keyword score: +2 per token in the high-signal name/summary, +1 in kind/body."""
     name_l, summary_l = fact.name.lower(), fact.summary.lower()
     kind_l, body_l = fact.kind.lower(), fact.body.lower()
-    score = 0
+    total = 0
     for tok in tokens:
         if tok in name_l or tok in summary_l:
-            score += 2
+            total += 2
         elif tok in kind_l or tok in body_l:
-            score += 1
-    return score
+            total += 1
+    return total
 
 
 class SharedMemory:
@@ -115,7 +115,7 @@ class SharedMemory:
                 paths = sorted(self._base.glob("*.md"))
             except (OSError, ValueError):  # missing/unreadable dir → no facts
                 paths = []
-            self._facts = [f for f in (_load_fact(p) for p in paths) if f is not None]
+            self._facts = [f for f in (load_fact(p) for p in paths) if f is not None]
         return self._facts
 
     def all(self, *, kind: str | None = None) -> list[Fact]:
@@ -139,7 +139,7 @@ class SharedMemory:
         candidates = self._load()
         if kind is not None:
             candidates = [f for f in candidates if f.kind.lower() == kind.lower()]
-        hits = [(s, f) for s, f in ((_score(f, tokens), f) for f in candidates) if s > 0]
+        hits = [(s, f) for s, f in ((score(f, tokens), f) for f in candidates) if s > 0]
         hits.sort(key=lambda sf: (-sf[0], sf[1].name))
         result = [f for _s, f in hits]
         if limit is not None:
@@ -153,24 +153,51 @@ OWNER = "owner"
 """The only provenance that becomes shared truth (cf. WS-D's OPERATOR vs QUOTED)."""
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_MAX_SLUG_LEN = 128
+"""Upper bound so a valid-charset-but-overlong slug is rejected *before* any I/O, rather than
+surfacing a bare ``OSError`` (ENAMETOOLONG) from the filesystem after a directory was created
+(a note name + the ``.md`` suffix must fit a filename; 128 leaves comfortable headroom)."""
+
+
+def is_safe_slug(value: str) -> bool:
+    """True iff ``value`` is a lower-case slug ``[a-z0-9][a-z0-9_-]*`` within the length bound —
+    path-safe (rejects traversal, absolute paths, dots, whitespace, a trailing newline, and
+    overlong names). The single rule both memory tiers use to validate any string that becomes a
+    path segment or filename."""
+    return len(value) <= _MAX_SLUG_LEN and bool(_SLUG_RE.fullmatch(value))
 
 
 class WriteRefused(RuntimeError):
     """A write was refused — non-owner provenance, or an invalid field. Nothing was written."""
 
 
-def _today() -> str:
+def today() -> str:
+    """Today's date (UTC) as an ISO ``YYYY-MM-DD`` string — the default fact ``as_of``."""
     return datetime.now(UTC).date().isoformat()
 
 
-def _single_line(value: str, field: str) -> str:
+def single_line(value: str, field: str) -> str:
+    """Strip and require a non-empty single line — rendered frontmatter values must be one line
+    (a newline would inject extra keys the reader's last-wins parse would honour). Raises
+    ``ValueError`` (a neutral format error) so each tier maps it to its own contract — the
+    shared write boundary re-raises it as ``WriteRefused``; private memory surfaces it directly."""
     cleaned = value.strip()
     if not cleaned or "\n" in cleaned or "\r" in cleaned:
-        raise WriteRefused(f"{field} must be a non-empty single line")
+        raise ValueError(f"{field} must be a non-empty single line")
     return cleaned
 
 
-def _render_fact(name: str, kind: str, summary: str, source: str, as_of: str, body: str) -> str:
+def render_fact(name: str, kind: str, summary: str, source: str, as_of: str, body: str) -> str:
+    """Render one fact to the on-disk markdown + frontmatter format. The inverse of
+    :func:`load_fact`/:func:`parse_frontmatter` — the format is rendered here, parsed there.
+
+    Body line endings are normalised to ``\\n`` so the rendered bytes match what the reader
+    returns (``parse_frontmatter`` splits on lines and rejoins with ``\\n``, which would otherwise
+    strip ``\\r`` from a ``\\r\\n`` body and break round-trip fidelity). The single-line frontmatter
+    values must be pre-validated by the caller (e.g. via :func:`single_line`) — a newline in one
+    would inject extra keys the reader honours; the two writers (`GovernedWriter`, `PrivateScope`)
+    do exactly that before calling here."""
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
     text = (
         "---\n"
         f"name: {name}\n"
@@ -215,22 +242,26 @@ class GovernedWriter:
                 "is never promoted to shared memory"
             )
         # 2. Validation — also a security boundary, since ``name`` becomes a filename.
-        if not _SLUG_RE.fullmatch(name):  # fullmatch: `$` alone allows a trailing newline
+        if not is_safe_slug(name):
             raise WriteRefused(
                 f"invalid name {name!r}: must be a lower-case slug [a-z0-9][a-z0-9_-]* "
                 "(rejects path traversal and odd filenames)"
             )
-        kind = _single_line(kind, "kind")
-        summary = _single_line(summary, "summary")
-        # as_of is also rendered into the frontmatter, so it must be single-line too
-        # (else a newline injects extra keys the reader's last-wins parse would honour).
-        stamp = _single_line(as_of, "as_of") if as_of else _today()
+        # as_of is also rendered into the frontmatter, so it must be single-line too (else a
+        # newline injects extra keys the reader's last-wins parse would honour). A neutral
+        # format ``ValueError`` becomes a ``WriteRefused`` at this trust boundary.
+        try:
+            kind = single_line(kind, "kind")
+            summary = single_line(summary, "summary")
+            stamp = single_line(as_of, "as_of") if as_of else today()
+        except ValueError as exc:
+            raise WriteRefused(str(exc)) from exc
         clean_body = body.strip()
         # 3. Write (only now is anything created).
         self._base.mkdir(parents=True, exist_ok=True)
         path = self._base / f"{name}.md"
         path.write_text(
-            _render_fact(name, kind, summary, source, stamp, clean_body), encoding="utf-8"
+            render_fact(name, kind, summary, source, stamp, clean_body), encoding="utf-8"
         )
         return Fact(
             name=name,
