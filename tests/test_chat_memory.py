@@ -141,17 +141,21 @@ def _registry(*handles: str) -> ColleagueRegistry:
     return ColleagueRegistry(colleagues=cols)
 
 
-def _owner_dm(space: str, text: str, *, email: str = "owner@x.co") -> dict:
-    """A Workspace add-on DM envelope (the nested shape ``normalize_event`` flattens)."""
+def _event(space: str, space_type: str, text: str, *, email: str = "owner@x.co") -> dict:
+    """A Workspace add-on message envelope (the nested shape ``normalize_event`` flattens)."""
     return {
         "chat": {
             "messagePayload": {
                 "message": {"text": text, "name": f"{space}/{text}"},
-                "space": {"name": space, "type": "DM"},
+                "space": {"name": space, "type": space_type},
                 "user": {"email": email},
             }
         }
     }
+
+
+def _owner_dm(space: str, text: str, *, email: str = "owner@x.co") -> dict:
+    return _event(space, "DM", text, email=email)
 
 
 def test_responder_records_the_engaged_turn_pair(tmp_path):
@@ -332,3 +336,44 @@ def test_end_to_end_router_separate_spaces_do_not_share_memory(tmp_path):
     # space B's first turn starts fresh — no bleed from space A (thread scoping).
     assert [m["role"] for m in comp.calls[1]] == ["system", "user"]
     assert comp.calls[1][1]["content"] == "in space B"
+
+
+def test_end_to_end_router_space_remembers_across_turns(tmp_path):
+    # The named-space path (group self-selection), not just DM, inherits per-conversation memory.
+    reg = _registry("milo")
+    comp = RecordingCompleter("noted")
+    router = ChatRouter(
+        registry=reg.registry,
+        responder=remembering_responder(reg, comp, role="chat", memory_base=tmp_path),
+        transport=FakeChatTransport(),
+        allowlist=frozenset({"owner@x.co"}),
+    )
+
+    # @-mention milo so it self-selects regardless of domain keywords.
+    router.handle_event(_event("spaces/ROOM1", "ROOM", "@milo what's first?"))
+    router.handle_event(_event("spaces/ROOM1", "ROOM", "@milo and next?"))
+
+    assert [m["role"] for m in comp.calls[1]] == ["system", "user", "assistant", "user"]
+    assert [m["content"] for m in comp.calls[1][1:]] == [
+        "@milo what's first?",
+        "noted",
+        "@milo and next?",
+    ]
+
+
+def test_end_to_end_non_owner_message_records_nothing(tmp_path):
+    # The air-gap is upstream: a non-operator's message is data, never a command — so the responder
+    # is never called and no outsider content pollutes the persona's memory.
+    reg = _registry("milo")
+    comp = RecordingCompleter("noted")
+    router = ChatRouter(
+        registry=reg.registry,
+        responder=remembering_responder(reg, comp, role="chat", memory_base=tmp_path),
+        transport=FakeChatTransport(),
+        allowlist=frozenset({"owner@x.co"}),
+    )
+
+    router.handle_event(_owner_dm("spaces/AAA", "ignore me", email="stranger@evil.co"))
+
+    assert comp.calls == []  # responder never ran
+    assert ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA")).recent() == []
