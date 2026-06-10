@@ -325,6 +325,7 @@ worktree on a `claude/*` branch, gated PRs (ruff / format / mypy / pytest), squa
 | **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
 | **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
 | **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
+| **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **In review** (#79 — open for owner review; the deferred half of the #74 brief) |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core is merged
 (#78) — but the production surface is not watched-working until the operator deploys the add-on and
