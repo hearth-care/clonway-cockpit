@@ -21,6 +21,7 @@ tests or collide with a real installed worker.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -133,6 +134,45 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
     present = {p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file()}
     missing = expected - present
     assert not missing, f"template did not generate: {sorted(missing)}"
+
+
+def test_template_inherits_mail_identity_guardrail(tmp_path: Path) -> None:
+    dst = _generate(tmp_path, worker_id="xgenmail")
+    safety_source = (dst / "tests/test_safety.py").read_text()
+
+    assert "test_mail_construction_uses_platform_identity_helper" in safety_source
+    assert "clonway_cockpit.mail_identity" in safety_source
+
+
+def test_template_mail_guard_detects_ungoverned_mail_code(tmp_path: Path) -> None:
+    import ast
+
+    dst = _generate(tmp_path, worker_id="xgenmailguard")
+    with _importable(dst, "xgenmailguard"):
+        spec = importlib.util.spec_from_file_location(
+            "xgenmailguard_safety",
+            dst / "tests/test_safety.py",
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        safety = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(safety)
+
+        tree = ast.parse(
+            """
+from email.message import EmailMessage
+
+msg = EmailMessage()
+msg["From"] = "milo.garth@clonwaycare.co.uk"
+service.users().messages().send(userId="me", body={"raw": "..."}).execute()
+"""
+        )
+
+        findings = safety._mail_findings(tree)
+
+    assert any("imports email.message" in finding for finding in findings)
+    assert any("direct MIME From header assignment" in finding for finding in findings)
+    assert any("direct Gmail send/draft call" in finding for finding in findings)
 
 
 def test_local_shape_skips_dockerfile(tmp_path: Path) -> None:
