@@ -8,6 +8,41 @@ pre-1.0 rules documented in docs/release-policy.md.
 
 ## [Unreleased]
 
+### Added
+
+- **`clonway_cockpit.obs` is now a package** (`obs/`). All existing imports
+  (`from clonway_cockpit.obs import make_obs`, `from clonway_cockpit import obs`)
+  continue to work unchanged — `__init__.py` re-exports the full prior public
+  surface. The implementation moves to `obs/_telemetry.py`.
+
+- **`clonway_cockpit.obs.runlog`** — per-worker JSONL run log extracted from the
+  three identical worker copies (`xbook/xhr/xletter`). Public API:
+  `default_runs_dir(worker_id)`, `new_run_file(run_id, *, runs_dir)`,
+  `append(run_file, **entry)`, `hash_request(body)`, `Runlog` dataclass,
+  `make_runlog(worker_id, *, runs_dir=None)`. Wire format is byte-identical to
+  the originals (compact JSON separators, auto-injected `ts`, `sha256:` hash
+  prefix).
+
+- **`clonway_cockpit.obs.logsetup`** — idempotent root-logger setup for worker
+  entrypoints and servers (`setup_logging(worker_id, *, level, runtime_env,
+  quiet)`). Replaces scattered per-worker `logging.basicConfig` calls; stdlib-
+  only; UTC format; level from `<WORKER_ID>_LOG_LEVEL` env-var or explicit arg.
+
+- **`clonway_cockpit.uk_calendar`** — England & Wales bank-holiday and
+  business-day utilities extracted from `Auto-Bookkeeper`. Data covers
+  2024–2028 (verified 2026-06-11). Public API: `is_bank_holiday(d)`,
+  `is_business_day(d)`, `next_business_day(d)`, `previous_business_day(d)`,
+  `business_days_between(a, b)`, `horizon_needs_refresh(today, *, lead)`,
+  `DATA_HORIZON`, `BankHolidayHorizonError`. Querying beyond `DATA_HORIZON`
+  raises `BankHolidayHorizonError`; CI fails when the table has < 12 months of
+  runway (the annual refresh reminder).
+
+### Changed
+
+- **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim
+  over `obs.runlog.make_runlog`) and calls `setup_logging` from `main()` — new
+  workers are born without hand-rolled logging setup or a local runlog copy.
+
 ## [0.1.0] - 2026-06-11
 
 Retroactive baseline for the first tagged framework release. This section covers the

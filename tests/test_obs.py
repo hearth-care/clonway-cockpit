@@ -388,7 +388,7 @@ def test_flush_buffer_date_from_first_event_ts():  # CC-OBS-FLUSH-2
 
 
 def test_default_factory_threads_project(monkeypatch):  # CC-OBS-FLUSH-3
-    import clonway_cockpit.obs as obs_mod
+    import clonway_cockpit.obs._telemetry as obs_mod
 
     captured: dict[str, object] = {}
 
@@ -412,7 +412,7 @@ def test_default_factory_threads_project(monkeypatch):  # CC-OBS-FLUSH-3
 
 
 def test_default_factory_no_project(monkeypatch):  # CC-OBS-FLUSH-4
-    import clonway_cockpit.obs as obs_mod
+    import clonway_cockpit.obs._telemetry as obs_mod
 
     captured: dict[str, object] = {"project": "<unset>"}
 
