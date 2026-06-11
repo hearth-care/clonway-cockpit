@@ -149,7 +149,7 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** COMPLETE — all 4 phases implemented, local gates green.
+**Current phase:** COMPLETE — all 4 phases implemented + QA FAIL findings fixed, all gates green.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -158,7 +158,21 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 - `2474f30` Phase 2: .pre-commit-config.yaml + CLAUDE.md update + pre-commit dep
 - `5cf666d` Phase 3: ci.yml.jinja + .pre-commit-config.yaml.jinja + test_worker_template.py
 - `3ca8814` Phase 3 fix: template tests read jinja source directly (copier clone workaround)
-- (this commit) Phase 4: ci-adoption.md + CHANGELOG.md + plan doc ticked
+- `67ec564` Phase 4: ci-adoption.md + CHANGELOG.md + plan doc ticked
+- `b15a757` QA fix: import sort, adoption doc cleanup, gitleaks CLI replacement
+- `de66513` QA fix: remove double blank line after imports in test_safety.py.jinja
+- `abb27a4` QA fix: ruff format compliance (elif block) in test_safety.py.jinja
+
+**QA FAIL findings addressed (fixer-claude-20260611T184408Z-16134):**
+1. `make template-smoke` ruff I001 — fixed by: adding `[tool.ruff.lint.isort] known-first-party`
+   to pyproject.toml.jinja; removing double blank line; reformatting elif block. All three changes
+   to `worker-template/tests/test_safety.py.jinja` and `worker-template/pyproject.toml.jinja`.
+2. Invalid partial adoption snippets in ci-adoption.md — replaced `pytest-args: "skip"` and
+   `lint-paths: ""` examples with "Blocked — waiting for skip-test/skip-mypy input" notes.
+3. Gitleaks CI failure (missing GITLEAKS_LICENSE) — replaced `gitleaks/gitleaks-action@<SHA>`
+   (licensed action) with gitleaks CLI v8.21.2 installed via curl; updated
+   `tests/test_release_policy.py` to assert the CLI-based shape.
+4. Missing RUNBOOK DELTA — posted on hearth-care/auto-orchestrator#196.
 
 **Deviations from plan:**
 - Same-repo caller uses `./.github/workflows/reusable-ci.yml` (relative path) instead of
@@ -168,12 +182,16 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
   unreliable on feature branches. The shape assertions are still correct and sufficient.
 - 8th fleet member is `Auto-Procurer` (not `xhr`); fleet is 8 workers + cockpit = 9 total.
 - Current CI line counts (re-verified): 136/69/219/79/86/71/100/70 (not plan's estimate).
+- Gitleaks uses CLI v8.21.2 instead of the licensed gitleaks-action (deliberate: avoids
+  GITLEAKS_LICENSE requirement while preserving the same PR-diff scan policy).
 
 **OPERATOR TODO:**
-- Verify CI run logs on PR #89 show all three jobs (lint, test, prod-import) executing.
+- Apply `run-ci` label on PR #89 to trigger the reusable CI and verify all three jobs
+  (lint, test, prod-import) run in the GitHub Actions logs.
 - Merge this PR; record the merge-commit SHA.
 - Replace `<SHA>` in `docs/ci-adoption.md` with that merge-commit SHA.
 - Open adoption PRs for each worker per `docs/ci-adoption.md` (start with auto-hr).
 - Cut `v0.2.0` release tag once release-engineering plan lands.
 
-**Known-failing:** none — `uv run pytest -q` and `pre-commit run --all-files` both green locally.
+**Known-failing:** none — `make check`, `pre-commit run --all-files`, and `make template-smoke`
+all green locally.
