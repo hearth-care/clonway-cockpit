@@ -479,13 +479,36 @@ def test_template_ci_uses_ci_rev_not_clonway_rev() -> None:
     )
 
 
-def test_copier_yml_rejects_main_as_ci_rev() -> None:
-    """copier.yml must have a validator that rejects ci_rev == 'main'."""
-    copier_yml = (_REPO_ROOT / "copier.yml").read_text()
-    assert "ci_rev" in copier_yml, "copier.yml must define a ci_rev variable"
-    assert 'ci_rev == "main"' in copier_yml or "ci_rev == 'main'" in copier_yml, (
-        "copier.yml validator must explicitly reject ci_rev == 'main'"
-    )
+def _eval_ci_rev_validator(ci_rev_value: str) -> str:
+    """Evaluate the copier.yml ci_rev validator; returns error message or ''."""
+    import yaml as _yaml
+    from jinja2 import Environment
+    from jinja2_ansible_filters import AnsibleCoreFiltersExtension
+
+    copier_text = (_REPO_ROOT / "copier.yml").read_text()
+    data = _yaml.safe_load(copier_text)
+    validator_src = data["ci_rev"]["validator"]
+    env = Environment(extensions=[AnsibleCoreFiltersExtension])
+    return env.from_string(validator_src).render(ci_rev=ci_rev_value).strip()
+
+
+def test_copier_yml_ci_rev_rejects_non_pinned_refs() -> None:
+    """ci_rev validator must reject branch names, 'main', and empty values."""
+    for invalid in ("feature-branch", "main", "develop", "", "HEAD", "claude/my-branch"):
+        msg = _eval_ci_rev_validator(invalid)
+        assert msg, f"ci_rev validator should reject {invalid!r} but produced no error"
+
+
+def test_copier_yml_ci_rev_accepts_sha_and_tag() -> None:
+    """ci_rev validator must accept a 40-char hex SHA or a vX.Y.Z release tag."""
+    for valid in (
+        "0000000000000000000000000000000000000001",
+        "v0.2.0",
+        "v1.0.0-rc1",
+        "abc123def456789012345678901234567890abcd",
+    ):
+        msg = _eval_ci_rev_validator(valid)
+        assert not msg, f"ci_rev validator should accept {valid!r} but returned: {msg!r}"
 
 
 def test_template_ci_checks_existing_run_ci_label() -> None:

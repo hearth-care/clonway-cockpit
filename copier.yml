@@ -95,13 +95,15 @@ ci_rev:
   type: str
   help: >-
     Git ref to pin the reusable CI workflow to in the generated
-    .github/workflows/ci.yml. Must be a full commit SHA or release tag (e.g.
-    v0.2.0) — never "main". Find the current main-branch SHA with:
+    .github/workflows/ci.yml. Must be a full commit SHA (40 hex chars) or
+    release tag (e.g. v0.2.0) — never a branch name. Find the current
+    main-branch SHA with:
       git ls-remote https://github.com/hearth-care/clonway-cockpit main
   validator: >-
-    {% if not ci_rev or ci_rev == "main" %}
-    ci_rev must be a commit SHA or release tag, not empty or "main".
-    Run: git ls-remote https://github.com/hearth-care/clonway-cockpit main
+    {% if not ci_rev or not (ci_rev | regex_search('^[0-9a-f]{40}$') or ci_rev | regex_search('^v[0-9]')) %}
+    ci_rev must be a full commit SHA (40 hex chars) or release tag (e.g.
+    v0.2.0) — not a branch name or empty. Run:
+      git ls-remote https://github.com/hearth-care/clonway-cockpit main
     {% endif %}
 
 # --- computed (not prompted) ---------------------------------------------
