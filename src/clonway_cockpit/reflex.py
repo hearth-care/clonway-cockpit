@@ -143,9 +143,9 @@ class ReflexPolicy:
             return False
         if self._log.seen(task_id, key):
             return False
-        if self._max is not None and self._applied >= self._max:
-            return False
-        return True
+        # Final gate: allow when there is no session cap, or we are still under it. Stated as a
+        # positive condition (clearest for a safety auditor and avoids the SIM103 if/return-bool).
+        return self._max is None or self._applied < self._max
 
     def note_applied(self) -> None:
         """Bump the success counter — called by :func:`fire_reflexes` after a successful run."""
