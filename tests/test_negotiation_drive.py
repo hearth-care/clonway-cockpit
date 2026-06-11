@@ -296,3 +296,52 @@ def test_post_notice_validates_and_address_notice_points(tmp_path: Path) -> None
     registry = colleagues.registry
     assert address_notice("who holds the payroll and cash?", registry) == "milo"
     assert address_notice("entirely mysterious weather", registry) is None
+
+
+def test_ledger_tracks_two_tasks_independently() -> None:
+    # The one composition the worked example never drives (final-audit gap): two distinct task_ids
+    # in one ledger. The ledger keys per task_id — resolving one must not touch the other, and a
+    # plan for one must carry ONLY its own asks (no cross-task bleed).
+    ledger = TaskLedger()
+    n1 = make_notice(task_id="rtw-402", asks=("@milo hold payroll for 402",))
+    n2 = make_notice(
+        task_id="rtw-503",
+        summary="right-to-work failed for employee 503",
+        asks=("@milo hold payroll for 503",),
+    )
+    ledger.feed(agent_msg(render_envelope(n1), "vera"))
+    ledger.feed(agent_msg(render_envelope(n2), "vera"))
+    assert {t.task_id for t in ledger.unresolved()} == {"rtw-402", "rtw-503"}
+
+    # Resolve ONLY the first task; the second must stay open and untouched.
+    r1 = HandoffEnvelope(
+        kind="response",
+        task_id="rtw-402",
+        origin="milo",
+        recipient="vera",
+        summary="re: 402",
+        decisions=(AskDecision(ask="@milo hold payroll for 402", decision="accept"),),
+    )
+    ledger.feed(agent_msg(render_envelope(r1), "milo"))
+    assert {t.task_id for t in ledger.unresolved()} == {"rtw-503"}
+    assert ledger.plan_worthy() == ["rtw-402"]
+    plan = ledger.compose_plan("rtw-402")
+    assert plan is not None and plan.task_id == "rtw-402"
+    assert [s.action for s in plan.steps] == ["@milo hold payroll for 402"]  # no 503 bleed
+    ledger.mark_planned("rtw-402")
+
+    # Resolving the second yields its own independent plan, carrying only its own ask.
+    r2 = HandoffEnvelope(
+        kind="response",
+        task_id="rtw-503",
+        origin="milo",
+        recipient="vera",
+        summary="re: 503",
+        decisions=(AskDecision(ask="@milo hold payroll for 503", decision="defer"),),
+    )
+    ledger.feed(agent_msg(render_envelope(r2), "milo"))
+    assert ledger.unresolved() == []
+    assert ledger.plan_worthy() == ["rtw-503"]
+    plan2 = ledger.compose_plan("rtw-503")
+    assert plan2 is not None
+    assert [s.action for s in plan2.steps] == ["@milo hold payroll for 503"]
