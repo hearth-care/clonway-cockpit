@@ -97,3 +97,19 @@ jobs:
 
       - name: Import the package under prod deps
         run: uv run --no-dev python -c "import clonway_cockpit"
+
+  gitleaks:
+    name: Gitleaks PR diff
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan changed content for leaks
+        uses: gitleaks/gitleaks-action@961680e5305a30eb575f3ddf6bb6b2e265b68f0a
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
