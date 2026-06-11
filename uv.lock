@@ -369,6 +369,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+config = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
 google = [
     { name = "google-api-python-client" },
     { name = "google-auth" },
@@ -382,7 +386,9 @@ litellm = [
 dev = [
     { name = "copier" },
     { name = "mypy" },
+    { name = "pydantic" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "typer" },
 ]
@@ -393,15 +399,19 @@ requires-dist = [
     { name = "google-auth", marker = "extra == 'google'", specifier = ">=2.53.0" },
     { name = "google-auth-oauthlib", marker = "extra == 'google'", specifier = ">=1.4.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.0" },
+    { name = "pydantic", marker = "extra == 'config'", specifier = ">=2" },
+    { name = "pyyaml", marker = "extra == 'config'", specifier = ">=6" },
     { name = "rich", specifier = ">=15.0.0" },
 ]
-provides-extras = ["litellm", "google"]
+provides-extras = ["config", "litellm", "google"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "copier", specifier = ">=9.15.1" },
     { name = "mypy", specifier = ">=1.20.2" },
+    { name = "pydantic", specifier = ">=2" },
     { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.15.14" },
     { name = "typer", specifier = ">=0.25.1" },
 ]

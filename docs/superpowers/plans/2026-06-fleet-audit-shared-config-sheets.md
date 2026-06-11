@@ -1,6 +1,6 @@
 # [Plan] Shared config loader + Sheets helpers
 
-**Status:** draft plan — not implemented
+**Status:** implementation in progress on PR #92
 **Source:** fleet audit 2026-06-11, items C9, C10
 **Wave:** 1
 
@@ -91,9 +91,9 @@ config = ["pydantic>=2", "pyyaml>=6"]
 ## Implementation plan
 
 ### Phase 1 — config loader
-- [ ] `src/clonway_cockpit/config.py` per Spec §1; `[config]` extra in `pyproject.toml`.
-- [ ] Tests (`tests/test_config_loader.py`): file-only / env-only / both (env wins) / nested `__` keys / provenance strings in errors / aggregated multi-field `ConfigError` / missing-file with and without `require_file` / unset secret env warns / non-mapping YAML rejected.
-- [ ] Prod-import job still green without extras (no eager import from package `__init__`).
+- [x] `src/clonway_cockpit/config.py` per Spec §1; `[config]` extra in `pyproject.toml`.
+- [x] Tests (`tests/test_config_loader.py`): file-only / env-only / both (env wins) / nested `__` keys / provenance strings in errors / aggregated multi-field `ConfigError` / missing-file with and without `require_file` / unset secret env warns / non-mapping YAML rejected.
+- [x] Prod-import job still green without extras (no eager import from package `__init__`).
 
 ### Phase 2 — gsheets
 - [ ] `src/clonway_cockpit/gsheets.py` per Spec §2 with a `FakeSheetsService` test double in `tests/`.
@@ -131,3 +131,16 @@ config = ["pydantic>=2", "pyyaml>=6"]
 - First actions: (1) re-verify the marketer sheets copy and the five loader files at current `origin/main`; (2) survey worker pydantic pins for the extra floor. Paste both surveys into the PR description.
 - Do NOT: add pydantic/pyyaml to core dependencies (extra only); put credential resolution inside `gsheets`; encode any real spreadsheet id, account, or project value in tests/docs (public repo — use obviously-fake ids); attempt the worker migrations from this branch.
 - Done = acceptance criteria verified, `make check` + prod-import + template-smoke green, changelog entry present.
+
+## HANDOFF NOTES
+
+- Current phase: Phase 2 next (`clonway_cockpit.gsheets`).
+- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; no eager import from `clonway_cockpit.__init__`.
+- Verification so far:
+  - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
+  - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
+- Decisions:
+  - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
+  - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
+- Known-failing tests: none from Phase 1 focused run.
+- Next concrete step: write `tests/test_gsheets.py` with fake Sheets service and watch it fail for the missing module before implementing Phase 2.
