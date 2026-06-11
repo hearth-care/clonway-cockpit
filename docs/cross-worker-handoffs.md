@@ -5,6 +5,11 @@ The protocol rides the existing chat as data: one message = voice text + exactly
 `handoff` JSON frame. Design spec (read it for the invariants S1–S12 and dragons D1–D20):
 `docs/superpowers/specs/2026-06-10-cross-worker-handoffs-design.md`.
 
+**Setting it up?** This page is the framework reference (what the pieces are). For how to wire
+and configure it — the channel, the gateway roles, personas/souls, the operator allowlist, reflex
+registration, and the live Chat deploy — see the
+[operator guide](cross-worker-handoffs-operator-guide.md).
+
 ## The envelope (`clonway_cockpit.handoff`)
 
 Three kinds, one producer each, all composed by code (a model never authors a frame):
