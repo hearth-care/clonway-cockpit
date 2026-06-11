@@ -149,7 +149,7 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** COMPLETE — all 4 phases implemented + QA FAIL findings fixed, all gates green.
+**Current phase:** COMPLETE — all 4 phases + 2 rounds of QA FAIL findings fixed, all gates green.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -162,17 +162,22 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 - `b15a757` QA fix: import sort, adoption doc cleanup, gitleaks CLI replacement
 - `de66513` QA fix: remove double blank line after imports in test_safety.py.jinja
 - `abb27a4` QA fix: ruff format compliance (elif block) in test_safety.py.jinja
+- `16567b3` QA fix: separate ci_rev from clonway_rev, forbid @main pin in generated CI
 
 **QA FAIL findings addressed (fixer-claude-20260611T184408Z-16134):**
 1. `make template-smoke` ruff I001 — fixed by: adding `[tool.ruff.lint.isort] known-first-party`
-   to pyproject.toml.jinja; removing double blank line; reformatting elif block. All three changes
-   to `worker-template/tests/test_safety.py.jinja` and `worker-template/pyproject.toml.jinja`.
-2. Invalid partial adoption snippets in ci-adoption.md — replaced `pytest-args: "skip"` and
-   `lint-paths: ""` examples with "Blocked — waiting for skip-test/skip-mypy input" notes.
-3. Gitleaks CI failure (missing GITLEAKS_LICENSE) — replaced `gitleaks/gitleaks-action@<SHA>`
-   (licensed action) with gitleaks CLI v8.21.2 installed via curl; updated
-   `tests/test_release_policy.py` to assert the CLI-based shape.
+   to pyproject.toml.jinja; removing double blank line; reformatting elif block.
+2. Invalid partial adoption snippets in ci-adoption.md — replaced with "Blocked" callouts.
+3. Gitleaks CI failure (missing GITLEAKS_LICENSE) — replaced licensed action with CLI v8.21.2.
 4. Missing RUNBOOK DELTA — posted on hearth-care/auto-orchestrator#196.
+
+**QA FAIL findings addressed (fixer-claude-20260611T192423Z-42347):**
+1. Generated workers pinned reusable-ci.yml to `@main` — fixed by separating `ci_rev` from
+   `clonway_rev` in copier.yml. `ci_rev` has a validator that rejects "main". The jinja template
+   uses `{{ ci_rev }}` for the CI pin. Two new tests assert jinja uses `{{ ci_rev }}` and that
+   copier.yml rejects `ci_rev == "main"`. template_smoke.sh and `_generate()` pass a sentinel
+   SHA. Generation tests read jinja source directly (copier reads from git default branch,
+   not the working tree, so generation-based CI file checks are unreliable on feature branches).
 
 **Deviations from plan:**
 - Same-repo caller uses `./.github/workflows/reusable-ci.yml` (relative path) instead of
@@ -193,5 +198,5 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 - Open adoption PRs for each worker per `docs/ci-adoption.md` (start with auto-hr).
 - Cut `v0.2.0` release tag once release-engineering plan lands.
 
-**Known-failing:** none — `make check`, `pre-commit run --all-files`, and `make template-smoke`
-all green locally.
+**Known-failing:** none — `uv run pytest -q` (782 passed), `pre-commit run --all-files` (8 hooks passed),
+and `make template-smoke` all green locally (fixer-claude-20260611T192423Z-42347 2026-06-11).
