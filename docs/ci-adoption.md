@@ -124,62 +124,41 @@ jobs:
 
 ### auto-marketer
 
-Test job stays local due to weasyprint system dependency pre-step. Use reusable for lint only.
+Test job stays local due to weasyprint system dependency pre-step.
 
-```yaml
-jobs:
-  lint:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
-    with:
-      lint-paths: "src tests"
-      mypy-args: ""
-      pytest-args: "skip"   # suppress the test job via a sentinel
-
-  test:
-    # keep locally — weasyprint needs apt-get before uv sync
-    ...
-```
-
-> **Note:** The reusable workflow does not yet have a way to suppress the `test` job without
-> running `pytest skip` (which would fail). A cleaner option is to add a `skip-test` boolean
-> input to `reusable-ci.yml` in a follow-up, or to promote the apt-get step to a
-> `pre-test-command` string input. Until then, auto-marketer keeps its test job local.
+> **Blocked — waiting for `skip-test` input.** The reusable workflow always runs `uv run pytest
+> ${{ inputs.pytest-args }}`; there is no supported way to suppress the test job via inputs yet.
+> Until the `skip-test` boolean input is added (see Open follow-ups below), auto-marketer must
+> keep its full `ci.yml` locally and cannot adopt the reusable workflow for the test job.
+> Lint adoption is also deferred to keep the CI file atomic.
 
 ### auto-bookkeeper
 
-Matrix test (12 domains) and prod-import stay local. Use reusable for lint only — same
-`skip-test` limitation as auto-marketer applies.
+Matrix test (12 domains) and prod-import stay local.
+
+> **Blocked — waiting for `skip-test` input.** Same limitation as auto-marketer: the reusable
+> workflow cannot suppress the test job. Defer adoption until the `skip-test` input exists.
 
 ### auto-inspector
 
-`make lint` / `make test` wrapping and the CQC dashboard deploy jobs stay local. The lint and
-test steps can be adopted once the repo's Makefile targets are aligned with the direct invocation
-shape (`uv run ruff check .` etc.), or the reusable workflow gets a `lint-command` override input.
+`make lint` / `make test` wrapping and the CQC dashboard deploy jobs stay local.
+
+> **Blocked — waiting for `lint-command` override.** Invocations go through `make` targets; the
+> reusable workflow runs `uv run ruff check ${{ inputs.lint-paths }}` directly. Adopt once the
+> repo's Makefile targets are aligned with direct invocation shape, or the reusable workflow gains
+> a `lint-command` override input.
 
 ### auto-secretary
 
-Currently has **no mypy step**. Adopting the reusable workflow's lint job (which always runs
-mypy) would add a new gate. Options before adopting:
-1. Add a `mypy.ini` / `[tool.mypy]` config and fix any errors (recommended).
-2. Wait for a `skip-mypy` input on the reusable workflow.
+Currently has **no mypy step**. The reusable workflow's lint job always runs mypy; adopting it
+would add a new gate.
 
-Until resolved, auto-secretary can adopt the `test` job only:
-
-```yaml
-jobs:
-  lint:
-    # keep locally until mypy situation resolved
-    ...
-  test:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
-    with:
-      # override all lint steps to no-op by pointing at non-existent paths
-      # — not ideal; prefer adding a skip-lint input in a follow-up
-      lint-paths: ""
-      pytest-args: ""
-```
+> **Blocked — fix mypy first or wait for `skip-mypy` input.** Options before adopting:
+> 1. Add a `mypy.ini` / `[tool.mypy]` config and fix any errors (recommended).
+> 2. Wait for a `skip-mypy` boolean input on the reusable workflow (see Open follow-ups).
+>
+> The reusable workflow cannot be adopted partially (e.g. test-job-only) without a `skip-lint`
+> input that does not yet exist.
 
 ---
 

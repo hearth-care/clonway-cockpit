@@ -86,9 +86,12 @@ def test_public_history_checklist_is_process_only() -> None:
 
 
 def test_ci_runs_pinned_gitleaks_pr_diff_scan() -> None:
+    # Uses gitleaks CLI (no GITLEAKS_LICENSE required) pinned to a specific version.
+    # The action-based approach (gitleaks/gitleaks-action) requires a paid license
+    # even with GITLEAKS_ENABLE_UPLOAD_ARTIFACT=false — see ci.yml for the CLI form.
     text = _ci_workflow()
 
     assert "name: Gitleaks PR diff" in text
-    assert "gitleaks/gitleaks-action@961680e5305a30eb575f3ddf6bb6b2e265b68f0a" in text
+    assert "gitleaks_8.21.2" in text
     assert "continue-on-error: false" in text
-    assert "GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false" in text
+    assert "gitleaks detect --no-banner" in text
