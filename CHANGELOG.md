@@ -10,6 +10,15 @@ pre-1.0 rules documented in docs/release-policy.md.
 
 ### Added
 
+- **`clonway_cockpit.config`** — pydantic-backed worker config loader with YAML
+  file loading, double-underscore env overlay, aggregated provenance errors, and
+  the `SecretEnvName` convention. Optional dependency extra:
+  `clonway-cockpit[config]`.
+
+- **`clonway_cockpit.gsheets`** — injected-service Google Sheets helper with A1
+  utilities, record shaping, append/update/batch-format calls, and 429/5xx retry
+  handling. Credential resolution stays worker-owned.
+
 - **`clonway_cockpit.obs` is now a package** (`obs/`). All existing imports
   (`from clonway_cockpit.obs import make_obs`, `from clonway_cockpit import obs`)
   continue to work unchanged — `__init__.py` re-exports the full prior public

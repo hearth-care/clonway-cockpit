@@ -5,7 +5,7 @@ description = "{{ worker_title }} — a Clonway fleet worker (cockpit + Signal e
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-    "clonway-cockpit",
+    "clonway-cockpit[config]",
     "typer>=0.12",
 {%- if deploy_shape != "local" %}
     # Cloud Run shapes flush telemetry + signals to GCS; the launchd shape does too,

@@ -100,9 +100,9 @@ config = ["pydantic>=2", "pyyaml>=6"]
 - [x] Tests: A1/col-letter round-trips (1, 26, 27, 52, 703); `get_records` ragged-row padding; retry sequence on 429 (count + backoff schedule via injected sleep) and give-up raise; append/update payload shapes pinned against captured request dicts from the existing worker copies (golden-request tests — capture by reading the two verified modules' call construction, not by network).
 
 ### Phase 3 — docs, template, changelog
-- [ ] Usage sections in `docs/onboarding-a-worker.md` (config: a 10-line worker example with a 3-field model; gsheets: construct-with-injected-service example).
-- [ ] `worker-template/`: generated worker's config module becomes a `BaseModel` + `load_config` call (template smoke green).
-- [ ] Changelog `[Unreleased]` entries (two new public surfaces, one new extra).
+- [x] Usage sections in `docs/onboarding-a-worker.md` (config: a 10-line worker example with a 3-field model; gsheets: construct-with-injected-service example).
+- [x] `worker-template/`: generated worker's config module becomes a `BaseModel` + `load_config` call (template smoke green).
+- [x] Changelog `[Unreleased]` entries (two new public surfaces, one new extra).
 
 ### Phase 4 — migration recipe (documented here, executed per-repo)
 - [ ] Table: worker · current loader file(s) · model to define · env vars affected (names only) · sheets call sites. Rule: migrations are mechanical only where behaviour is identical; any worker quirk (e.g. legacy single-underscore env names) stays in a worker-side shim, listed explicitly in the recipe.
@@ -134,16 +134,19 @@ config = ["pydantic>=2", "pyyaml>=6"]
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 3 next (docs, worker-template, changelog).
-- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports.
+- Current phase: Phase 4 next (migration recipe table).
+- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog.
 - Verification so far:
   - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
   - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
   - `uv run pytest tests/test_gsheets.py -q` -> `13 passed in 0.01s`
   - `uv run pytest tests/test_config_loader.py tests/test_gsheets.py -q` -> `23 passed in 0.07s`
+  - `uv run pytest tests/test_worker_template.py::test_template_generates_expected_layout tests/test_worker_template.py::test_template_config_loads_defaults_and_env_overlay tests/test_shared_config_sheets_docs.py -q` -> `4 passed in 2.01s`
+  - `uv run pytest tests/test_worker_template.py -q` -> `13 passed in 14.07s`
 - Decisions:
   - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
+  - Template tests now pass `vcs_ref="HEAD"` to Copier so they exercise the branch head, including newly added template files.
   - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
-- Known-failing tests: none from focused Phase 1+2 runs.
-- Next concrete step: add onboarding docs examples, worker-template config model/loader wiring, and changelog entry, then run template tests/smoke gates.
+- Known-failing tests: none from focused Phase 1-3 runs.
+- Next concrete step: add the worker migration recipe table, including current loader files, model extraction targets, env var names, Sheets call sites, and worker-side shims for legacy quirks.

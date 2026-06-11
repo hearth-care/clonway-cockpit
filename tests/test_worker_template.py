@@ -124,6 +124,7 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
         "Dockerfile",  # job shape → Dockerfile present
         ".github/workflows/ci.yml",
         "src/xgenlayout/__init__.py",
+        "src/xgenlayout/config.py",
         "src/xgenlayout/obs.py",
         "src/xgenlayout/cli/__init__.py",
         "src/xgenlayout/cli/cockpit.py",
@@ -141,6 +142,21 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
     present = {p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file()}
     missing = expected - present
     assert not missing, f"template did not generate: {sorted(missing)}"
+
+
+def test_template_config_loads_defaults_and_env_overlay(tmp_path: Path, monkeypatch) -> None:
+    dst = _generate(tmp_path, worker_id="xgenconfig")
+    with _importable(dst, "xgenconfig"):
+        config = importlib.import_module("xgenconfig.config")
+
+        monkeypatch.delenv("XGENCONFIG__TENANT_NAME", raising=False)
+        cfg = config.load()
+        assert cfg.worker_id == "xgenconfig"
+        assert cfg.tenant_name == "Auto-Genconfig"
+
+        monkeypatch.setenv("XGENCONFIG__TENANT_NAME", "Env Tenant")
+        cfg = config.load(paths=[])
+        assert cfg.tenant_name == "Env Tenant"
 
 
 def test_template_inherits_mail_identity_guardrail(tmp_path: Path) -> None:
