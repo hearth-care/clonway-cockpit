@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-11
 **Repo:** `clonway-cockpit`
-**Status:** proposed design -> planning PR
+**Status:** implementation PR
 
 ## Goal
 
@@ -46,6 +46,9 @@ inherit. Existing sender repos migrate to it one by one.
 inside each worker because the permission models differ. For Gmail, a worker may pass a resolver
 function that fetches `users.settings.sendAs.get(...).displayName` using its existing service and
 scope. The platform helper only consumes the resolved identity and formats it consistently.
+
+The implementation PR adds the stdlib-only helper and the generated-worker safety test. Worker
+repos still need follow-up migration PRs before their local Gmail clients use the shared helper.
 
 ## Design
 

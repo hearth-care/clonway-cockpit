@@ -10,11 +10,24 @@ the worker inherits, so a future real write capability keeps the safety floor.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 from clonway_cockpit import keys, registry, walk
 from clonway_cockpit.registry import WizardContext
 from rich.console import Console
 
 from {{ package_name }}.cli import cockpit
+
+
+_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "{{ package_name }}"
+_APPROVED_MAIL_ADAPTERS = {
+    "mail.py",
+    "email.py",
+    "gmail.py",
+    "workspace/gmail.py",
+    "workspace/mail.py",
+}
 
 
 def _ctx(*, read_key=None, confirm_fn=lambda _p: False) -> WizardContext:
@@ -43,3 +56,98 @@ def test_example_capability_is_read_only() -> None:
     spec = next(s for s in registry.get_capabilities() if s.key == "example")
     assert spec.blast_radius is not None
     assert "read-only" in spec.blast_radius.summary.lower()
+
+
+def test_mail_construction_uses_platform_identity_helper() -> None:
+    """Any future mail sender/drafter must route From identity through the
+    platform helper rather than hand-building bare sender headers."""
+    findings: list[str] = []
+    approved_adapter_findings: dict[Path, list[str]] = {}
+
+    for path in sorted(_SOURCE_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        rel = path.relative_to(_SOURCE_ROOT).as_posix()
+        file_findings = _mail_findings(tree)
+        if not file_findings:
+            continue
+        if rel in _APPROVED_MAIL_ADAPTERS:
+            approved_adapter_findings[path] = file_findings
+            continue
+        findings.extend(f"{rel}: {finding}" for finding in file_findings)
+
+    assert not findings, (
+        "Mail send/draft/MIME construction must live in an approved local mail adapter "
+        "that imports clonway_cockpit.mail_identity:\n" + "\n".join(findings)
+    )
+
+    missing_helper = [
+        path.relative_to(_SOURCE_ROOT).as_posix()
+        for path in approved_adapter_findings
+        if not _imports_platform_mail_identity(ast.parse(path.read_text(), filename=str(path)))
+    ]
+    assert not missing_helper, (
+        "Approved mail adapters must import clonway_cockpit.mail_identity:\n"
+        + "\n".join(missing_helper)
+    )
+
+
+def _mail_findings(tree: ast.AST) -> list[str]:
+    findings: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("email.mime"):
+            findings.append(f"line {node.lineno}: imports email.mime")
+        elif isinstance(node, ast.ImportFrom) and node.module == "email.message":
+            findings.append(f"line {node.lineno}: imports email.message")
+        elif isinstance(node, ast.Call):
+            chain = _call_chain(node.func)
+            if any(
+                _chain_endswith(chain, suffix)
+                for suffix in (
+                    ("messages", "send"),
+                    ("drafts", "create"),
+                    ("drafts", "send"),
+                )
+            ):
+                findings.append(f"line {node.lineno}: direct Gmail send/draft call")
+        elif (
+            isinstance(node, ast.Assign)
+            and any(_is_from_header_target(target) for target in node.targets)
+        ):
+            findings.append(f"line {node.lineno}: direct MIME From header assignment")
+    return findings
+
+
+def _imports_platform_mail_identity(tree: ast.AST) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "clonway_cockpit.mail_identity":
+            return True
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "clonway_cockpit.mail_identity":
+                    return True
+    return False
+
+
+def _is_from_header_target(target: ast.expr) -> bool:
+    return (
+        isinstance(target, ast.Subscript)
+        and isinstance(target.slice, ast.Constant)
+        and str(target.slice.value).lower() == "from"
+    )
+
+
+def _call_chain(node: ast.AST) -> tuple[str, ...]:
+    parts: list[str] = []
+    cur = node
+    while isinstance(cur, ast.Attribute):
+        parts.append(cur.attr)
+        cur = cur.value
+        if isinstance(cur, ast.Call):
+            cur = cur.func
+    if isinstance(cur, ast.Name):
+        parts.append(cur.id)
+    return tuple(reversed(parts))
+
+
+def _chain_endswith(chain: tuple[str, ...], suffix: tuple[str, ...]) -> bool:
+    return len(chain) >= len(suffix) and chain[-len(suffix) :] == suffix
