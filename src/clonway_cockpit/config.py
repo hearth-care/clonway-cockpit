@@ -173,10 +173,8 @@ def _secret_env_problems(
         value = _get_nested(data, loc)
         if isinstance(value, str) and value and os.environ.get(value) is None:
             field = ".".join(loc)
-            source = provenance.get(loc, f"field {field}")
-            problems.append(f"env {value}: {field} references an unset secret env var")
-            if source.startswith("env "):
-                problems[-1] = f"env {value}: {field} references an unset secret env var"
+            source = _source_for(loc, provenance, None)
+            problems.append(f"{source}: {field} references unset secret env var {value}")
     return problems
 
 
@@ -227,6 +225,6 @@ def _get_nested(data: Mapping[str, Any], loc: tuple[str, ...]) -> Any:
 
 
 def _secret_problem_parts(problem: str) -> tuple[str, str]:
-    env_name = problem.removeprefix("env ").split(":", maxsplit=1)[0]
-    field = problem.split(": ", maxsplit=1)[1].split(" references", maxsplit=1)[0]
+    detail = problem.split(": ", maxsplit=1)[1]
+    field, env_name = detail.split(" references unset secret env var ", maxsplit=1)
     return field, env_name

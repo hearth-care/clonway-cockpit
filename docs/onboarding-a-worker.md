@@ -17,7 +17,8 @@ workers (xadmit, xcqc) follow it verbatim.
 
 ## 1. Depend on clonway-cockpit
 
-Add the git dependency to your `pyproject.toml` (pin a `rev`, like the others):
+Add the git dependency to your `pyproject.toml`. Pin `rev` to the current
+release tag named in `docs/pin-sync.md`, not a raw commit SHA or `main`:
 
 ```toml
 dependencies = [
@@ -26,7 +27,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "<sha>" }
+clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "v0.1.0" }
 ```
 
 If the worker talks to Google APIs, install the optional Google extra rather

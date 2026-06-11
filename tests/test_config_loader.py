@@ -128,7 +128,31 @@ api_key_env: MISSING_API_KEY
     assert exc_info.value.problems == [
         f"file {cfg_path}: name: Input should be a valid string",
         f"file {cfg_path}: retries: Input should be a valid integer, unable to parse string as an integer",
-        "env MISSING_API_KEY: api_key_env references an unset secret env var",
+        f"file {cfg_path}: api_key_env references unset secret env var MISSING_API_KEY",
+    ]
+
+
+def test_unset_secret_env_error_uses_env_overlay_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    cfg_path = write_yaml(
+        tmp_path / "worker.yaml",
+        """
+name: 123
+retries: not-an-int
+api_key_env: FILE_API_KEY
+""",
+    )
+    monkeypatch.setenv("XBOOK__API_KEY_ENV", "MISSING_API_KEY")
+    monkeypatch.delenv("MISSING_API_KEY", raising=False)
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(ExampleConfig, worker_id="xbook", paths=[cfg_path])
+
+    assert exc_info.value.problems == [
+        f"file {cfg_path}: name: Input should be a valid string",
+        f"file {cfg_path}: retries: Input should be a valid integer, unable to parse string as an integer",
+        "env XBOOK__API_KEY_ENV: api_key_env references unset secret env var MISSING_API_KEY",
     ]
 
 

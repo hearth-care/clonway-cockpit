@@ -97,7 +97,7 @@ class SheetsClient:
         }
 
     def get_records(self, tab: str, *, header_row: int = 1) -> list[dict[str, str]]:
-        range_ = tab if header_row == 1 else f"{a1(tab)}!{header_row}:{header_row}"
+        range_ = tab if header_row == 1 else f"{a1(tab)}!{header_row}:"
         response = self._execute(
             lambda: (
                 self._service.spreadsheets()

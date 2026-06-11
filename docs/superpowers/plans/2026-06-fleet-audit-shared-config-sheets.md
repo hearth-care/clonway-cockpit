@@ -160,8 +160,8 @@ new double-underscore overlay.
 
 ## HANDOFF NOTES
 
-- Current phase: final verification and rebase.
-- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog; Phase 4 migration recipe table.
+- Current phase: QA-fix focused verification for the three QA FAIL findings.
+- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog; Phase 4 migration recipe table; QA-fix RED/GREEN tests added for `get_records(header_row=2)`, unset `SecretEnvName` provenance, and release-tag onboarding docs.
 - Verification so far:
   - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
   - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
@@ -175,10 +175,16 @@ new double-underscore overlay.
   - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
   - `make template-smoke` after rebase -> generated xsmoke; generated pytest `15 passed, 1 xfailed`; ruff passed; format `18 files already formatted`; mypy `Success: no issues found in 12 source files`; CLI off `signals: disabled`; CLI on `signals: emitted 0`; `template-smoke PASSED for xsmoke (job)`
   - `pre-commit run --all-files` after rebase -> `InvalidConfigError: .pre-commit-config.yaml is not a file` (repo has no pre-commit config)
+  - QA-fix RED: `uv run pytest tests/test_gsheets.py::test_get_records_with_non_default_header_row_fetches_data_rows -q` -> failed because requested range was `'Register'!2:2`, not `'Register'!2:`
+  - QA-fix RED: `uv run pytest tests/test_config_loader.py::test_aggregates_validation_errors_and_unset_secret_env tests/test_config_loader.py::test_unset_secret_env_error_uses_env_overlay_provenance -q` -> failed because unset secrets were reported as `env MISSING_API_KEY`
+  - QA-fix RED: `uv run pytest tests/test_shared_config_sheets_docs.py::test_onboarding_docs_include_config_and_sheets_examples -q` -> failed because onboarding still used `rev = "<sha>"`
+  - QA-fix GREEN: `uv run pytest tests/test_gsheets.py::test_get_records_with_non_default_header_row_fetches_data_rows -q` -> `1 passed in 0.01s`
+  - QA-fix GREEN: `uv run pytest tests/test_config_loader.py::test_aggregates_validation_errors_and_unset_secret_env tests/test_config_loader.py::test_unset_secret_env_error_uses_env_overlay_provenance -q` -> `2 passed in 0.05s`
+  - QA-fix GREEN: `uv run pytest tests/test_shared_config_sheets_docs.py::test_onboarding_docs_include_config_and_sheets_examples -q` -> `1 passed in 0.01s`
 - Decisions:
-  - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
+  - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails. QA fix: those `ConfigError` entries now use the config value provenance (`file <path>` or `env <VAR>`) and name the missing secret env var in the message body.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
   - Template tests now pass `vcs_ref="HEAD"` to Copier so they exercise the branch head, including newly added template files.
   - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
-- Known-failing tests: none from focused Phase 1-3 runs.
-- Next concrete step: force-push rebased branch and run finish protocol.
+- Known-failing tests: none from focused QA-fix runs.
+- Next concrete step: commit/push the focused QA-fix increment, then run full gates and rebase/force-push.

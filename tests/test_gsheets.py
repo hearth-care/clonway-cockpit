@@ -159,6 +159,26 @@ def test_get_records_pads_ragged_rows_to_header_width():
     assert service.calls == [("values.get", {"spreadsheetId": "sheet123", "range": "register"})]
 
 
+def test_get_records_with_non_default_header_row_fetches_data_rows():
+    service = FakeSheetsService()
+    service.values_get_response = {
+        "values": [
+            ["dbs_id", "name", "status"],
+            ["DBS-1", "Ada", "clear"],
+            ["DBS-2", "Grace"],
+        ]
+    }
+    client = SheetsClient(service, "sheet123")
+
+    assert client.get_records("Register", header_row=2) == [
+        {"dbs_id": "DBS-1", "name": "Ada", "status": "clear"},
+        {"dbs_id": "DBS-2", "name": "Grace", "status": ""},
+    ]
+    assert service.calls == [
+        ("values.get", {"spreadsheetId": "sheet123", "range": "'Register'!2:"})
+    ]
+
+
 def test_retries_429s_with_injected_sleep_then_succeeds():
     service = FakeSheetsService()
     service.failures = [429, 429, 429, 429]

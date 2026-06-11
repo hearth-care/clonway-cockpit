@@ -10,6 +10,9 @@ def _read(path: str) -> str:
 def test_onboarding_docs_include_config_and_sheets_examples():
     text = _read("docs/onboarding-a-worker.md")
 
+    assert 'rev = "<sha>"' not in text
+    assert 'rev = "v0.1.0"' in text
+    assert "docs/pin-sync.md" in text
     assert "## Shared config loader" in text
     assert "class WorkerConfig(BaseModel):" in text
     assert "load_config(WorkerConfig" in text
