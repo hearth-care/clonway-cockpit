@@ -9,6 +9,7 @@ from .resolve import (
     resolve_credentials,
 )
 from .refresh import refresh_if_needed
+from .service import build_service, sa_credentials
 from .store import FileTokenStore, KeyringTokenStore, MemoryTokenStore, TokenStore, default_store
 
 __all__ = [
@@ -21,7 +22,9 @@ __all__ = [
     "RefreshLockTimeout",
     "ScopeMismatch",
     "TokenStore",
+    "build_service",
     "default_store",
     "refresh_if_needed",
     "resolve_credentials",
+    "sa_credentials",
 ]

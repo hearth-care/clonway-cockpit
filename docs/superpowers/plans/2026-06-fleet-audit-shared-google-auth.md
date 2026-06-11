@@ -129,8 +129,8 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 - [x] `refresh.py` with `fcntl` lock; tests: two threads/processes racing a fake refresh perform exactly one refresh (count on the fake), lock timeout raises `RefreshLockTimeout`, double-checked reload path covered.
 
 ### Phase 4 — SA/DWD + extra + docs
-- [ ] `service.py`; add `[project.optional-dependencies] google = ["google-auth>=…", "google-auth-oauthlib>=…"]` to `pyproject.toml` (versions per the workers' current pins — survey at build time); prod-import CI job must still pass **without** the extra (lazy imports proved).
-- [ ] Changelog entry; usage section in `docs/onboarding-a-worker.md`; migration recipe table (worker · files deleted · spec values' env names — names only).
+- [x] `service.py`; add `[project.optional-dependencies] google = ["google-auth>=…", "google-auth-oauthlib>=…"]` to `pyproject.toml` (versions per the workers' current pins — survey at build time); prod-import CI job must still pass **without** the extra (lazy imports proved).
+- [x] Changelog entry; usage section in `docs/onboarding-a-worker.md`; migration recipe table (worker · files deleted · spec values' env names — names only).
 
 ### Phase 5 — worker template
 - [ ] Template's generated worker gains a commented `CredentialSpec` example instead of a copied token store; `make template-smoke` green.
@@ -173,9 +173,10 @@ Verified against worker `origin/main` on 2026-06-11 before implementation:
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 4 next. Phase 1 through Phase 3 are implemented in pushed increments.
-- Next concrete step: write failing `tests/test_google_auth_service.py` and docs/import tests for SA/DWD helper construction, `build_service`, optional dependency metadata, and no-google import behaviour.
+- Current phase: Phase 5 next. Phase 1 through Phase 4 are implemented in pushed increments.
+- Next concrete step: update `worker-template/` with a commented `CredentialSpec` example and run the template tests/smoke target.
 - Decisions taken: the shared `TokenStore` API is the plan's `load/save/delete(key, dict)` shape, not the workers' old `(service, key, string)` shape. Worker-specific service/key packing and xbook's file-primary fallback stay in migration shims.
 - Decisions taken: `CredentialSpec` carries optional `injected_credentials` and `allow_interactive` so `resolve_credentials(spec)` can keep the documented order without a separate wrapper type.
 - Decisions taken: `refresh_if_needed` catches refresh failures, keeps the stored token, and raises `CredentialsUnavailable` with a re-auth remedy, matching the plan's "operator decision" deletion rule.
-- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_refresh.py tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`16 passed`).
+- Decisions taken: the optional `google` extra also includes `google-api-python-client>=2.197.0`, a deliberate deviation from the shorter plan text because `build_service()` is part of this phase and the fleet-high worker pin already requires it.
+- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_flow.py tests/test_google_auth_service.py tests/test_google_auth_refresh.py tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`22 passed`).

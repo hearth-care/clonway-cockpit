@@ -96,7 +96,7 @@ jobs:
         run: uv sync --no-dev
 
       - name: Import the package under prod deps
-        run: uv run --no-dev python -c "import clonway_cockpit"
+        run: uv run --no-dev python -c "import clonway_cockpit; import clonway_cockpit.google_auth"
 
   gitleaks:
     name: Gitleaks PR diff
