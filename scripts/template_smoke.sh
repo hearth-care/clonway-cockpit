@@ -30,6 +30,7 @@ uv run copier copy --trust --vcs-ref=HEAD \
   --data "package_name=${WORKER_ID}" \
   --data "deploy_shape=${DEPLOY_SHAPE}" \
   --data "clonway_rev=main" \
+  --data "ci_rev=0000000000000000000000000000000000000001" \
   --defaults \
   "${REPO_ROOT}" "${DST}"
 

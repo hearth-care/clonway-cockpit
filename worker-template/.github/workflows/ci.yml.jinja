@@ -20,9 +20,10 @@ jobs:
   # suites on every draft commit. Add `workflow_dispatch` if you need manual triggers.
   ci:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@{{ clonway_rev }}
-    # TODO: pin to a release tag (e.g. @v0.2.0) once one is cut from the
-    # release-engineering plan. See docs/ci-adoption.md for the upgrade checklist.
+    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@{{ ci_rev }}
+    # ci_rev is set during `copier copy` to a SHA or release tag — never "main".
+    # Upgrade by re-running `copier update` inside the worker repo and entering
+    # the new SHA/tag. See docs/ci-adoption.md for the per-worker upgrade checklist.
     with:
       lint-paths: "src tests"
       mypy-args: ""

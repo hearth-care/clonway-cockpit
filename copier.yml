@@ -91,6 +91,19 @@ clonway_rev:
     pyproject.toml. Defaults to main; pin a SHA for reproducible builds.
   default: main
 
+ci_rev:
+  type: str
+  help: >-
+    Git ref to pin the reusable CI workflow to in the generated
+    .github/workflows/ci.yml. Must be a full commit SHA or release tag (e.g.
+    v0.2.0) — never "main". Find the current main-branch SHA with:
+      git ls-remote https://github.com/hearth-care/clonway-cockpit main
+  validator: >-
+    {% if not ci_rev or ci_rev == "main" %}
+    ci_rev must be a commit SHA or release tag, not empty or "main".
+    Run: git ls-remote https://github.com/hearth-care/clonway-cockpit main
+    {% endif %}
+
 # --- computed (not prompted) ---------------------------------------------
 # Derived so templates read `emit_flag` / `worker_upper` directly instead of
 # repeating the filter chain everywhere.

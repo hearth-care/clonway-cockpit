@@ -55,6 +55,9 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
             "package_name": worker_id,
             "deploy_shape": deploy_shape,
             "clonway_rev": "main",
+            # ci_rev must be a SHA or tag (not "main") per fleet policy.
+            # Tests use a sentinel SHA; real operators supply the actual pin.
+            "ci_rev": "0000000000000000000000000000000000000001",
         },
         defaults=True,
         quiet=True,
@@ -451,6 +454,37 @@ def test_template_ci_does_not_contain_full_job_steps() -> None:
     ci_text = _CI_JINJA.read_text()
     assert "astral-sh/setup-uv" not in ci_text, (
         "ci.yml.jinja is a thin caller — setup-uv steps belong in reusable-ci.yml"
+    )
+
+
+def test_template_ci_uses_ci_rev_not_clonway_rev() -> None:
+    """The CI template must pin to ``{{ ci_rev }}``, not ``{{ clonway_rev }}`` or literal @main.
+
+    Copier reads from the git default branch during generation, so we assert on
+    the raw jinja source (same pattern as the other CI shape tests).  The two
+    invariants together prove no generated worker can receive ``@main``:
+    (a) the template uses the ci_rev variable, and
+    (b) copier.yml has a validator that rejects ci_rev == "main".
+    """
+    ci_text = _CI_JINJA.read_text()
+    assert "reusable-ci.yml@{{ ci_rev }}" in ci_text, (
+        "ci.yml.jinja must pin the reusable workflow using {{ ci_rev }}, not {{ clonway_rev }}"
+    )
+    assert "reusable-ci.yml@{{ clonway_rev }}" not in ci_text, (
+        "ci.yml.jinja must not use {{ clonway_rev }} for the CI workflow pin — "
+        "clonway_rev is the Python package pin; ci_rev is the CI workflow pin"
+    )
+    assert "reusable-ci.yml@main" not in ci_text, (
+        "ci.yml.jinja must not hard-code @main for the reusable-ci.yml pin"
+    )
+
+
+def test_copier_yml_rejects_main_as_ci_rev() -> None:
+    """copier.yml must have a validator that rejects ci_rev == 'main'."""
+    copier_yml = (_REPO_ROOT / "copier.yml").read_text()
+    assert "ci_rev" in copier_yml, "copier.yml must define a ci_rev variable"
+    assert 'ci_rev == "main"' in copier_yml or "ci_rev == 'main'" in copier_yml, (
+        "copier.yml validator must explicitly reject ci_rev == 'main'"
     )
 
 
