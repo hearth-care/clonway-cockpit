@@ -126,7 +126,7 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 - [x] Scope-superset gate tests incl. the "narrower token treated as absent" path.
 
 ### Phase 3 — refresh locking
-- [ ] `refresh.py` with `fcntl` lock; tests: two threads/processes racing a fake refresh perform exactly one refresh (count on the fake), lock timeout raises `RefreshLockTimeout`, double-checked reload path covered.
+- [x] `refresh.py` with `fcntl` lock; tests: two threads/processes racing a fake refresh perform exactly one refresh (count on the fake), lock timeout raises `RefreshLockTimeout`, double-checked reload path covered.
 
 ### Phase 4 — SA/DWD + extra + docs
 - [ ] `service.py`; add `[project.optional-dependencies] google = ["google-auth>=…", "google-auth-oauthlib>=…"]` to `pyproject.toml` (versions per the workers' current pins — survey at build time); prod-import CI job must still pass **without** the extra (lazy imports proved).
@@ -173,8 +173,9 @@ Verified against worker `origin/main` on 2026-06-11 before implementation:
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 3 next. Phase 1 and Phase 2 are implemented in pushed increments.
-- Next concrete step: write failing `tests/test_google_auth_refresh.py` cases for double-checked file-lock refresh, timeout, and refresh-failure remedy; then implement `refresh.py`.
+- Current phase: Phase 4 next. Phase 1 through Phase 3 are implemented in pushed increments.
+- Next concrete step: write failing `tests/test_google_auth_service.py` and docs/import tests for SA/DWD helper construction, `build_service`, optional dependency metadata, and no-google import behaviour.
 - Decisions taken: the shared `TokenStore` API is the plan's `load/save/delete(key, dict)` shape, not the workers' old `(service, key, string)` shape. Worker-specific service/key packing and xbook's file-primary fallback stay in migration shims.
 - Decisions taken: `CredentialSpec` carries optional `injected_credentials` and `allow_interactive` so `resolve_credentials(spec)` can keep the documented order without a separate wrapper type.
-- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`12 passed`).
+- Decisions taken: `refresh_if_needed` catches refresh failures, keeps the stored token, and raises `CredentialsUnavailable` with a re-auth remedy, matching the plan's "operator decision" deletion rule.
+- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_refresh.py tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`16 passed`).

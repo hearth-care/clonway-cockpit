@@ -8,6 +8,7 @@ from .resolve import (
     ScopeMismatch,
     resolve_credentials,
 )
+from .refresh import refresh_if_needed
 from .store import FileTokenStore, KeyringTokenStore, MemoryTokenStore, TokenStore, default_store
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "ScopeMismatch",
     "TokenStore",
     "default_store",
+    "refresh_if_needed",
     "resolve_credentials",
 ]

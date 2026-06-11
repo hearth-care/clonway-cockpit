@@ -58,6 +58,7 @@ def resolve_credentials(
         Callable[[dict[str, Any], tuple[str, ...], str | None], Any] | None
     ) = None,
     interactive_flow: Callable[[CredentialSpec], Any] | None = None,
+    refresh_func: Callable[..., Any] | None = None,
     on_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> Any:
     """Resolve Google credentials in the fleet-wide order:
@@ -91,6 +92,9 @@ def resolve_credentials(
         if not missing_scopes:
             factory = user_credentials_factory or _default_user_credentials_factory
             creds = factory(token, spec.scopes)
+            if getattr(creds, "expired", False) or not getattr(creds, "valid", True):
+                refresher = refresh_func or _default_refresh_if_needed
+                creds = refresher(creds, store=token_store, key=spec.key, scopes=spec.scopes)
             _emit(on_event, "credentials.stored", spec)
             return creds
         if not spec.allow_interactive:
@@ -184,6 +188,12 @@ def _default_interactive_flow(spec: CredentialSpec) -> Any:
     from .flow import run_interactive_flow
 
     return run_interactive_flow(spec)
+
+
+def _default_refresh_if_needed(creds: Any, **kwargs: Any) -> Any:
+    from .refresh import refresh_if_needed
+
+    return refresh_if_needed(creds, **kwargs)
 
 
 def _emit(

@@ -91,6 +91,28 @@ def test_resolve_credentials_loads_stored_token_when_scopes_cover_spec() -> None
     assert result == FakeCredentials("fake-stored", ("scope-a", "scope-b"))
 
 
+def test_resolve_credentials_refreshes_expired_stored_token() -> None:
+    store = MemoryTokenStore({"gmail": {"token": "fake-expired", "scopes": ["scope-a", "scope-b"]}})
+
+    def refresh_if_needed(creds: FakeCredentials, **kwargs: object) -> FakeCredentials:
+        assert kwargs["store"] is store
+        assert kwargs["key"] == "gmail"
+        assert kwargs["scopes"] == ("scope-a", "scope-b")
+        return FakeCredentials("refreshed", ("scope-a", "scope-b"))
+
+    result = resolve_credentials(
+        spec(),
+        store=store,
+        env={},
+        user_credentials_factory=lambda _info, scopes: FakeCredentials(
+            "expired", tuple(scopes), valid=False, expired=True
+        ),
+        refresh_func=refresh_if_needed,
+    )
+
+    assert result == FakeCredentials("refreshed", ("scope-a", "scope-b"))
+
+
 def test_resolve_credentials_treats_narrower_stored_token_as_absent() -> None:
     interactive_calls: list[CredentialSpec] = []
 
