@@ -343,3 +343,66 @@ that `compose_system_prompt` stacks on the shared constitution. Recipe + the "hi
 not the program" model: [`docs/persona-platform-architecture.md`](persona-platform-architecture.md)
 and [`docs/personas.md`](personas.md). This layer is **opt-in** — a worker is fully useful with
 just the cockpit + Signal layers above.
+
+---
+
+## Shared utilities — runlog, logging setup, bank holidays
+
+Three small utilities that were previously copied per-worker are now centralised
+in `clonway_cockpit`. New workers (scaffolded from the template) get them for
+free; existing workers can migrate per the recipe below.
+
+### Run log (`clonway_cockpit.obs.runlog`)
+
+JSONL per-run audit trail. The template generates a two-line shim in
+`src/<worker>/runlog.py` that binds the worker's id:
+
+```python
+from clonway_cockpit.obs.runlog import make_runlog
+runlog = make_runlog("xbook")           # runs land in .xbook/runs/
+```
+
+API: `runlog.new_run_file(run_id)`, `runlog.append(run_file, **entry)`,
+`runlog.hash_request(body)`. Wire format is byte-identical to the pre-extraction
+worker copies (compact JSON, auto-`ts`, `sha256:` prefix).
+
+### Logging setup (`clonway_cockpit.obs.logsetup`)
+
+One function configures the root logger for any entrypoint or server. The
+template calls it automatically from `main()`:
+
+```python
+from clonway_cockpit.obs.logsetup import setup_logging
+setup_logging("xbook", runtime_env="XBOOK_RUNTIME", quiet=["httpx"])
+```
+
+Idempotent; stdlib-only; level from `<WORKER_ID>_LOG_LEVEL` env-var or arg;
+UTC format `%(asctime)s %(levelname)s %(name)s %(message)s`.
+
+### UK bank holidays (`clonway_cockpit.uk_calendar`)
+
+England & Wales bank holidays through 2028, with a CI freshness tripwire (fails
+when the table is within 12 months of its horizon):
+
+```python
+from clonway_cockpit.uk_calendar import is_business_day, next_business_day, DATA_HORIZON
+```
+
+API: `is_bank_holiday(d)`, `is_business_day(d)`, `next_business_day(d)`,
+`previous_business_day(d)`, `business_days_between(a, b)`, `horizon_needs_refresh(today)`.
+Querying beyond `DATA_HORIZON` raises `BankHolidayHorizonError` — no silent stale data.
+
+### Migration recipe (existing workers)
+
+Each migration is a separate per-worker PR, after the next framework release tag.
+
+| Worker | runlog migration | logsetup migration | bank-holiday migration |
+|--------|-----------------|-------------------|----------------------|
+| xbook  | delete `src/xbook/runlog.py`; add `src/xbook/runlog.py` shim (2 lines) | swap `logging.basicConfig` in `__main__.py` + `server/__main__.py` for `setup_logging("xbook", runtime_env="XBOOK_RUNTIME")` | swap `xbook/calendar/bank_holidays.py` imports for `clonway_cockpit.uk_calendar`; keep a one-release deprecation shim |
+| xhr    | delete `src/xhr/runlog.py`; add shim | swap `logging.basicConfig` in `server/__main__.py` | — |
+| xletter | delete `src/xletter/runlog.py`; add shim | swap calls in `watchdog_runner.py`, `cli/entrypoints.py`, `intake/webhook_server.py` | — |
+| xhr (HR) | — | — | add `from clonway_cockpit.uk_calendar import ...` to leave/statutory logic |
+
+Each migration PR must: pin the new `clonway-cockpit` rev; run the worker's own
+suite; verify `.{worker}/runs/` path is unchanged (the `default_runs_dir` default
+preserves the original constant exactly).

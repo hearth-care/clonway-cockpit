@@ -13,6 +13,8 @@ import sys
 
 import typer
 
+from clonway_cockpit.obs.logsetup import setup_logging
+
 from {{ package_name }}.cli.cockpit import run_cockpit, serve_agent
 from {{ package_name }}.cli.signals import signals_app
 
@@ -49,4 +51,9 @@ def _root(
 
 
 def main() -> None:
+{%- if deploy_shape != "local" %}
+    setup_logging("{{ worker_id }}", runtime_env="{{ runtime_env }}")
+{%- else %}
+    setup_logging("{{ worker_id }}")
+{%- endif %}
     app()

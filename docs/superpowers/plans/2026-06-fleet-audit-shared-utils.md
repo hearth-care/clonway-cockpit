@@ -1,6 +1,6 @@
 # [Plan] Extract shared utilities: runlog, logging setup, UK bank holidays
 
-**Status:** draft plan — not implemented
+**Status:** implemented — all phases complete (2026-06-11)
 **Source:** fleet audit 2026-06-11, items C7, C11, C13
 **Wave:** 1
 
@@ -91,25 +91,25 @@ Per worker (bookkeeper/HR/marketer for runlog; all for logsetup as touched): del
 ## Implementation plan
 
 ### Phase 1 — obs package conversion (pure move)
-- [ ] Move `src/clonway_cockpit/obs.py` → `obs/_telemetry.py`; create `obs/__init__.py` re-exporting the full current public surface.
-- [ ] Test `tests/test_obs_package.py`: import-path compatibility (`from clonway_cockpit.obs import make_obs` and `from clonway_cockpit import obs`) + re-export list pinned.
-- [ ] Full suite green with zero other edits (proves the move is behaviour-free).
+- [x] Move `src/clonway_cockpit/obs.py` → `obs/_telemetry.py`; create `obs/__init__.py` re-exporting the full current public surface.
+- [x] Test `tests/test_obs_package.py`: import-path compatibility (`from clonway_cockpit.obs import make_obs` and `from clonway_cockpit import obs`) + re-export list pinned.
+- [x] Full suite green with zero other edits (proves the move is behaviour-free).
 
 ### Phase 2 — runlog
-- [ ] `obs/runlog.py` per Spec §1; golden tests: fixture entry → bytes equal to the captured output of the current worker copy (capture from `Auto-Bookkeeper/src/xbook/runlog.py` semantics: separators `(",", ":")`, `ts` injection, `default=str`).
-- [ ] Property-ish test: `hash_request` stable under key reordering.
+- [x] `obs/runlog.py` per Spec §1; golden tests: fixture entry → bytes equal to the captured output of the current worker copy (capture from `Auto-Bookkeeper/src/xbook/runlog.py` semantics: separators `(",", ":")`, `ts` injection, `default=str`).
+- [x] Property-ish test: `hash_request` stable under key reordering.
 
 ### Phase 3 — logsetup
-- [ ] `obs/logsetup.py` per Spec §1; tests: idempotency (handler count after double call), env-level resolution, `quiet` list applied, cloud_run single-line format.
+- [x] `obs/logsetup.py` per Spec §1; tests: idempotency (handler count after double call), env-level resolution, `quiet` list applied, cloud_run single-line format.
 
 ### Phase 4 — uk_calendar
-- [ ] `uk_calendar.py` with data through the latest published year (verify against gov.uk at build time; cite retrieval date in a comment, not a URL-fetch at runtime).
-- [ ] Tests: known fixtures (2026 Early May = 2026-05-04; Christmas substitution days), horizon error, `horizon_needs_refresh` boundaries, idempotent `next_business_day`, freshness tripwire (12-month rule).
+- [x] `uk_calendar.py` with data through the latest published year (verify against gov.uk at build time; cite retrieval date in a comment, not a URL-fetch at runtime).
+- [x] Tests: known fixtures (2026 Early May = 2026-05-04; Christmas substitution days), horizon error, `horizon_needs_refresh` boundaries, idempotent `next_business_day`, freshness tripwire (12-month rule).
 
 ### Phase 5 — docs + release
-- [ ] Changelog `[Unreleased]` entries (three new public surfaces); short usage section in `docs/onboarding-a-worker.md`.
-- [ ] `worker-template/`: generated worker uses `obs.runlog.make_runlog` and `setup_logging` instead of growing copies (template smoke green).
-- [ ] Migration recipe appended to this doc or `docs/ci-adoption.md`-style checklist (per-worker rows; executed as separate worker-repo PRs after the next release tag).
+- [x] Changelog `[Unreleased]` entries (three new public surfaces); short usage section in `docs/onboarding-a-worker.md`.
+- [x] `worker-template/`: generated worker uses `obs.runlog.make_runlog` and `setup_logging` instead of growing copies (template smoke green).
+- [x] Migration recipe appended to `docs/onboarding-a-worker.md` (per-worker rows; executed as separate worker-repo PRs after the next release tag).
 
 ## Acceptance criteria
 
@@ -134,3 +134,22 @@ Per worker (bookkeeper/HR/marketer for runlog; all for logsetup as touched): del
 - Capture the golden runlog fixtures by running the *current* worker module semantics (the 30-line file is quoted in §Why's description — reproduce locally; do not import from a worker repo in this repo's tests).
 - Do NOT: change any wire/disk byte format; add `google-*`, `requests`, or YAML deps for any of these modules (all three are stdlib-only); start worker migration PRs from this branch; mention internal project/account identifiers in code comments or docs (public repo).
 - Done = acceptance criteria demonstrated, `make check` + `make template-smoke` green, changelog entry present.
+
+## Deviations from plan
+
+- **Two existing obs tests patched**: `test_default_factory_threads_project` and `test_default_factory_no_project` monkeypatched `clonway_cockpit.obs._import_storage`; after the package conversion the private symbol lives in `_telemetry`, so both tests were updated to patch `clonway_cockpit.obs._telemetry._import_storage`. This is the only existing-test edit needed.
+- **Data horizon extended to 2028**: The plan said "extend through the latest year published on gov.uk at build time". Gov.uk 2028 data was available and verified; `DATA_HORIZON = date(2028, 12, 31)`. The 12-month CI tripwire will alert well before any expiry.
+- **`runtime_env` in template `main()`**: The `setup_logging` call uses a Jinja conditional (`deploy_shape != "local"`) to pass `None` for launchd workers, matching the pattern already used in `obs.py.jinja`.
+
+## HANDOFF NOTES
+
+**Status: COMPLETE** — all five phases implemented, all gates green.
+
+**Next concrete step for operator**: after merging this PR, create worker-migration PRs in each worker repo (xbook, xhr, xletter) to delete the local `runlog.py` copies and add the two-line shim. See `docs/onboarding-a-worker.md` → "Migration recipe" table. These PRs are out of scope for this branch.
+
+**Decisions taken**:
+- `obs` package conversion: chose the clean `obs/` package over the `obs_runlog.py` sibling fallback (packaging friction did not materialise; hatchling discovered the package without any pyproject.toml change).
+- `uk_calendar` data: included 2028 since gov.uk had published it; CI tripwire at 12 months means the next refresh is due ~mid-2027.
+- Worker-template change: new `runlog.py.jinja` shim + `setup_logging` in `main()`. Template smoke (test_worker_template.py) green.
+
+**Known-failing tests**: none.

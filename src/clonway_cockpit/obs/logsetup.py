@@ -57,7 +57,9 @@ def setup_logging(
         fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
-    formatter.converter = __import__("time").gmtime  # type: ignore[assignment]
+    import time
+
+    formatter.converter = time.gmtime
 
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)

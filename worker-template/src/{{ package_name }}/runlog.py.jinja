@@ -1,0 +1,25 @@
+"""JSONL run log for {{ worker_id }} — a thin shim over the shared implementation.
+
+Binds ``worker_id="{{ worker_id }}"`` to :func:`clonway_cockpit.obs.runlog.make_runlog`
+and re-exports the resulting :class:`~clonway_cockpit.obs.runlog.Runlog` as a
+module-level singleton. Run-log files land in ``.{{ worker_id }}/runs/``.
+
+Usage::
+
+    from {{ package_name }}.runlog import runlog
+
+    run_file = runlog.new_run_file(run_id)
+    runlog.append(run_file, event="stage.ok", stage="plan")
+    digest = runlog.hash_request(request_body)
+
+Wire format is byte-identical to the pre-extraction worker copies (compact JSON
+separators, auto-injected ``ts``, ``sha256:``-prefixed hash).
+"""
+
+from __future__ import annotations
+
+from clonway_cockpit.obs.runlog import make_runlog
+
+runlog = make_runlog("{{ worker_id }}")
+
+__all__ = ["runlog"]
