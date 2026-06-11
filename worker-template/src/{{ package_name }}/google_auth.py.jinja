@@ -1,0 +1,46 @@
+"""Google credential declarations for {{ worker_id }}.
+
+This file is a commented scaffold: keep credential values in the worker's
+config/secret layer, and pass only env-var names or injected test credentials
+into the shared framework helpers.
+"""
+
+from __future__ import annotations
+
+
+# Example installed-app OAuth surface. Replace the env-var names and scopes
+# with the worker's declared Google surface, or delete this file if the worker
+# does not use Google APIs.
+#
+# from clonway_cockpit.google_auth import CredentialSpec, TokenStore, resolve_credentials
+#
+# GMAIL_SPEC = CredentialSpec(
+#     worker_id="{{ worker_id }}",
+#     key="gmail",
+#     scopes=("https://www.googleapis.com/auth/gmail.send",),
+#     client_config_env="{{ worker_id | upper }}_GMAIL_CLIENT_JSON",
+#     allow_interactive=False,
+# )
+#
+#
+# def gmail_credentials(store: TokenStore):
+#     return resolve_credentials(GMAIL_SPEC, store=store)
+
+
+# Example service-account / domain-wide-delegation surface. The subject value
+# should come from worker config at runtime; use example.invalid placeholders in
+# tests and documentation.
+#
+# from clonway_cockpit.google_auth import CredentialSpec, TokenStore, resolve_credentials
+#
+# WORKSPACE_SPEC = CredentialSpec(
+#     worker_id="{{ worker_id }}",
+#     key="workspace",
+#     scopes=("https://www.googleapis.com/auth/drive.readonly",),
+#     sa_info_env="{{ worker_id | upper }}_WORKSPACE_SA_JSON",
+#     subject="operator@example.invalid",
+# )
+#
+#
+# def workspace_credentials(store: TokenStore):
+#     return resolve_credentials(WORKSPACE_SPEC, store=store)

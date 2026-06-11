@@ -18,6 +18,8 @@ template (S8/C6). It is **born with**:
   the framework;
 - a no-op **home extension seam** (`src/{{ package_name }}/cli/home_hooks.py`) for
   worker-owned panels/rows/keys without forking the shared cockpit shell;
+- a commented **Google auth seam** (`src/{{ package_name }}/google_auth.py`) that
+  uses `CredentialSpec` instead of copying a token store;
 - **CI** (ruff + mypy + pytest).
 
 ## Quick start
@@ -42,7 +44,10 @@ uv run pytest -q && uv run ruff check .              # green out of the box
 3. **`src/{{ package_name }}/cli/home_hooks.py`** — optionally add worker-owned
    home rows, regions, and key handling. Keep domain policy here; do not add
    worker-specific rules to the shared template.
-4. **Go live** — register `{{ worker_id }}` in the bridge roster
+4. **`src/{{ package_name }}/google_auth.py`** — if the worker needs Google APIs,
+   uncomment the matching `CredentialSpec`, keep secret values in the worker's
+   config layer, and resolve credentials at the integration boundary.
+5. **Go live** — register `{{ worker_id }}` in the bridge roster
    (`Auto-Orchestrator/src/xops/bridge/workers.py`), set `{{ emit_flag }}=1`, and
    add a daily `signals scan` scheduler entry (see clonway-cockpit's
    `docs/onboarding-a-worker.md` §5–6 for the per-shape recipe).

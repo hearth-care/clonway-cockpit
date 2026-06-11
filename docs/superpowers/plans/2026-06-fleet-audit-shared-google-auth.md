@@ -133,7 +133,7 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 - [x] Changelog entry; usage section in `docs/onboarding-a-worker.md`; migration recipe table (worker · files deleted · spec values' env names — names only).
 
 ### Phase 5 — worker template
-- [ ] Template's generated worker gains a commented `CredentialSpec` example instead of a copied token store; `make template-smoke` green.
+- [x] Template's generated worker gains a commented `CredentialSpec` example instead of a copied token store; `make template-smoke` green.
 
 ## Acceptance criteria
 
@@ -173,10 +173,11 @@ Verified against worker `origin/main` on 2026-06-11 before implementation:
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 5 next. Phase 1 through Phase 4 are implemented in pushed increments.
-- Next concrete step: update `worker-template/` with a commented `CredentialSpec` example and run the template tests/smoke target.
+- Current phase: implementation complete; final gates and rebase remain.
+- Next concrete step: run full local gates (`make check`, prod-import smoke, `pre-commit run --all-files`), rebase onto latest `origin/main`, and finish the PR protocol.
 - Decisions taken: the shared `TokenStore` API is the plan's `load/save/delete(key, dict)` shape, not the workers' old `(service, key, string)` shape. Worker-specific service/key packing and xbook's file-primary fallback stay in migration shims.
 - Decisions taken: `CredentialSpec` carries optional `injected_credentials` and `allow_interactive` so `resolve_credentials(spec)` can keep the documented order without a separate wrapper type.
 - Decisions taken: `refresh_if_needed` catches refresh failures, keeps the stored token, and raises `CredentialsUnavailable` with a re-auth remedy, matching the plan's "operator decision" deletion rule.
 - Decisions taken: the optional `google` extra also includes `google-api-python-client>=2.197.0`, a deliberate deviation from the shorter plan text because `build_service()` is part of this phase and the fleet-high worker pin already requires it.
-- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_flow.py tests/test_google_auth_service.py tests/test_google_auth_refresh.py tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`22 passed`).
+- Decisions taken: `tests/test_worker_template.py` now pins Copier to the current commit SHA so branch-local template changes are exercised instead of the default branch.
+- Known-failing tests: none after `uv run pytest -q tests/test_worker_template.py` (`13 passed`) and `make template-smoke` (`template-smoke PASSED for xsmoke (job)`).
