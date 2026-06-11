@@ -56,7 +56,7 @@ on:
     branches: [main]
     paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize, opened]
     paths-ignore: ["docs/**", "**/*.md"]
   workflow_dispatch:
   merge_group:
@@ -67,7 +67,10 @@ concurrency:
 
 jobs:
   ci:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'run-ci' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
     with:
       lint-paths: "src tests"
@@ -81,7 +84,10 @@ jobs:
 # same trigger shape as auto-hr (no paths-ignore for this repo)
 jobs:
   ci:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'run-ci' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
     with:
       lint-paths: "src tests scripts"
@@ -96,7 +102,10 @@ All inputs are defaults — minimal caller:
 ```yaml
 jobs:
   ci:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'run-ci' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
 ```
 
@@ -110,7 +119,10 @@ or open a follow-up to add an `extra-env` input to the reusable workflow).
 ```yaml
 jobs:
   ci:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'run-ci' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
     with:
       lint-paths: "src tests"
@@ -180,6 +192,6 @@ would add a new gate.
 - `skip-test` / `skip-mypy` boolean inputs on `reusable-ci.yml` — unblocks auto-marketer,
   auto-bookkeeper (test), auto-secretary (mypy).
 - `pre-test-command` string input — clean alternative to `skip-test` for system dep installs.
-- `UV_PYTHON_DOWNLOADS` env propagation — needed for auto-orchestrator (see [CI CI 504 note](../memory-not-applicable/ci-504.md)).
+- `UV_PYTHON_DOWNLOADS` env propagation — needed for auto-orchestrator (set `UV_PYTHON_DOWNLOADS=never` in the caller's workflow-level `env:` block).
 - Cut the `v0.2.0` release tag — all eight worker adoption PRs should reference it, not a SHA.
 - Branch protection (O1) — required checks must be re-pointed after adoption.

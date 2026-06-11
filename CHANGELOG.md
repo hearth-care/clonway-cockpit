@@ -126,7 +126,7 @@ Record them here and bump the release tag before merging.
   and `gitleaks` job remain in the caller.
 
 - **`worker-template/.github/workflows/ci.yml.jinja`** — rewritten as a thin caller
-  (delegates to `reusable-ci.yml@{{ clonway_rev }}`). Default worker inputs:
+  (delegates to `reusable-ci.yml@{{ ci_rev }}`). Default worker inputs:
   `lint-paths: "src tests"`, `mypy-args: ""` (bare mypy, config-driven). Includes
   label guard (`run-ci`) and `merge_group` trigger matching the fleet's adopted shape.
 

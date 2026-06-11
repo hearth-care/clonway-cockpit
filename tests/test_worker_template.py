@@ -488,6 +488,18 @@ def test_copier_yml_rejects_main_as_ci_rev() -> None:
     )
 
 
+def test_template_ci_checks_existing_run_ci_label() -> None:
+    """Generated workers must re-run CI on new commits when run-ci label is already applied."""
+    ci_text = _CI_JINJA.read_text()
+    assert "synchronize" in ci_text, (
+        "ci.yml.jinja pull_request trigger must include 'synchronize' so new commits run CI "
+        "when the run-ci label is already applied to the PR"
+    )
+    assert "contains(github.event.pull_request.labels.*.name" in ci_text, (
+        "ci.yml.jinja ci-job condition must use contains(...labels.*.name...) for synchronize events"
+    )
+
+
 def test_template_pre_commit_jinja_exists() -> None:
     assert _PRECOMMIT_JINJA.exists(), "worker-template must include .pre-commit-config.yaml.jinja"
 

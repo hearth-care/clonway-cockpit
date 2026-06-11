@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize, opened]
   merge_group:
 
 # Cancel superseded runs on the same PR/branch.
@@ -16,10 +16,13 @@ jobs:
   # Delegates lint / test / prod-import to the fleet's shared reusable workflow.
   # To customise, add inputs from the reusable workflow's documented input list:
   #   https://github.com/hearth-care/clonway-cockpit/blob/main/.github/workflows/reusable-ci.yml
-  # Workers run PR CI only on the `run-ci` label so agents don't trigger full
-  # suites on every draft commit. Add `workflow_dispatch` if you need manual triggers.
+  # PR CI runs only when the `run-ci` label is present — either the labeling event
+  # itself, or any subsequent push while the label is already applied.
   ci:
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.label.name == 'run-ci' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@{{ ci_rev }}
     # ci_rev is set during `copier copy` to a SHA or release tag — never "main".
     # Upgrade by re-running `copier update` inside the worker repo and entering

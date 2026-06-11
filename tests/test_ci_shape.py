@@ -115,3 +115,23 @@ def test_caller_passes_prod_import_package(caller: dict) -> None:
             assert "prod-import-package" in with_block, (
                 "The cockpit's ci.yml must pass prod-import-package to trigger the import-smoke job"
             )
+
+
+def test_caller_pr_trigger_includes_synchronize(caller: dict) -> None:
+    """PRs with an existing run-ci label must re-run CI on new commits."""
+    on = _on(caller)
+    pr_trigger = on.get("pull_request") or {}
+    types = pr_trigger.get("types") or []
+    assert "synchronize" in types, (
+        "ci.yml pull_request trigger must include 'synchronize' so new commits run CI "
+        "when the run-ci label is already applied"
+    )
+
+
+def test_caller_ci_job_checks_existing_run_ci_label(caller: dict) -> None:
+    """The ci job condition must check for the run-ci label on synchronize events."""
+    ci_text = _CALLER.read_text()
+    assert "contains(github.event.pull_request.labels.*.name" in ci_text, (
+        "ci.yml ci-job condition must use contains(...labels.*.name...) so synchronize "
+        "events on PRs that already have run-ci label also run CI"
+    )

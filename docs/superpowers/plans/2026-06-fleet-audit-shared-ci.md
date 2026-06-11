@@ -149,20 +149,9 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** COMPLETE — all 4 phases + 2 rounds of QA FAIL findings fixed, all gates green.
+**Current phase:** COMPLETE — all 4 phases + 3 rounds of QA FAIL findings fixed, all gates green.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
-
-**Commits:**
-- `d470672` Phase 1: reusable-ci.yml + thin ci.yml caller + test_ci_shape.py
-- `2474f30` Phase 2: .pre-commit-config.yaml + CLAUDE.md update + pre-commit dep
-- `5cf666d` Phase 3: ci.yml.jinja + .pre-commit-config.yaml.jinja + test_worker_template.py
-- `3ca8814` Phase 3 fix: template tests read jinja source directly (copier clone workaround)
-- `67ec564` Phase 4: ci-adoption.md + CHANGELOG.md + plan doc ticked
-- `b15a757` QA fix: import sort, adoption doc cleanup, gitleaks CLI replacement
-- `de66513` QA fix: remove double blank line after imports in test_safety.py.jinja
-- `abb27a4` QA fix: ruff format compliance (elif block) in test_safety.py.jinja
-- `16567b3` QA fix: separate ci_rev from clonway_rev, forbid @main pin in generated CI
 
 **QA FAIL findings addressed (fixer-claude-20260611T184408Z-16134):**
 1. `make template-smoke` ruff I001 — fixed by: adding `[tool.ruff.lint.isort] known-first-party`
@@ -178,6 +167,18 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
    copier.yml rejects `ci_rev == "main"`. template_smoke.sh and `_generate()` pass a sentinel
    SHA. Generation tests read jinja source directly (copier reads from git default branch,
    not the working tree, so generation-based CI file checks are unreliable on feature branches).
+
+**QA FAIL findings addressed (fixer-claude-20260611T194553Z-61452):**
+1. CI `ci` job skipped on new commits (synchronize events) when `run-ci` label already present —
+   fixed by: adding `synchronize, opened` to `pull_request: types:` in both `ci.yml` and
+   `worker-template/.github/workflows/ci.yml.jinja`; updating the `if:` condition to also check
+   `contains(github.event.pull_request.labels.*.name, 'run-ci')`. Two new tests assert the
+   caller and template include `synchronize` and the contains-labels condition.
+   Adoption doc `if:` snippets and trigger types updated to match.
+2. CHANGELOG.md documented worker template as `reusable-ci.yml@{{ clonway_rev }}` — fixed to
+   `reusable-ci.yml@{{ ci_rev }}` to match the actual implementation.
+3. Dead link in `docs/ci-adoption.md` (`../memory-not-applicable/ci-504.md`) — removed;
+   replaced with inline note about `UV_PYTHON_DOWNLOADS=never`.
 
 **Deviations from plan:**
 - Same-repo caller uses `./.github/workflows/reusable-ci.yml` (relative path) instead of
