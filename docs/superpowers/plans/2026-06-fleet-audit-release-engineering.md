@@ -111,10 +111,10 @@ The checklist never names a specific secret, service account, project, or domain
 - [ ] Verify: `git ls-remote --tags origin` shows `v0.1.0`; release body matches the changelog section.
 
 ### Phase 3 — pin-sync advisory + rotation checklist
-- [ ] Write `docs/pin-sync.md` per Spec §4, naming `v0.1.0` as supported and listing the eight worker repos as a checklist (repo name + current pin at time of writing).
-- [ ] Write `docs/security/public-history-checklist.md` per Spec §5 (steps only; no identifiers).
-- [ ] Add the `gitleaks` PR-diff job to `ci.yml` (continue-on-error **false**; pin the action by SHA).
-- [ ] Update `CLAUDE.md` §"Consumption model": pins are tags; releases via changelog+version PR.
+- [x] Write `docs/pin-sync.md` per Spec §4, naming `v0.1.0` as supported and listing the eight worker repos as a checklist (repo name + current pin at time of writing).
+- [x] Write `docs/security/public-history-checklist.md` per Spec §5 (steps only; no identifiers).
+- [x] Add the `gitleaks` PR-diff job to `ci.yml` (continue-on-error **false**; pin the action by SHA).
+- [x] Update `CLAUDE.md` §"Consumption model": pins are tags; releases via changelog+version PR.
 
 ### Phase 4 — worker follow-ups (tracked here, executed per-repo)
 - [ ] Eight one-line pin PRs (`rev = "v0.1.0"` + `uv lock`) — consumers (orchestrator) first.
@@ -149,8 +149,8 @@ The checklist never names a specific secret, service account, project, or domain
 ## HANDOFF NOTES
 
 - Agent: `builder-codex-20260611T171402Z-89967`.
-- Current phase: Phase 2 workflow implemented locally; next concrete step is Phase 2 green verification and then Phase 3 red tests/docs.
+- Current phase: Phase 3 implemented locally; next concrete step is Phase 3 green verification, then full gates/rebase.
 - Decisions taken: first release remains `0.1.0`; changelog baseline is grouped from first-parent history through current `origin/main` (`8a53e3f`), while the actual `v0.1.0` tag is expected to point at the final merged PR #88 commit.
-- Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`; Phase 2 red test failed because `.github/workflows/release.yml` was missing; Phase 2 green `uv run pytest tests/test_release_policy.py -q` passed with `3 passed`.
-- Deferred/operator-only: workflow_dispatch for `v0.1.0` cannot be truthfully run until this no-merge PR is merged to `main`, because the required target is the merged plan-implementation commit.
+- Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`; Phase 2 red test failed because `.github/workflows/release.yml` was missing; Phase 2 green `uv run pytest tests/test_release_policy.py -q` passed with `3 passed`; Phase 3 red test failed because `docs/pin-sync.md`, `docs/security/public-history-checklist.md`, and the gitleaks CI job were missing; Phase 3 green `uv run pytest tests/test_release_policy.py -q` passed with `6 passed`.
+- Deferred/operator-only: workflow_dispatch for `v0.1.0` cannot be truthfully run until this no-merge PR is merged to `main`, because the required target is the merged plan-implementation commit; private full-history credential rotation confirmation must be done from operator records; worker pin PRs and orchestrator doctor work are separate repos.
 - Known-failing tests: none.

@@ -61,9 +61,14 @@ per-module docs: `docs/{model-gateway,personas,group-chat,receptionist}.md`.
 
 ## Consumption model
 
-Workers pin a `clonway-cockpit` git `rev`. A framework change propagates on the next rev bump,
+Workers pin a `clonway-cockpit` git `rev`, and that rev must be a release tag named in
+`docs/pin-sync.md`, not a raw SHA or `main`. A framework change propagates on the next tag bump,
 so the contract gate + agent channel + protocol upgrades reach every worker that way — that is
 how the discipline stays uniform across the fleet rather than drifting per repo.
+
+Releases are changelog-driven: a release PR edits `CHANGELOG.md` and `pyproject.toml` together;
+after it lands on `main`, `.github/workflows/release.yml` creates the matching tag and GitHub
+Release from the changelog section.
 
 ## Tests
 
