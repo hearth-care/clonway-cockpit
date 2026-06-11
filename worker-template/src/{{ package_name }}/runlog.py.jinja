@@ -22,4 +22,10 @@ from clonway_cockpit.obs.runlog import make_runlog
 
 runlog = make_runlog("{{ worker_id }}")
 
-__all__ = ["runlog"]
+# Bind the three most-imported helpers at module level so existing workers can
+# migrate without rewriting their call sites (e.g. `from xworker.runlog import hash_request`).
+new_run_file = runlog.new_run_file
+append = runlog.append
+hash_request = runlog.hash_request
+
+__all__ = ["runlog", "new_run_file", "append", "hash_request"]

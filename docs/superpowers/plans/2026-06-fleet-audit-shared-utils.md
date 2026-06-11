@@ -143,13 +143,20 @@ Per worker (bookkeeper/HR/marketer for runlog; all for logsetup as touched): del
 
 ## HANDOFF NOTES
 
-**Status: COMPLETE** — all five phases implemented, all gates green.
+**Status: COMPLETE (QA-fix pass)** — all five phases implemented + QA findings 1–3 resolved; all gates green including `make template-smoke`.
+
+**QA findings fixed (fixer-claude-20260611T213842Z-55255)**:
+1. `make template-smoke` ruff I001 in generated `cli/__init__.py`: removed extraneous blank line between `import typer` and `from clonway_cockpit…` in `cli/__init__.py.jinja`.
+2. `make template-smoke` ruff I001 in generated `tests/test_safety.py`: removed trailing double-blank-line after last import in `test_safety.py.jinja`; fixed formatting of `elif` condition; added `src = ["src"]` to `[tool.ruff]` in `pyproject.toml.jinja` for correct first-party detection.
+3. Runlog shim drop-in compatibility: added module-level `new_run_file`, `append`, `hash_request` bound re-exports in `runlog.py.jinja` so existing call-sites (`from xworker.runlog import hash_request`) migrate without rewrite.
+4. RUNBOOK DELTA comment posted on hearth-care/auto-orchestrator#196 (fleet change-management rule).
 
 **Next concrete step for operator**: after merging this PR, create worker-migration PRs in each worker repo (xbook, xhr, xletter) to delete the local `runlog.py` copies and add the two-line shim. See `docs/onboarding-a-worker.md` → "Migration recipe" table. These PRs are out of scope for this branch.
 
 **Decisions taken**:
 - `obs` package conversion: chose the clean `obs/` package over the `obs_runlog.py` sibling fallback (packaging friction did not materialise; hatchling discovered the package without any pyproject.toml change).
 - `uk_calendar` data: included 2028 since gov.uk had published it; CI tripwire at 12 months means the next refresh is due ~mid-2027.
-- Worker-template change: new `runlog.py.jinja` shim + `setup_logging` in `main()`. Template smoke (test_worker_template.py) green.
+- Worker-template change: new `runlog.py.jinja` shim + `setup_logging` in `main()`. Template smoke green.
+- Runlog shim: bound-method re-exports added at module level; `__all__` expanded to four names.
 
 **Known-failing tests**: none.

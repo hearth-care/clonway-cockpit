@@ -19,7 +19,6 @@ from rich.console import Console
 
 from {{ package_name }}.cli import cockpit
 
-
 _SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "{{ package_name }}"
 _APPROVED_MAIL_ADAPTERS = {
     "mail.py",
@@ -109,9 +108,8 @@ def _mail_findings(tree: ast.AST) -> list[str]:
                 )
             ):
                 findings.append(f"line {node.lineno}: direct Gmail send/draft call")
-        elif (
-            isinstance(node, ast.Assign)
-            and any(_is_from_header_target(target) for target in node.targets)
+        elif isinstance(node, ast.Assign) and any(
+            _is_from_header_target(target) for target in node.targets
         ):
             findings.append(f"line {node.lineno}: direct MIME From header assignment")
     return findings
