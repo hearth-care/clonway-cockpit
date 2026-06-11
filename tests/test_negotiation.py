@@ -236,6 +236,23 @@ def test_reconciliation_survives_garbage(tmp_path: Path) -> None:
     assert by_ask[LETTER_ASK].decision == "decline" and by_ask[LETTER_ASK].redirect == ""
 
 
+def test_reconciliation_does_not_misattribute_a_later_ask(tmp_path: Path) -> None:
+    # Final-audit finding (D9): a single-pass matcher let an earlier unmatched ask positionally
+    # grab a LATER ask's explicitly-labelled decision. The model here answers ONLY the second ask
+    # (verbatim); the first must defer and the second must keep its own decision — never inherit it.
+    completer = FakeStructuredCompleter(
+        [{"say": "", "decisions": [{"ask": LETTER_ASK, "decision": "accept"}]}]
+    )
+    colleagues, responder = build(tmp_path, completer)  # milo, no kit -> both asks go to the model
+    milo = persona_of(colleagues, "milo")
+    reply = responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    response = parse_envelope(reply or "")
+    assert response is not None
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[HOLD_ASK].decision == "defer" and by_ask[HOLD_ASK].note == "unanswered"
+    assert by_ask[LETTER_ASK].decision == "accept"
+
+
 def test_degraded_model_down_still_audits(tmp_path: Path) -> None:
     # S6: reflex fires, gateway dies -> the audit STILL posts, with a canned voice line.
     completer = FakeStructuredCompleter([GatewayError("model down")])

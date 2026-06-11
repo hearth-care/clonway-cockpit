@@ -143,27 +143,38 @@ def _reconcile(
 ) -> tuple[str, list[AskDecision]]:
     """Code-side reconciliation of the model's structured output (spec Dragon D9): iterate the
     ENVELOPE's asks (never the model's list), match verbatim then positionally, default missing
-    to defer, drop unknown enums/redirects, and compose from ORIGINAL ask strings only."""
+    to defer, drop unknown enums/redirects, and compose from ORIGINAL ask strings only.
+
+    Two passes, in order, so a model that labels only *some* asks cannot misattribute: every
+    UNAMBIGUOUS verbatim match is claimed first; only then are the leftover items paired, in
+    order, with the asks that found no verbatim match. (A single interleaved pass let an earlier
+    unmatched ask positionally grab a later ask's explicitly-labelled item — the wrong owner.)"""
     items_raw = raw.get("decisions")
     items: list[object] = items_raw if isinstance(items_raw, list) else []
     say_raw = raw.get("say")
     say = _single_line(say_raw, _MAX_SAY) if isinstance(say_raw, str) else ""
+    matched: dict[int, Mapping[str, object]] = {}
     used: set[int] = set()
+    # Pass 1 — verbatim: claim each ask's explicitly-labelled item (the model named the ask).
+    for i, ask in enumerate(remaining):
+        for j, item in enumerate(items):
+            if j not in used and isinstance(item, Mapping) and item.get("ask") == ask:
+                matched[i] = item
+                used.add(j)
+                break
+    # Pass 2 — positional fallback: pair each still-unmatched ask with the next unused object
+    # item, in order (handles a model that returns decisions in ask order without echoing text).
+    leftover = [item for j, item in enumerate(items) if j not in used and isinstance(item, Mapping)]
+    k = 0
+    for i in range(len(remaining)):
+        if i in matched:
+            continue
+        if k < len(leftover):
+            matched[i] = leftover[k]
+            k += 1
     out: list[AskDecision] = []
     for i, ask in enumerate(remaining):
-        idx = next(
-            (
-                j
-                for j, item in enumerate(items)
-                if j not in used and isinstance(item, Mapping) and item.get("ask") == ask
-            ),
-            None,
-        )
-        if idx is None and i < len(items) and i not in used and isinstance(items[i], Mapping):
-            idx = i
-        item = items[idx] if idx is not None else None
-        if idx is not None:
-            used.add(idx)
+        item = matched.get(i)
         decision = item.get("decision") if isinstance(item, Mapping) else None
         if decision not in ("accept", "decline", "defer"):
             out.append(AskDecision(ask=ask, decision="defer", note="unanswered"))
