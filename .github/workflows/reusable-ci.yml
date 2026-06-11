@@ -1,0 +1,134 @@
+# Reusable CI workflow for the Clonway fleet.
+#
+# Called from each repo's own ci.yml via:
+#   uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-sha>
+# or, from within this repo:
+#   uses: ./.github/workflows/reusable-ci.yml
+#
+# INPUTS — all optional, defaults match the cockpit repo's own shape:
+#   lint-paths        ruff check / ruff format --check paths (default: ".")
+#   mypy-args         args appended to `uv run mypy`; use "" for bare mypy
+#                     (i.e. config-file-driven repos; default: "src")
+#   pytest-args       appended to `uv run pytest`; use e.g. '-m "not integration"'
+#   prod-import-package  non-empty → run the prod-deps import-smoke job
+#                     (uv sync --no-dev + python -c "import <pkg>")
+#   python-version    Python version for setup-python (default: "3.12")
+#   runs-on           runner label (default: "ubuntu-latest")
+#
+# CONCURRENCY: callers keep their own `concurrency` stanza; a called workflow
+# inherits the caller's ref-scoped cancel group automatically, so adding one
+# here would double-scope it. See GitHub docs "Concurrency in reusable workflows".
+#
+# RENAMING INPUTS: any input rename is a breaking change for all callers. Record
+# it in CHANGELOG.md under [Unreleased] and bump the release tag.
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.12"
+      lint-paths:
+        type: string
+        default: "."
+      mypy-args:
+        type: string
+        default: "src"
+      pytest-args:
+        type: string
+        default: "-q"
+      prod-import-package:
+        type: string
+        default: ""
+      runs-on:
+        type: string
+        default: "ubuntu-latest"
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff lint
+        run: uv run ruff check ${{ inputs.lint-paths }}
+
+      - name: Ruff format check
+        run: uv run ruff format --check ${{ inputs.lint-paths }}
+
+      - name: Mypy
+        run: |
+          if [ -n "${{ inputs.mypy-args }}" ]; then
+            uv run mypy ${{ inputs.mypy-args }}
+          else
+            uv run mypy
+          fi
+
+  test:
+    name: tests
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        run: uv run pytest ${{ inputs.pytest-args }}
+
+  prod-import:
+    # Reproduces a consumer's prod dependency closure (uv sync --no-dev) and
+    # imports the package as a worker would, catching a module that leaks a
+    # dev-only / transitive dependency at PR time. Only runs when
+    # prod-import-package is set.
+    name: Prod-deps import smoke (no-dev)
+    if: ${{ inputs.prod-import-package != '' }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install prod dependencies only
+        run: uv sync --no-dev
+
+      - name: Import the package under prod deps
+        run: uv run --no-dev python -c "import ${{ inputs.prod-import-package }}"

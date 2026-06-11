@@ -17,86 +17,11 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint (ruff + mypy)
+  ci:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Ruff lint
-        run: uv run ruff check .
-
-      - name: Ruff format check
-        run: uv run ruff format --check .
-
-      - name: Mypy
-        run: uv run mypy src
-
-  test:
-    name: tests
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Run tests
-        run: uv run pytest -q
-
-  prod-import:
-    # Reproduces a consumer's prod dependency closure (`uv sync --no-dev`) and
-    # imports the package as a worker would, catching a module that leaks a
-    # dev-only / transitive dependency at PR time.
-    name: Prod-deps import smoke (no-dev)
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install prod dependencies only
-        run: uv sync --no-dev
-
-      - name: Import the package under prod deps
-        run: uv run --no-dev python -c "import clonway_cockpit; import clonway_cockpit.google_auth"
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      prod-import-package: clonway_cockpit
 
   gitleaks:
     name: Gitleaks PR diff
