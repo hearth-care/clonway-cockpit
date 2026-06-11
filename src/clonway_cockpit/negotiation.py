@@ -29,24 +29,28 @@ See ``docs/cross-worker-handoffs.md`` and the design spec
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from .chat_memory import DEFAULT_TURNS, PERSONA, USER, ThreadTranscript, scope_for_space
 from .colleague import ColleagueRegistry
 from .gateway.types import GatewayError, Message
-from .group_chat import ChatMessage
+from .group_chat import ChatMessage, ChatTransport, GroupSpace, PostedReply
 from .handoff import (
     MAX_LINE,
     MAX_SUMMARY,
     AskDecision,
     HandoffEnvelope,
+    HandoffError,
+    PlanStep,
     parse_envelope,
     render_envelope,
 )
-from .persona import Persona
+from .persona import Persona, PersonaRegistry
 from .persona_soul import SoulError
 from .private_memory import PersonaMemory
+from .receptionist import route
 from .reflex import ReflexFiring, ReflexKit, fire_reflexes
 
 NEGOTIATION_BRIEF = """\
@@ -348,3 +352,235 @@ def negotiating_responder(
         return None  # D10: an envelope message NEVER falls through to inner
 
     return respond
+
+
+_PENDING = "pending"
+_REDIRECTED = "redirected"
+_DONE = "done"
+_ACCEPTED = "accepted"
+_OWNER_ATTENTION = "owner"
+
+
+@dataclass
+class _AskState:
+    state: str
+    decider: str = ""  # terminal decider, or the redirect target while state == "redirected"
+
+
+@dataclass(frozen=True)
+class OpenTask:
+    """One task with asks still pending/redirected — the sweep escalates these to the owner."""
+
+    task_id: str
+    origin: str
+    missing: tuple[str, ...]
+
+
+class TaskLedger:
+    """Per-space negotiation state, built purely from the messages it is fed (parse + the same
+    origin==author forgery check as the responder). In-memory, per-``NegotiatedSpace`` instance,
+    lost on restart (documented v1 scope). Never raises on garbage input.
+
+    Ask-state machine: ``pending`` → (``done`` | ``accepted`` | ``owner`` | ``redirected``);
+    ``redirected`` → terminal, but ONLY by a response from the redirect target (an interloper
+    cannot claim someone else's redirected ask). First terminal answer wins. A task with zero
+    asks is born resolved."""
+
+    def __init__(self) -> None:
+        self._tasks: dict[str, tuple[HandoffEnvelope, dict[str, _AskState]]] = {}
+        self._planned: set[str] = set()
+        self._stalled: set[str] = set()
+        self._duplicates: list[str] = []
+
+    def feed(self, message: ChatMessage) -> None:
+        if message.is_owner:
+            return
+        env = parse_envelope(message.text)
+        if env is None or env.origin != message.author:
+            return  # prose, or a forged/echoed frame (D1)
+        if env.kind == "notice":
+            if env.task_id in self._tasks:
+                self._duplicates.append(env.task_id)  # a reused id is inert (D14)
+                return
+            self._tasks[env.task_id] = (env, {a: _AskState(_PENDING) for a in env.asks})
+            return
+        if env.kind == "plan":
+            self._planned.add(env.task_id)  # a redelivered plan never double-posts
+            return
+        entry = self._tasks.get(env.task_id)  # kind == "response"
+        if entry is None:
+            return
+        _notice, asks = entry
+        for d in env.decisions:
+            st = asks.get(d.ask)
+            if st is None:
+                continue  # decisions join notices by VERBATIM ask text (D9)
+            if st.state == _REDIRECTED and env.origin != st.decider:
+                continue
+            if st.state not in (_PENDING, _REDIRECTED):
+                continue
+            if d.decision == "reflexed" and d.applied:
+                asks[d.ask] = _AskState(_DONE, env.origin)
+            elif d.decision == "accept":
+                asks[d.ask] = _AskState(_ACCEPTED, env.origin)
+            elif d.decision == "decline" and d.redirect:
+                asks[d.ask] = _AskState(_REDIRECTED, d.redirect)
+            else:  # defer, reflexed-not-applied, bare decline -> the owner's attention
+                asks[d.ask] = _AskState(_OWNER_ATTENTION, env.origin)
+
+    def unresolved(self) -> list[OpenTask]:
+        out: list[OpenTask] = []
+        for task_id, (notice, asks) in self._tasks.items():
+            missing = tuple(a for a, st in asks.items() if st.state in (_PENDING, _REDIRECTED))
+            if missing:
+                out.append(OpenTask(task_id=task_id, origin=notice.origin, missing=missing))
+        return out
+
+    def plan_worthy(self) -> list[str]:
+        """Resolved, not yet planned, and with something for the owner (an accepted step or an
+        unassigned one). A task fully handled by applied reflexes + redirect-acceptances is not
+        plan-worthy — the response renders already told the room."""
+        out: list[str] = []
+        for task_id, (_notice, asks) in self._tasks.items():
+            if task_id in self._planned:
+                continue
+            states = [st.state for st in asks.values()]
+            if any(s in (_PENDING, _REDIRECTED) for s in states):
+                continue
+            if any(s in (_ACCEPTED, _OWNER_ATTENTION) for s in states):
+                out.append(task_id)
+        return out
+
+    def compose_plan(self, task_id: str) -> HandoffEnvelope | None:
+        """The deterministic owner-facing consolidation, in original-ask order. It AUTHORIZES
+        NOTHING (S11) — steps are descriptions; execution still rides the existing owner-command
+        and approval surfaces."""
+        entry = self._tasks.get(task_id)
+        if entry is None:
+            return None
+        notice, asks = entry
+        steps: list[PlanStep] = []
+        for ask in notice.asks:
+            st = asks[ask]
+            if st.state == _DONE:
+                steps.append(PlanStep(owner=st.decider, action=ask, status="done"))
+            elif st.state in (_ACCEPTED, _REDIRECTED):
+                steps.append(PlanStep(owner=st.decider, action=ask, status="needs-approval"))
+            else:
+                steps.append(PlanStep(owner="", action=ask, status="unassigned"))
+        if not steps:
+            return None
+        return HandoffEnvelope(
+            kind="plan",
+            task_id=task_id,
+            origin=notice.origin,
+            summary=notice.summary,
+            steps=tuple(steps),
+        )
+
+    def mark_planned(self, task_id: str) -> None:
+        self._planned.add(task_id)
+
+    def mark_stalled(self, task_id: str) -> None:
+        self._stalled.add(task_id)
+
+    def is_stalled(self, task_id: str) -> bool:
+        return task_id in self._stalled
+
+    def duplicate_notices(self) -> tuple[str, ...]:
+        return tuple(self._duplicates)
+
+
+def stall_text(task: OpenTask, owner_line: str) -> str:
+    """Prose (deliberately NOT an envelope — it draws no agent replies) escalating an
+    unresolved task to the owner."""
+    return (
+        f"unresolved handoff #{task.task_id} — {len(task.missing)} ask(s) unresolved "
+        f"(first: {task.missing[0]}). Over to you, {owner_line}."
+    )
+
+
+def address_notice(text: str, registry: PersonaRegistry) -> str | None:
+    """Sender-side addressing: the receptionist POINTS (never does). A unique match returns the
+    handle for the notice's ``recipient``; ambiguous/none returns ``None`` — the composing code
+    should then surface to the owner instead of guessing (open offers are out of scope, D4)."""
+    found = route(text, registry)
+    return found.persona.handle if found.persona is not None else None
+
+
+@dataclass
+class NegotiatedSpace:
+    """A group space with the negotiation sweep — wraps (never modifies) the merged
+    :class:`~clonway_cockpit.group_chat.GroupSpace`. After every round it feeds the round's
+    messages to its :class:`TaskLedger`, posts the unified plan for any newly-resolved
+    plan-worthy task, and escalates any unresolved task to the owner ONCE (no stall spam).
+
+    Sweep posts go straight to the transport and are NOT re-run through a round (no re-entry —
+    spec Dragon D15); on the live transport they come back as events whose author is the posting
+    bot, so the forgery check keeps them inert there too. The ledger is in-memory and
+    per-instance: hold ONE NegotiatedSpace per space for a session."""
+
+    space_id: str
+    registry: PersonaRegistry
+    transport: ChatTransport
+    responder: Responder
+    owner_line: str = "owner"
+    max_persona_turns: int = 6
+    domain_matches: Callable[[str, Persona], bool] | None = None
+    ledger: TaskLedger = field(init=False)
+    _space: GroupSpace = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.ledger = TaskLedger()
+        self._space = GroupSpace(
+            space_id=self.space_id,
+            registry=self.registry,
+            transport=self.transport,
+            responder=self.responder,
+            max_persona_turns=self.max_persona_turns,
+            domain_matches=self.domain_matches,
+        )
+
+    def owner_says(self, text: str, *, author: str = "owner") -> list[PostedReply]:
+        replies = self._space.owner_says(text, author=author)
+        inbound = ChatMessage.from_text(text, author=author, is_owner=True, space=self.space_id)
+        self._sweep(inbound, replies)
+        return replies
+
+    def agent_says(self, handle: str, text: str) -> list[PostedReply]:
+        replies = self._space.agent_says(handle, text)
+        inbound = ChatMessage.from_text(text, author=handle, is_owner=False, space=self.space_id)
+        self._sweep(inbound, replies)
+        return replies
+
+    def post_notice(self, handle: str, env: HandoffEnvelope, say: str = "") -> list[PostedReply]:
+        """The origin-side entry point: a worker's domain code posts a composed notice. The
+        origin/handle match is asserted here because a mismatch is a composer bug — the room
+        would silently treat the frame as forged (D1) and nobody would ever respond."""
+        if env.kind != "notice":
+            raise HandoffError(f"post_notice posts notices, not {env.kind!r}")
+        if env.origin != handle:
+            raise HandoffError(
+                f"notice origin {env.origin!r} must match the posting handle {handle!r}"
+            )
+        return self.agent_says(handle, render_envelope(env, say))
+
+    def _sweep(self, inbound: ChatMessage, replies: list[PostedReply]) -> None:
+        self.ledger.feed(inbound)
+        for reply in replies:
+            self.ledger.feed(
+                ChatMessage.from_text(
+                    reply.text, author=reply.handle, is_owner=False, space=self.space_id
+                )
+            )
+        for task_id in self.ledger.plan_worthy():
+            plan = self.ledger.compose_plan(task_id)
+            if plan is None:
+                continue
+            self.transport.post(self.space_id, render_envelope(plan))
+            self.ledger.mark_planned(task_id)
+        for task in self.ledger.unresolved():
+            if self.ledger.is_stalled(task.task_id):
+                continue
+            self.transport.post(self.space_id, stall_text(task, self.owner_line))
+            self.ledger.mark_stalled(task.task_id)
