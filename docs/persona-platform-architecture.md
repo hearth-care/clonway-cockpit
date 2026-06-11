@@ -340,6 +340,9 @@ optimism. Audit the table against the merged PRs before locking the next slice.
 | **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
 | **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
 | **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **DONE** (#79 — coded + merged, the deferred half of #74; not watched-working until the live transport carries it) |
+| **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | **DONE** (PR A of the negotiation slice family — see `docs/cross-worker-handoffs.md`) |
+| **Safe-direction reflex** (blocking-only auto-approval as an `ApprovalPolicy` at the existing gate: structural direction checks + provenance requirement + restart-surviving idempotency) — `reflex.py` | **DONE** (PR B of the negotiation slice family) |
+| **Cross-worker negotiation** (envelope-aware responder, per-ask decisions reconciled in code, task ledger, unified plan + stall escalation — `docs/cross-worker-handoffs.md`) — `negotiation.py` | **DONE** (PRs C+D of the negotiation slice family) |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core **and** the
 per-thread memory wiring are now both merged (#78, #79) — but the production surface is not
@@ -348,6 +351,11 @@ into a worker's Chat edge, and a real DM lands); **surfacing
 model spend in the xops cost page** (the gateway already emits and fans out telemetry); and
 **consumer adoption / pin rollout** so worker repos inherit the newest platform slices. Each gets
 its own slice, its own PR, and its own design note linked back here. **Lock only the next slice.**
+
+The negotiation layer (handoff envelopes, safe-direction reflex, task ledger — see
+`docs/cross-worker-handoffs.md`) is coded and merged framework-side; wiring
+`negotiating_responder` + the sweep into the live `ChatRouter` edge, and real per-worker
+`ReflexRule` registrations, ride the same worker-edge slice as the live transport deploy.
 
 **Next locked slice → the live Chat transport deploy.** Everything it needs framework-side is coded
 (transport core #78, memory wiring #79); it is now a worker-edge + operator-deploy step, not a
