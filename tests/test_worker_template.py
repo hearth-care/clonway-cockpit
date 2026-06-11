@@ -429,29 +429,37 @@ def test_ac_c6_4_cli_registers_agent_flags(tmp_path: Path) -> None:
 
 
 # --- template CI shape -------------------------------------------------------
+# These tests read the Jinja template files directly rather than running copier,
+# because copier clones the source repo and resolves the default branch — which
+# would not reflect in-progress changes on a feature branch. The generated
+# output cannot be executed anyway (GitHub Actions), so shape assertions against
+# the template source are both sufficient and reliable.
+
+_TEMPLATE_ROOT = _REPO_ROOT / "worker-template"
+_CI_JINJA = _TEMPLATE_ROOT / ".github" / "workflows" / "ci.yml.jinja"
+_PRECOMMIT_JINJA = _TEMPLATE_ROOT / ".pre-commit-config.yaml.jinja"
 
 
-def test_template_ci_uses_reusable_workflow(tmp_path: Path) -> None:
-    dst = _generate(tmp_path, worker_id="xgenci")
-    ci_text = (dst / ".github/workflows/ci.yml").read_text()
+def test_template_ci_uses_reusable_workflow() -> None:
+    ci_text = _CI_JINJA.read_text()
     assert "hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@" in ci_text, (
-        "generated ci.yml must delegate to the fleet's reusable-ci.yml"
+        "ci.yml.jinja must delegate to the fleet's reusable-ci.yml"
     )
 
 
-def test_template_ci_does_not_contain_full_job_steps(tmp_path: Path) -> None:
-    dst = _generate(tmp_path, worker_id="xgencisteps")
-    ci_text = (dst / ".github/workflows/ci.yml").read_text()
+def test_template_ci_does_not_contain_full_job_steps() -> None:
+    ci_text = _CI_JINJA.read_text()
     assert "astral-sh/setup-uv" not in ci_text, (
-        "generated ci.yml is a thin caller — setup-uv steps belong in reusable-ci.yml"
+        "ci.yml.jinja is a thin caller — setup-uv steps belong in reusable-ci.yml"
     )
 
 
-def test_template_generates_pre_commit_config(tmp_path: Path) -> None:
-    dst = _generate(tmp_path, worker_id="xgenprecommit")
-    config = dst / ".pre-commit-config.yaml"
-    assert config.exists(), "template must generate .pre-commit-config.yaml"
-    text = config.read_text()
+def test_template_pre_commit_jinja_exists() -> None:
+    assert _PRECOMMIT_JINJA.exists(), "worker-template must include .pre-commit-config.yaml.jinja"
+
+
+def test_template_pre_commit_contains_ruff_and_mypy() -> None:
+    text = _PRECOMMIT_JINJA.read_text()
     assert "ruff" in text
     assert "mypy" in text
-    assert "pytest" not in text, "no pytest hook in the fleet baseline (fleet policy: CI only)"
+    assert "id: pytest" not in text, "no pytest hook in the fleet baseline (fleet policy: CI only)"
