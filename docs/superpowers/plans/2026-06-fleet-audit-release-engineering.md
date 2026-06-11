@@ -1,6 +1,6 @@
 # [Plan] Platform versioning & release engineering
 
-**Status:** draft plan — not implemented
+**Status:** implementation in progress on PR #88
 **Source:** fleet audit 2026-06-11, items C1, C2, C17
 **Wave:** 0
 
@@ -101,9 +101,9 @@ The checklist never names a specific secret, service account, project, or domain
 ## Implementation plan
 
 ### Phase 1 — policy + changelog (no workflow yet)
-- [ ] Write `docs/release-policy.md` per Spec §2.
-- [ ] Write `CHANGELOG.md`: seed `[0.1.0]` retroactively from `git log --first-parent main --oneline` grouped by area (cockpit spine / signals / persona platform / worker-template); `[Unreleased]` section empty.
-- [ ] Test `tests/test_release_policy.py`: (a) `pyproject.toml` version appears as a `## [<version>]` heading in `CHANGELOG.md`; (b) `CHANGELOG.md` contains an `## [Unreleased]` heading. Style: mirrors the existing docs-pinning test `tests/test_docs_delivery_truth.py`.
+- [x] Write `docs/release-policy.md` per Spec §2.
+- [x] Write `CHANGELOG.md`: seed `[0.1.0]` retroactively from `git log --first-parent main --oneline` grouped by area (cockpit spine / signals / persona platform / worker-template); `[Unreleased]` section empty.
+- [x] Test `tests/test_release_policy.py`: (a) `pyproject.toml` version appears as a `## [<version>]` heading in `CHANGELOG.md`; (b) `CHANGELOG.md` contains an `## [Unreleased]` heading. Style: mirrors the existing docs-pinning test `tests/test_docs_delivery_truth.py`.
 
 ### Phase 2 — release workflow + retroactive tag
 - [ ] Add `.github/workflows/release.yml` per Spec §3 (tag + GitHub Release from changelog section; idempotent).
@@ -145,3 +145,11 @@ The checklist never names a specific secret, service account, project, or domain
 - Before starting: re-verify `git tag` is still empty and no `CHANGELOG.md` has appeared; if either exists, reconcile rather than overwrite.
 - Do NOT: tag anything before the changelog test is merged; add Co-Authored-By trailers or generated-with footers (repo policy); put any org/project/account identifier, secret name, or internal URL into any doc — this repo is public; bump worker pins from this repo.
 - Done = acceptance criteria all demonstrably true, `make check` green, release workflow observed running on a real merge.
+
+## HANDOFF NOTES
+
+- Agent: `builder-codex-20260611T171402Z-89967`.
+- Current phase: Phase 1 implemented locally; next concrete step is Phase 2 red test/workflow implementation.
+- Decisions taken: first release remains `0.1.0`; changelog baseline is grouped from first-parent history through current `origin/main` (`8a53e3f`), while the actual `v0.1.0` tag is expected to point at the final merged PR #88 commit.
+- Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`.
+- Known-failing tests: none.
