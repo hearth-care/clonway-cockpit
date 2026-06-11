@@ -58,3 +58,23 @@ target, which processes just those asks and answers the ORIGINAL origin. Model d
 and the audit still post — defer-all with a canned voice line (a reflex without a posted audit
 is forbidden). Forged frames (`origin` ≠ transport author), plans, and responses addressed to
 others are inert.
+
+## The ledger, the plan, and the stall (`TaskLedger` / `NegotiatedSpace`)
+
+`NegotiatedSpace` wraps a `GroupSpace`; after every round its `TaskLedger` re-derives task state
+purely from the round's messages (same forgery check as the responder). A task resolves when
+every ask is terminal: `done` (reflex applied), `accepted`, owner-attention (defer / bare
+decline / failed reflex), or redirect-accepted — a redirected ask can only be terminalized by
+the redirect target. Newly-resolved tasks with anything for the owner get a deterministic
+`plan` envelope posted to the room (it authorizes nothing — execution rides the existing
+owner-command + approval surfaces). Unresolved tasks at round end get ONE prose stall notice —
+escalate, don't push: a turn-cap-orphaned negotiation lands in the owner's lap by design.
+Origin-side, domain code composes a notice, addresses it via `address_notice` (the receptionist
+points), and posts through `space.post_notice(handle, env, say)`.
+
+## What v1 deliberately defers
+
+Live ChatRouter wiring + card rendering (worker-edge, after the Chat deploy slice); open
+un-addressed offers (needs a deliberate `should_respond` extension); model-assisted reflex
+matchers; cross-session ledger persistence; verifiable provenance. See the design spec's
+"Deferred" section before reinventing any of these ad hoc.
