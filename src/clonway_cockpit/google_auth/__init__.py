@@ -6,6 +6,7 @@ from .resolve import (
     GoogleAuthError,
     RefreshLockTimeout,
     ScopeMismatch,
+    resolve_credentials,
 )
 from .store import FileTokenStore, KeyringTokenStore, MemoryTokenStore, TokenStore, default_store
 
@@ -20,4 +21,5 @@ __all__ = [
     "ScopeMismatch",
     "TokenStore",
     "default_store",
+    "resolve_credentials",
 ]

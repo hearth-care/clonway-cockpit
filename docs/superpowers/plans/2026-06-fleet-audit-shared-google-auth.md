@@ -122,8 +122,8 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 - [x] Tests: round-trip per backend; `default_store` fallback when keyring import fails; file perms 0600; atomicity (no partial file on simulated crash between tmp-write and rename).
 
 ### Phase 2 — resolution + scope validation
-- [ ] `resolve_credentials` with fakes for google classes (factory injection, as `signals/emit.py` does); resolution-order table tested case by case (injected > SA env > stored > interactive-or-raise).
-- [ ] Scope-superset gate tests incl. the "narrower token treated as absent" path.
+- [x] `resolve_credentials` with fakes for google classes (factory injection, as `signals/emit.py` does); resolution-order table tested case by case (injected > SA env > stored > interactive-or-raise).
+- [x] Scope-superset gate tests incl. the "narrower token treated as absent" path.
 
 ### Phase 3 — refresh locking
 - [ ] `refresh.py` with `fcntl` lock; tests: two threads/processes racing a fake refresh perform exactly one refresh (count on the fake), lock timeout raises `RefreshLockTimeout`, double-checked reload path covered.
@@ -173,7 +173,8 @@ Verified against worker `origin/main` on 2026-06-11 before implementation:
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 2 next. Phase 1 is implemented in the current pushed increment.
-- Next concrete step: write failing `tests/test_google_auth_resolve.py` cases for resolution order (injected > SA env > stored > interactive/raise) using fake credential factories; then implement `resolve_credentials`.
+- Current phase: Phase 3 next. Phase 1 and Phase 2 are implemented in pushed increments.
+- Next concrete step: write failing `tests/test_google_auth_refresh.py` cases for double-checked file-lock refresh, timeout, and refresh-failure remedy; then implement `refresh.py`.
 - Decisions taken: the shared `TokenStore` API is the plan's `load/save/delete(key, dict)` shape, not the workers' old `(service, key, string)` shape. Worker-specific service/key packing and xbook's file-primary fallback stay in migration shims.
-- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_store.py` (`6 passed`).
+- Decisions taken: `CredentialSpec` carries optional `injected_credentials` and `allow_interactive` so `resolve_credentials(spec)` can keep the documented order without a separate wrapper type.
+- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_resolve.py tests/test_google_auth_store.py` (`12 passed`).
