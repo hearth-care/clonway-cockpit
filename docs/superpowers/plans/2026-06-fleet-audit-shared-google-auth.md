@@ -118,8 +118,8 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 ## Implementation plan
 
 ### Phase 1 — store + spec + errors
-- [ ] `store.py`, `resolve.py` types (`CredentialSpec`, errors); `MemoryTokenStore`, `FileTokenStore` (atomic write + perms test), `KeyringTokenStore` behind a lazy `keyring` import with injected fake in tests.
-- [ ] Tests: round-trip per backend; `default_store` fallback when keyring import fails; file perms 0600; atomicity (no partial file on simulated crash between tmp-write and rename).
+- [x] `store.py`, `resolve.py` types (`CredentialSpec`, errors); `MemoryTokenStore`, `FileTokenStore` (atomic write + perms test), `KeyringTokenStore` behind a lazy `keyring` import with injected fake in tests.
+- [x] Tests: round-trip per backend; `default_store` fallback when keyring import fails; file perms 0600; atomicity (no partial file on simulated crash between tmp-write and rename).
 
 ### Phase 2 — resolution + scope validation
 - [ ] `resolve_credentials` with fakes for google classes (factory injection, as `signals/emit.py` does); resolution-order table tested case by case (injected > SA env > stored > interactive-or-raise).
@@ -159,3 +159,21 @@ One exception family: `GoogleAuthError` → `CredentialsUnavailable` (with `.rem
 - Before Phase 2, do the three-store diff survey and paste the difference table into the PR description.
 - Do NOT: add google packages to the core dependencies (optional extra only); implement Secret Manager hydration (explicitly out of scope); put any real account/subject/project value in any file (public repo — use `example.invalid`-style placeholders); start worker migration PRs from this branch.
 - Done = acceptance criteria verified, `make check` + prod-import green, changelog entry present.
+
+## Worker token-store survey
+
+Verified against worker `origin/main` on 2026-06-11 before implementation:
+
+| Worker | Current file(s) | Key naming / layout | Backend selection | Behaviour to preserve |
+| --- | --- | --- | --- | --- |
+| xbook | `src/xbook/token_store.py`; `src/xbook/workspace/{gmail_oauth,drive,sheets}.py` | Existing store takes `(service, key)` strings; file backend stores one JSON object per service under `<root>/tokens/<service>.json`. | Default is file-primary rooted at `XBOOK_STATE_ROOT` or `.xbook`, with keyring fallback; forced `file` requires `XBOOK_STATE_ROOT`. | Shared module covers the file/keyring seam, but xbook's file-primary fallback remains a worker shim decision rather than a framework default. |
+| xhr | `src/xhr/token_store.py`; `src/xhr/integrations/sheets.py` | Existing store takes `(service, key)` strings; file backend stores one JSON object per service under `<root>/tokens/<service>.json`. | Default is keyring; forced `file` requires `XHR_STATE_ROOT`. Sheets can use impersonated ADC or `WORKSPACE_SA_KEY`. | Shared `default_store` covers keyring-probe-to-file fallback; impersonated ADC is out of this plan and remains worker-owned. |
+| xletter | `src/xletter/token_store.py`; `src/xletter/workspace/{gmail,drive}.py` | Existing store takes `(service, key)` strings; file backend stores one JSON object per service under `<root>/tokens/<service>.json`. | Default is keyring; forced `file` requires `XLETTER_STATE_ROOT`. Workspace clients build SA/DWD inline. | Shared `CredentialSpec` plus `resolve_credentials` should replace the copied token store and SA/DWD construction without changing scopes. |
+| xquill | `src/xquill/oauth.py` | Single token JSON path supplied by caller, not service/key split. | Uses installed-app OAuth and token file directly. | Its scope-superset check, no-TTY remedy, atomic token write, and post-lock reload are framework requirements; token deletion on refresh failure is deliberately not copied. |
+
+## HANDOFF NOTES
+
+- Current phase: Phase 2 next. Phase 1 is implemented in the current pushed increment.
+- Next concrete step: write failing `tests/test_google_auth_resolve.py` cases for resolution order (injected > SA env > stored > interactive/raise) using fake credential factories; then implement `resolve_credentials`.
+- Decisions taken: the shared `TokenStore` API is the plan's `load/save/delete(key, dict)` shape, not the workers' old `(service, key, string)` shape. Worker-specific service/key packing and xbook's file-primary fallback stay in migration shims.
+- Known-failing tests: none after `uv run pytest -q tests/test_google_auth_store.py` (`6 passed`).
