@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,8 +49,8 @@ def test_release_workflow_tags_version_from_changelog() -> None:
     assert "pyproject.toml" in text
     assert "permissions:\n  contents: write" in text
     assert "tomllib" in text
-    assert "git rev-parse --verify --quiet \"refs/tags/${TAG}\"" in text
-    assert "gh release create \"${TAG}\"" in text
+    assert 'git rev-parse --verify --quiet "refs/tags/${TAG}"' in text
+    assert 'gh release create "${TAG}"' in text
     assert "## [${VERSION}]" in text
 
 

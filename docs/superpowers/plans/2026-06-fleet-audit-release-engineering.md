@@ -149,9 +149,10 @@ The checklist never names a specific secret, service account, project, or domain
 ## HANDOFF NOTES
 
 - Agent: `builder-codex-20260611T171402Z-89967`.
-- Current phase: Phase 3 implemented locally; next concrete step is Phase 3 green verification, then full gates/rebase.
+- Current phase: Repo-side implementation complete; next concrete step is operator QA, then post-merge release workflow dispatch/verification.
 - Decisions taken: first release remains `0.1.0`; changelog baseline is grouped from first-parent history through current `origin/main` (`8a53e3f`), while the actual `v0.1.0` tag is expected to point at the final merged PR #88 commit.
 - Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`; Phase 2 red test failed because `.github/workflows/release.yml` was missing; Phase 2 green `uv run pytest tests/test_release_policy.py -q` passed with `3 passed`; Phase 3 red test failed because `docs/pin-sync.md`, `docs/security/public-history-checklist.md`, and the gitleaks CI job were missing; Phase 3 green `uv run pytest tests/test_release_policy.py -q` passed with `6 passed`.
 - Deferred/operator-only: workflow_dispatch for `v0.1.0` cannot be truthfully run until this no-merge PR is merged to `main`, because the required target is the merged plan-implementation commit; private full-history credential rotation confirmation must be done from operator records; worker pin PRs and orchestrator doctor work are separate repos.
 - Current remote pin survey used in `docs/pin-sync.md`: GitHub default branches on 2026-06-11 showed seven workers pinned to `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` and Auto-HR pinned to `a75f7a02e9da214d6eb55cd6b6f444d03251b114`.
+- Final local gates after rebase onto `origin/main`: `make test` passed with `764 passed`; `pre-commit run --all-files` could not run because `.pre-commit-config.yaml` is absent; `make check` passed with ruff clean, format clean, mypy clean, and `764 passed` with 12 copier dirty-template warnings.
 - Known-failing tests: none.
