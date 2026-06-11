@@ -42,3 +42,19 @@ working-memory note, and an already-applied reflex is *reported* ("previously ap
 than skipped — so a redelivered message still posts a true audit. The executor (`ReflexRule.run`)
 is worker code; its exceptions are caught and reported as `applied=False`, never crash the round.
 Matchers are pure and deterministic — a model never decides to fire a write path.
+
+## The negotiating responder (`clonway_cockpit.negotiation`)
+
+`negotiating_responder(inner, colleagues, completer, role=..., memory_base=..., reflex_kits=...)`
+wraps any plain-chat responder. No envelope → straight to `inner` (ordinary conversation is
+untouched). Envelope → this layer fully owns the outcome (a code-composed `response`, or
+silence) — never free-form chat. Per inbound notice the persona: fires its registered reflexes
+(code, before any model call), consults its private working memory, asks the model for per-ask
+accept/decline/defer decisions via `complete_structured`, reconciles them in code
+(verbatim-then-positional matching; missing → defer; bad enum → defer; unknown redirect →
+dropped), records the task in working memory + the thread transcript (atomic pair + rollback),
+and replies. A declined ask may carry a `redirect`; the rendered `@handle` engages the redirect
+target, which processes just those asks and answers the ORIGINAL origin. Model down? Reflexes
+and the audit still post — defer-all with a canned voice line (a reflex without a posted audit
+is forbidden). Forged frames (`origin` ≠ transport author), plans, and responses addressed to
+others are inert.
