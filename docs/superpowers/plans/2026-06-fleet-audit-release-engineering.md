@@ -106,7 +106,7 @@ The checklist never names a specific secret, service account, project, or domain
 - [x] Test `tests/test_release_policy.py`: (a) `pyproject.toml` version appears as a `## [<version>]` heading in `CHANGELOG.md`; (b) `CHANGELOG.md` contains an `## [Unreleased]` heading. Style: mirrors the existing docs-pinning test `tests/test_docs_delivery_truth.py`.
 
 ### Phase 2 — release workflow + retroactive tag
-- [ ] Add `.github/workflows/release.yml` per Spec §3 (tag + GitHub Release from changelog section; idempotent).
+- [x] Add `.github/workflows/release.yml` per Spec §3 (tag + GitHub Release from changelog section; idempotent).
 - [ ] Run it once via `workflow_dispatch` to cut `v0.1.0` at the merged plan-implementation commit.
 - [ ] Verify: `git ls-remote --tags origin` shows `v0.1.0`; release body matches the changelog section.
 
@@ -149,7 +149,8 @@ The checklist never names a specific secret, service account, project, or domain
 ## HANDOFF NOTES
 
 - Agent: `builder-codex-20260611T171402Z-89967`.
-- Current phase: Phase 1 implemented locally; next concrete step is Phase 2 red test/workflow implementation.
+- Current phase: Phase 2 workflow implemented locally; next concrete step is Phase 2 green verification and then Phase 3 red tests/docs.
 - Decisions taken: first release remains `0.1.0`; changelog baseline is grouped from first-parent history through current `origin/main` (`8a53e3f`), while the actual `v0.1.0` tag is expected to point at the final merged PR #88 commit.
-- Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`.
+- Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`; Phase 2 red test failed because `.github/workflows/release.yml` was missing; Phase 2 green `uv run pytest tests/test_release_policy.py -q` passed with `3 passed`.
+- Deferred/operator-only: workflow_dispatch for `v0.1.0` cannot be truthfully run until this no-merge PR is merged to `main`, because the required target is the merged plan-implementation commit.
 - Known-failing tests: none.

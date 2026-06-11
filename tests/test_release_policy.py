@@ -13,6 +13,10 @@ def _changelog() -> str:
     return (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
+def _release_workflow() -> str:
+    return (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+
 def test_project_version_has_matching_changelog_section() -> None:
     text = _changelog()
 
@@ -23,3 +27,16 @@ def test_changelog_keeps_unreleased_section() -> None:
     text = _changelog()
 
     assert "## [Unreleased]" in text
+
+
+def test_release_workflow_tags_version_from_changelog() -> None:
+    text = _release_workflow()
+
+    assert "workflow_dispatch:" in text
+    assert "branches: [main]" in text
+    assert "pyproject.toml" in text
+    assert "permissions:\n  contents: write" in text
+    assert "tomllib" in text
+    assert "git rev-parse --verify --quiet \"refs/tags/${TAG}\"" in text
+    assert "gh release create \"${TAG}\"" in text
+    assert "## [${VERSION}]" in text

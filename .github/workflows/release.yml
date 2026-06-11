@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "CHANGELOG.md"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag-and-release:
+    name: Tag version and publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read project version
+        id: version
+        run: |
+          VERSION="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["version"])
+          PY
+          )"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Stop if tag already exists
+        id: existing
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git fetch --tags --force origin
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+            echo "${TAG} already exists; release workflow is a no-op."
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Extract changelog section
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Release notes come from the changelog section headed exactly like: ## [${VERSION}]
+          python - <<'PY' > release-body.md
+          import re
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          match = re.search(
+              rf"^## \[{re.escape(version)}\].*?\n(?P<body>.*?)(?=^## \[|\Z)",
+              text,
+              flags=re.MULTILINE | re.DOTALL,
+          )
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          body = match.group("body").strip()
+          if not body:
+              raise SystemExit(f"CHANGELOG.md section for {version} is empty")
+          print(body)
+          PY
+
+      - name: Create tag
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "${TAG}"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create GitHub Release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "${TAG}" --title "${TAG}" --notes-file release-body.md
