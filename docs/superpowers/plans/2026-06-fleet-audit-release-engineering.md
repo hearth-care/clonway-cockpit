@@ -1,6 +1,6 @@
 # [Plan] Platform versioning & release engineering
 
-**Status:** implementation in progress on PR #88
+**Status:** repo-side implementation complete on PR #88; post-merge/operator steps deferred below
 **Source:** fleet audit 2026-06-11, items C1, C2, C17
 **Wave:** 0
 
@@ -107,8 +107,8 @@ The checklist never names a specific secret, service account, project, or domain
 
 ### Phase 2 — release workflow + retroactive tag
 - [x] Add `.github/workflows/release.yml` per Spec §3 (tag + GitHub Release from changelog section; idempotent).
-- [ ] Run it once via `workflow_dispatch` to cut `v0.1.0` at the merged plan-implementation commit.
-- [ ] Verify: `git ls-remote --tags origin` shows `v0.1.0`; release body matches the changelog section.
+- [ ] Deferred: run it once via `workflow_dispatch` to cut `v0.1.0` at the merged plan-implementation commit. Reason: this PR must not be merged by the agent, and the required target is the future merge commit on `main`.
+- [ ] Deferred: verify `git ls-remote --tags origin` shows `v0.1.0`; release body matches the changelog section. Reason: depends on the post-merge workflow run above.
 
 ### Phase 3 — pin-sync advisory + rotation checklist
 - [x] Write `docs/pin-sync.md` per Spec §4, naming `v0.1.0` as supported and listing the eight worker repos as a checklist (repo name + current pin at time of writing).
@@ -117,8 +117,8 @@ The checklist never names a specific secret, service account, project, or domain
 - [x] Update `CLAUDE.md` §"Consumption model": pins are tags; releases via changelog+version PR.
 
 ### Phase 4 — worker follow-ups (tracked here, executed per-repo)
-- [ ] Eight one-line pin PRs (`rev = "v0.1.0"` + `uv lock`) — consumers (orchestrator) first.
-- [ ] Orchestrator doctor check: actual pin vs `docs/pin-sync.md` supported line (separate repo, separate plan).
+- [ ] Deferred: eight one-line pin PRs (`rev = "v0.1.0"` + `uv lock`) — consumers (orchestrator) first. Reason: separate worker repos and requires `v0.1.0` to exist after this PR merges.
+- [ ] Deferred: orchestrator doctor check: actual pin vs `docs/pin-sync.md` supported line. Reason: separate repo, separate plan, and not bundled into this clonway-cockpit PR.
 
 ## Acceptance criteria
 
@@ -153,4 +153,5 @@ The checklist never names a specific secret, service account, project, or domain
 - Decisions taken: first release remains `0.1.0`; changelog baseline is grouped from first-parent history through current `origin/main` (`8a53e3f`), while the actual `v0.1.0` tag is expected to point at the final merged PR #88 commit.
 - Verification so far: baseline `uv run pytest -q` passed with `758 passed`; Phase 1 red test failed because `CHANGELOG.md` was missing; Phase 1 green `uv run pytest tests/test_release_policy.py -q` passed with `2 passed`; Phase 2 red test failed because `.github/workflows/release.yml` was missing; Phase 2 green `uv run pytest tests/test_release_policy.py -q` passed with `3 passed`; Phase 3 red test failed because `docs/pin-sync.md`, `docs/security/public-history-checklist.md`, and the gitleaks CI job were missing; Phase 3 green `uv run pytest tests/test_release_policy.py -q` passed with `6 passed`.
 - Deferred/operator-only: workflow_dispatch for `v0.1.0` cannot be truthfully run until this no-merge PR is merged to `main`, because the required target is the merged plan-implementation commit; private full-history credential rotation confirmation must be done from operator records; worker pin PRs and orchestrator doctor work are separate repos.
+- Current remote pin survey used in `docs/pin-sync.md`: GitHub default branches on 2026-06-11 showed seven workers pinned to `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` and Auto-HR pinned to `a75f7a02e9da214d6eb55cd6b6f444d03251b114`.
 - Known-failing tests: none.
