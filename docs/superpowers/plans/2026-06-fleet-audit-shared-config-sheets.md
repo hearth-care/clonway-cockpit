@@ -160,7 +160,7 @@ new double-underscore overlay.
 
 ## HANDOFF NOTES
 
-- Current phase: QA-fix focused verification for the three QA FAIL findings.
+- Current phase: final PR finish protocol after full post-rebase gates.
 - Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog; Phase 4 migration recipe table; QA-fix RED/GREEN tests added for `get_records(header_row=2)`, unset `SecretEnvName` provenance, and release-tag onboarding docs.
 - Verification so far:
   - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
@@ -181,10 +181,16 @@ new double-underscore overlay.
   - QA-fix GREEN: `uv run pytest tests/test_gsheets.py::test_get_records_with_non_default_header_row_fetches_data_rows -q` -> `1 passed in 0.01s`
   - QA-fix GREEN: `uv run pytest tests/test_config_loader.py::test_aggregates_validation_errors_and_unset_secret_env tests/test_config_loader.py::test_unset_secret_env_error_uses_env_overlay_provenance -q` -> `2 passed in 0.05s`
   - QA-fix GREEN: `uv run pytest tests/test_shared_config_sheets_docs.py::test_onboarding_docs_include_config_and_sheets_examples -q` -> `1 passed in 0.01s`
+  - `git rebase origin/main` after QA fix -> `Current branch claude/plan-shared-config-sheets is up to date.`
+  - `make check` after QA fix -> ruff passed; format `131 files already formatted`; mypy `Success: no issues found in 54 source files`; pytest `881 passed in 17.71s`
+  - `uv run --no-dev python -c "import clonway_cockpit"` after QA fix -> exit 0, no output
+  - `pre-commit run --all-files` after QA fix -> `InvalidConfigError: .pre-commit-config.yaml is not a file` (repo has no pre-commit config)
+  - `make template-smoke` after QA fix -> generated xsmoke; generated pytest `15 passed, 1 xfailed`; ruff passed; format `18 files already formatted`; mypy `Success: no issues found in 12 source files`; CLI off `signals: disabled`; CLI on `signals: emitted 0`; `template-smoke PASSED for xsmoke (job)`
 - Decisions:
   - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails. QA fix: those `ConfigError` entries now use the config value provenance (`file <path>` or `env <VAR>`) and name the missing secret env var in the message body.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
   - Template tests now pass `vcs_ref="HEAD"` to Copier so they exercise the branch head, including newly added template files.
   - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
+  - QA docs fix changes an operator-facing onboarding step: worker pins now use the release tag named in `docs/pin-sync.md` (example `rev = "v0.1.0"`), not raw commit SHAs.
 - Known-failing tests: none from focused QA-fix runs.
-- Next concrete step: commit/push the focused QA-fix increment, then run full gates and rebase/force-push.
+- Next concrete step: commit/push this final handoff-note update, post the required runbook delta, mark PR ready/needs-qa, and add DONE evidence.
