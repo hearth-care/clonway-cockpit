@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from .store import TokenStore, default_store
 
@@ -77,8 +78,8 @@ def resolve_credentials(
         raw = runtime_env.get(spec.sa_info_env, "").strip()
         if raw:
             info = _load_json_object(raw, source=f"${spec.sa_info_env}")
-            factory = service_account_factory or _default_service_account_factory
-            creds = factory(info, spec.scopes, spec.subject)
+            sa_factory = service_account_factory or _default_service_account_factory
+            creds = sa_factory(info, spec.scopes, spec.subject)
             _emit(on_event, "credentials.service_account", spec)
             return creds
 
@@ -90,8 +91,8 @@ def resolve_credentials(
     if token is not None:
         missing_scopes = _missing_scopes(token, spec.scopes)
         if not missing_scopes:
-            factory = user_credentials_factory or _default_user_credentials_factory
-            creds = factory(token, spec.scopes)
+            user_factory = user_credentials_factory or _default_user_credentials_factory
+            creds = user_factory(token, spec.scopes)
             if getattr(creds, "expired", False) or not getattr(creds, "valid", True):
                 refresher = refresh_func or _default_refresh_if_needed
                 creds = refresher(creds, store=token_store, key=spec.key, scopes=spec.scopes)

@@ -16,7 +16,7 @@ class FakeInstalledAppFlow:
         self.run_calls: list[dict[str, Any]] = []
 
     @classmethod
-    def from_client_config(cls, config: dict[str, Any], scopes: list[str]) -> "FakeInstalledAppFlow":
+    def from_client_config(cls, config: dict[str, Any], scopes: list[str]) -> FakeInstalledAppFlow:
         cls.calls.append((config, scopes))
         return cls()
 
@@ -47,7 +47,9 @@ def test_run_interactive_flow_uses_installed_app_client_config_from_env() -> Non
     ]
 
 
-def test_run_interactive_flow_has_clear_missing_extra_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_interactive_flow_has_clear_missing_extra_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def missing_import(_name: str) -> Any:
         raise ImportError("no google auth oauthlib")
 

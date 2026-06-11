@@ -100,7 +100,9 @@ def test_default_store_falls_back_to_file_when_keyring_probe_fails(
 ) -> None:
     monkeypatch.setenv("XLETTER_STATE_ROOT", str(tmp_path))
 
-    store = default_store("xletter", base_dir_env="XLETTER_STATE_ROOT", keyring_module=BrokenKeyring())
+    store = default_store(
+        "xletter", base_dir_env="XLETTER_STATE_ROOT", keyring_module=BrokenKeyring()
+    )
 
     assert isinstance(store, FileTokenStore)
     store.save("gmail", {"token": "fake-access"})

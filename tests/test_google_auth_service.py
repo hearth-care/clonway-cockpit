@@ -50,9 +50,7 @@ def test_build_service_uses_cache_discovery_false_by_default() -> None:
     result = build_service("gmail", "v1", "fake-creds", builder=builder)
 
     assert result == "fake-service"
-    assert calls == [
-        ("gmail", "v1", {"credentials": "fake-creds", "cache_discovery": False})
-    ]
+    assert calls == [("gmail", "v1", {"credentials": "fake-creds", "cache_discovery": False})]
 
 
 def test_google_auth_import_does_not_require_google_extra() -> None:
@@ -61,7 +59,9 @@ def test_google_auth_import_does_not_require_google_extra() -> None:
     assert module.CredentialSpec(worker_id="xletter", key="gmail", scopes=("scope-a",))
 
 
-def test_google_touching_call_has_clear_missing_extra_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_google_touching_call_has_clear_missing_extra_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def missing_import(_name: str) -> Any:
         raise ImportError("no google")
 

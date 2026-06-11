@@ -30,7 +30,9 @@ def run_interactive_flow(
     try:
         client_config = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise CredentialsUnavailable(f"${spec.client_config_env} does not contain valid JSON") from exc
+        raise CredentialsUnavailable(
+            f"${spec.client_config_env} does not contain valid JSON"
+        ) from exc
     flow_type = flow_class or _installed_app_flow_class()
     flow = flow_type.from_client_config(client_config, list(spec.scopes))
     return flow.run_local_server(

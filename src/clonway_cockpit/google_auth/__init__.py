@@ -1,5 +1,6 @@
 """Shared Google credential lifecycle helpers for Clonway workers."""
 
+from .refresh import refresh_if_needed
 from .resolve import (
     CredentialSpec,
     CredentialsUnavailable,
@@ -8,7 +9,6 @@ from .resolve import (
     ScopeMismatch,
     resolve_credentials,
 )
-from .refresh import refresh_if_needed
 from .service import build_service, sa_credentials
 from .store import FileTokenStore, KeyringTokenStore, MemoryTokenStore, TokenStore, default_store
 
