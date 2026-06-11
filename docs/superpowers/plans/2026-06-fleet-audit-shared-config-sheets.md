@@ -96,8 +96,8 @@ config = ["pydantic>=2", "pyyaml>=6"]
 - [x] Prod-import job still green without extras (no eager import from package `__init__`).
 
 ### Phase 2 — gsheets
-- [ ] `src/clonway_cockpit/gsheets.py` per Spec §2 with a `FakeSheetsService` test double in `tests/`.
-- [ ] Tests: A1/col-letter round-trips (1, 26, 27, 52, 703); `get_records` ragged-row padding; retry sequence on 429 (count + backoff schedule via injected sleep) and give-up raise; append/update payload shapes pinned against captured request dicts from the existing worker copies (golden-request tests — capture by reading the two verified modules' call construction, not by network).
+- [x] `src/clonway_cockpit/gsheets.py` per Spec §2 with a `FakeSheetsService` test double in `tests/`.
+- [x] Tests: A1/col-letter round-trips (1, 26, 27, 52, 703); `get_records` ragged-row padding; retry sequence on 429 (count + backoff schedule via injected sleep) and give-up raise; append/update payload shapes pinned against captured request dicts from the existing worker copies (golden-request tests — capture by reading the two verified modules' call construction, not by network).
 
 ### Phase 3 — docs, template, changelog
 - [ ] Usage sections in `docs/onboarding-a-worker.md` (config: a 10-line worker example with a 3-field model; gsheets: construct-with-injected-service example).
@@ -134,13 +134,16 @@ config = ["pydantic>=2", "pyyaml>=6"]
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 2 next (`clonway_cockpit.gsheets`).
-- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; no eager import from `clonway_cockpit.__init__`.
+- Current phase: Phase 3 next (docs, worker-template, changelog).
+- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports.
 - Verification so far:
   - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
   - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
+  - `uv run pytest tests/test_gsheets.py -q` -> `13 passed in 0.01s`
+  - `uv run pytest tests/test_config_loader.py tests/test_gsheets.py -q` -> `23 passed in 0.07s`
 - Decisions:
   - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
-- Known-failing tests: none from Phase 1 focused run.
-- Next concrete step: write `tests/test_gsheets.py` with fake Sheets service and watch it fail for the missing module before implementing Phase 2.
+  - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
+- Known-failing tests: none from focused Phase 1+2 runs.
+- Next concrete step: add onboarding docs examples, worker-template config model/loader wiring, and changelog entry, then run template tests/smoke gates.
