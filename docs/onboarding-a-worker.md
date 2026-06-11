@@ -29,6 +29,56 @@ dependencies = [
 clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "<sha>" }
 ```
 
+If the worker talks to Google APIs, install the optional Google extra rather
+than copying a local token store:
+
+```toml
+dependencies = [
+    # ...
+    "clonway-cockpit[google]",
+]
+```
+
+Then declare each Google surface as one `CredentialSpec` and resolve it at the
+integration boundary:
+
+```python
+from clonway_cockpit.google_auth import CredentialSpec, default_store, resolve_credentials
+
+GMAIL_SPEC = CredentialSpec(
+    worker_id="<worker>",
+    key="gmail",
+    scopes=("https://www.googleapis.com/auth/gmail.send",),
+    client_config_env="<WORKER>_GMAIL_CLIENT_JSON",
+    allow_interactive=False,
+)
+
+creds = resolve_credentials(
+    GMAIL_SPEC,
+    store=default_store("<worker>", base_dir_env="<WORKER>_STATE_ROOT"),
+)
+```
+
+Credential resolution is deliberately fixed:
+
+1. injected credentials, for tests and embedders
+2. service-account JSON from `sa_info_env`, with optional `subject` for DWD
+3. stored user token, with scope-superset validation and locked refresh
+4. interactive installed-app flow only when `allow_interactive=True`
+
+Google helpers never encode account names, subjects, project names, or secret
+values. Workers keep those in their own config or secret layer and pass env-var
+names into `CredentialSpec`.
+
+### Google credential migration recipe
+
+| Worker | Delete after migration | Replacement spec values | Notes |
+| --- | --- | --- | --- |
+| xbook | `src/xbook/token_store.py` once Xero/TrueLayer non-Google storage has its own shim; Google callers in `src/xbook/workspace/{gmail_oauth,drive,sheets}.py` | `worker_id="xbook"`; keys such as `gmail`, `drive`, `sheets`; `base_dir_env="XBOOK_STATE_ROOT"`; service-account env names owned by xbook | Preserve xbook's file-primary fallback in a worker shim if non-Google OAuth still needs it. |
+| xhr | `src/xhr/token_store.py`; Google bootstrap in `src/xhr/integrations/sheets.py` | `worker_id="xhr"`; `key="sheets"`; `base_dir_env="XHR_STATE_ROOT"`; service-account env names owned by xhr | Existing impersonated-ADC mode remains worker-owned unless a later framework helper covers it. |
+| xletter | `src/xletter/token_store.py`; SA/DWD bootstrap in `src/xletter/workspace/{gmail,drive}.py` | `worker_id="xletter"`; keys such as `gmail`, `drive`; `base_dir_env="XLETTER_STATE_ROOT"`; service-account and subject env names owned by xletter | Keep Gmail compose/read scopes declared per surface; do not widen during migration. |
+| xquill | OAuth helpers in `src/xquill/oauth.py` after parity tests prove the daemon path | `worker_id="xquill"`; `key="gmail"`; file store rooted at the existing token directory; installed-app client config env owned by xquill | Reuse the shared refresh lock and no-TTY remedy; do not copy the old automatic token deletion on refresh failure. |
+
 ### The Dockerfile git-fix (slim images only)
 
 If your worker builds a **slim** Docker image (`python:3.12-slim`, the Cloud Run

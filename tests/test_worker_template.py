@@ -41,6 +41,11 @@ _NOW = datetime(2026, 6, 1, 7, 0, tzinfo=UTC)
 def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> Path:
     """Generate a worker into ``tmp_path`` and return its repo root."""
     dst = tmp_path / worker_id
+    source_ref = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=_REPO_ROOT,
+        text=True,
+    ).strip()
     copier.run_copy(
         str(_REPO_ROOT),
         dst,
@@ -54,6 +59,7 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
         defaults=True,
         quiet=True,
         unsafe=True,  # template has computed values; we trust our own template
+        vcs_ref=source_ref,
     )
     return dst
 
@@ -122,6 +128,7 @@ def test_template_generates_expected_layout(tmp_path: Path) -> None:
         "src/xgenlayout/cli/__init__.py",
         "src/xgenlayout/cli/cockpit.py",
         "src/xgenlayout/cli/home_hooks.py",
+        "src/xgenlayout/google_auth.py",
         "src/xgenlayout/cli/signals.py",
         "src/xgenlayout/signals/build.py",
         "src/xgenlayout/signals/emit.py",
@@ -178,6 +185,17 @@ service.users().messages().send(userId="me", body={"raw": "..."}).execute()
 def test_local_shape_skips_dockerfile(tmp_path: Path) -> None:
     dst = _generate(tmp_path, worker_id="xgenlocal", deploy_shape="local")
     assert not (dst / "Dockerfile").exists()
+
+
+def test_template_google_auth_stub_uses_shared_credential_spec(tmp_path: Path) -> None:
+    dst = _generate(tmp_path, worker_id="xgengoogle")
+    source = (dst / "src/xgengoogle/google_auth.py").read_text()
+
+    assert "CredentialSpec" in source
+    assert "resolve_credentials" in source
+    assert "TokenStore" in source
+    assert "example.invalid" in source
+    assert "token_store.py" not in source
 
 
 # --- AC-C6-3 — mandatory scan_horizon, returns the (empty) Signal set ------

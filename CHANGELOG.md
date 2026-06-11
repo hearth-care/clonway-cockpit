@@ -37,6 +37,11 @@ pre-1.0 rules documented in docs/release-policy.md.
   raises `BankHolidayHorizonError`; CI fails when the table has < 12 months of
   runway (the annual refresh reminder).
 
+- **`clonway_cockpit.google_auth`** — shared optional-extra Google credential
+  seam for Clonway workers. It covers token stores, credential resolution,
+  locked refresh, interactive OAuth, and service-account/DWD construction while
+  keeping the core package importable without Google dependencies.
+
 ### Changed
 
 - **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim

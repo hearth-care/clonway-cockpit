@@ -15,6 +15,11 @@ dependencies = [
 litellm = [
     "litellm>=1.0",
 ]
+google = [
+    "google-api-python-client>=2.197.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
+]
 
 [build-system]
 requires = ["hatchling"]
