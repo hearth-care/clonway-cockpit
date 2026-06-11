@@ -11,12 +11,10 @@ import os
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, Any, TypeVar, get_args, get_origin
+from typing import Annotated, Any, get_args, get_origin
 
 import yaml
 from pydantic import BaseModel, ValidationError
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class ConfigError(Exception):
@@ -35,7 +33,7 @@ _SECRET_ENV_NAME = _SecretEnvName()
 SecretEnvName = Annotated[str, _SECRET_ENV_NAME]
 
 
-def load_config(
+def load_config[ModelT: BaseModel](
     model: type[ModelT],
     *,
     worker_id: str,
@@ -83,9 +81,7 @@ def load_config(
     return cfg
 
 
-def _candidate_paths(
-    worker_id: str, env_prefix: str, paths: Sequence[Path] | None
-) -> list[Path]:
+def _candidate_paths(worker_id: str, env_prefix: str, paths: Sequence[Path] | None) -> list[Path]:
     if paths is not None:
         return [Path(path) for path in paths]
     env_path = os.environ.get(f"{env_prefix}_CONFIG")
@@ -101,7 +97,9 @@ def _candidate_paths(
     return candidates
 
 
-def _load_file(paths: Sequence[Path], *, require_file: bool) -> tuple[dict[str, Any], Path | None, list[str]]:
+def _load_file(
+    paths: Sequence[Path], *, require_file: bool
+) -> tuple[dict[str, Any], Path | None, list[str]]:
     problems: list[str] = []
     for path in paths:
         if not path.exists():
@@ -148,7 +146,7 @@ def _set_nested(data: dict[str, Any], parts: tuple[str, ...], value: str) -> Non
 
 
 def _format_validation_error(
-    error: dict[str, Any], provenance: Mapping[tuple[str, ...], str], file_path: Path | None
+    error: Any, provenance: Mapping[tuple[str, ...], str], file_path: Path | None
 ) -> str:
     loc = tuple(str(part) for part in error["loc"])
     source = _source_for(loc, provenance, file_path)
@@ -182,7 +180,9 @@ def _secret_env_problems(
     return problems
 
 
-def _secret_field_locs(model: type[BaseModel], prefix: tuple[str, ...] = ()) -> list[tuple[str, ...]]:
+def _secret_field_locs(
+    model: type[BaseModel], prefix: tuple[str, ...] = ()
+) -> list[tuple[str, ...]]:
     locs: list[tuple[str, ...]] = []
     for name, field in model.model_fields.items():
         loc = (*prefix, name)

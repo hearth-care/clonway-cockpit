@@ -170,10 +170,15 @@ new double-underscore overlay.
   - `uv run pytest tests/test_worker_template.py::test_template_generates_expected_layout tests/test_worker_template.py::test_template_config_loads_defaults_and_env_overlay tests/test_shared_config_sheets_docs.py -q` -> `4 passed in 2.01s`
   - `uv run pytest tests/test_worker_template.py -q` -> `13 passed in 14.07s`
   - `uv run pytest tests/test_shared_config_sheets_docs.py::test_plan_contains_worker_migration_recipe -q` -> RED before recipe (`assert '## Migration recipe' in text`)
+  - `uv run pytest tests/test_shared_config_sheets_docs.py -q` -> `3 passed in 0.01s`
+  - `make check` after rebase -> ruff passed; format `131 files already formatted`; mypy `Success: no issues found in 54 source files`; pytest `879 passed in 16.16s`
+  - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
+  - `make template-smoke` after rebase -> generated xsmoke; generated pytest `15 passed, 1 xfailed`; ruff passed; format `18 files already formatted`; mypy `Success: no issues found in 12 source files`; CLI off `signals: disabled`; CLI on `signals: emitted 0`; `template-smoke PASSED for xsmoke (job)`
+  - `pre-commit run --all-files` after rebase -> `InvalidConfigError: .pre-commit-config.yaml is not a file` (repo has no pre-commit config)
 - Decisions:
   - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
   - Template tests now pass `vcs_ref="HEAD"` to Copier so they exercise the branch head, including newly added template files.
   - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
 - Known-failing tests: none from focused Phase 1-3 runs.
-- Next concrete step: run the Phase 4 doc test green, then full local gates (`make check`, prod-import, `make template-smoke`) before rebasing onto `origin/main`.
+- Next concrete step: force-push rebased branch and run finish protocol.

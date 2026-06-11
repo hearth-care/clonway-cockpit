@@ -86,21 +86,24 @@ class SheetsClient:
 
     def batch_get(self, ranges: Sequence[str]) -> dict[str, list[list[str]]]:
         response = self._execute(
-            lambda: self._service.spreadsheets()
-            .values()
-            .batchGet(spreadsheetId=self._spreadsheet_id, ranges=list(ranges))
+            lambda: (
+                self._service.spreadsheets()
+                .values()
+                .batchGet(spreadsheetId=self._spreadsheet_id, ranges=list(ranges))
+            )
         )
         return {
-            item["range"]: item.get("values", []) or []
-            for item in response.get("valueRanges", [])
+            item["range"]: item.get("values", []) or [] for item in response.get("valueRanges", [])
         }
 
     def get_records(self, tab: str, *, header_row: int = 1) -> list[dict[str, str]]:
         range_ = tab if header_row == 1 else f"{a1(tab)}!{header_row}:{header_row}"
         response = self._execute(
-            lambda: self._service.spreadsheets()
-            .values()
-            .get(spreadsheetId=self._spreadsheet_id, range=range_)
+            lambda: (
+                self._service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self._spreadsheet_id, range=range_)
+            )
         )
         rows = response.get("values", []) or []
         if not rows:
@@ -121,14 +124,16 @@ class SheetsClient:
         value_input: str = "RAW",
     ) -> None:
         self._execute(
-            lambda: self._service.spreadsheets()
-            .values()
-            .append(
-                spreadsheetId=self._spreadsheet_id,
-                range=tab,
-                valueInputOption=value_input,
-                insertDataOption="INSERT_ROWS",
-                body={"values": [list(row) for row in rows]},
+            lambda: (
+                self._service.spreadsheets()
+                .values()
+                .append(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=tab,
+                    valueInputOption=value_input,
+                    insertDataOption="INSERT_ROWS",
+                    body={"values": [list(row) for row in rows]},
+                )
             )
         )
 
@@ -140,13 +145,15 @@ class SheetsClient:
         value_input: str = "RAW",
     ) -> None:
         self._execute(
-            lambda: self._service.spreadsheets()
-            .values()
-            .update(
-                spreadsheetId=self._spreadsheet_id,
-                range=range_,
-                valueInputOption=value_input,
-                body={"values": [list(row) for row in values]},
+            lambda: (
+                self._service.spreadsheets()
+                .values()
+                .update(
+                    spreadsheetId=self._spreadsheet_id,
+                    range=range_,
+                    valueInputOption=value_input,
+                    body={"values": [list(row) for row in values]},
+                )
             )
         )
 
