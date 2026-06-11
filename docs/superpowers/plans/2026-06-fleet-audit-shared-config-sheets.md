@@ -105,7 +105,33 @@ config = ["pydantic>=2", "pyyaml>=6"]
 - [x] Changelog `[Unreleased]` entries (two new public surfaces, one new extra).
 
 ### Phase 4 — migration recipe (documented here, executed per-repo)
-- [ ] Table: worker · current loader file(s) · model to define · env vars affected (names only) · sheets call sites. Rule: migrations are mechanical only where behaviour is identical; any worker quirk (e.g. legacy single-underscore env names) stays in a worker-side shim, listed explicitly in the recipe.
+- [x] Table: worker · current loader file(s) · model to define · env vars affected (names only) · sheets call sites. Rule: migrations are mechanical only where behaviour is identical; any worker quirk (e.g. legacy single-underscore env names) stays in a worker-side shim, listed explicitly in the recipe.
+
+## Migration recipe
+
+Survey source: current worker `origin/main`s fetched during build on 2026-06-12.
+Pydantic floor: all pydantic-using workers are already on v2 (`xops`/`xcqc`
+floor `>=2.7`; `xletter`/`xadmissions`/`xhr` floor `>=2.13.3`; `xbook` floor
+`>=2.13.4`), so `clonway-cockpit[config]` at `pydantic>=2` is compatible.
+`Auto-Secretary` has no pydantic config loader yet.
+
+| Worker | Current loader file(s) | Model to define/reuse | Env vars affected (names only) | Sheets call sites | Migration rule |
+|---|---|---|---|---|---|
+| Auto-Bookkeeper | `src/xbook/ai/gateway.py`, `src/xbook/cashflow/config.py`, `src/xbook/cashflow/payroll.py`; leave catalogue/data YAML such as valuation/rows configs separate unless they are promoted to operator config models. | Reuse existing gateway/cashflow/payroll models; add thin worker-side wrappers that call `load_config(..., worker_id="xbook")`. | `XBOOK_MODELS_CONFIG`, `OCCUPANCY_SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_KEY`. | `src/xbook/workspace/sheets.py`, plus callers in `src/xbook/cli/__init__.py`, `src/xbook/cli/occupancy.py`, `src/xbook/agent/tools.py`. | Mechanical for pydantic-backed loaders; preserve any existing explicit path args. Sheets migration can replace `extract_sheet_id`, `list_tabs`, and `read_values` after credentials remain worker-owned. |
+| Auto-Orchestrator | `src/xops/config.py`; leave `src/xops/fleet/metrics/config.py` as a bundled metric catalog/data YAML unless the operator starts editing it as runtime config. | Existing `Config`/`WorkerConfig`. | `XOPS_CONFIG`, `XOPS_GCS_BUCKET`, `XOPS_DIGEST_TO`, `XOPS_DASHBOARD_URL`. | None found. | Replace path resolution with a worker shim: `XOPS_CONFIG` path first, then `~/.xops/config.yaml`; call shared loader with explicit `paths`. |
+| Auto-Secretary | No shared pydantic/YAML app config loader found on current `origin/main`. | Introduce `WorkerConfig` only when a real operator config bundle appears. | None for loader migration. | None found. | No-op for config and Sheets in the first wave; do not invent a config model. |
+| Auto-HR | `src/xhr/config/` package (domain modules), `src/xhr/integrations/sheets.py` for Sheets wrapper. | Keep domain config models in `xhr.config`; wrap file loads through shared `load_config` where they are single-file YAML models. | `XHR_SHEETS_SA`, `WORKSPACE_SA_KEY`, `DBS_REGISTER_SHEET_ID` and existing config-specific env names in `xhr.config`. | `src/xhr/integrations/sheets.py`, `src/xhr/cli/onboarding.py`, `src/xhr/cli/tracker.py`, `src/xhr/jobs/tracker_digest.py`, `src/xhr/onboarding_kickoff/apply.py`, `src/xhr/onboarding/hr_matrix_writer.py`, `src/xhr/integrations/mandatory_training.py`. | Replace `GoogleSheetClient` with `SheetsClient` where methods match; keep HR-matrix writer custom batch update logic until its range semantics are separately pinned. Credential helper stays in `xhr`. |
+| Auto-Inspector | `src/xcqc/readiness/config.py`, `src/xcqc/readiness/homes.py`; `src/xcqc/cadence/catalog.py` and `src/xcqc/standards/sources.py` are catalog/data YAML, not generic app config. | Existing readiness/home models. | Existing readiness config path/env seams only; keep Google auth envs in `readiness/google/auth.py`. | Protocol-style `SheetsClient` in `src/xcqc/readiness/sources.py`; readers under `src/xcqc/readiness/readers/`; Google auth scopes in `src/xcqc/readiness/google/auth.py`. | Migrate loader-shaped readiness/home files only. Leave catalog/data YAML in place until there is a worker-owned pydantic model and operator-facing config contract. |
+| Auto-Marketer | `src/xletter/audience/store.py`, `src/xletter/consent/store.py`, `src/xletter/dossier/policy.py`, `src/xletter/drive_config.py`; audience/consent use ruamel round-trip because comments/ordering are data. | Existing `DriveConfig` and `EditorialPolicy` are candidates; audience/consent stay custom round-trip stores. | `XLETTER_CONFIG_DIR`, `WORKSPACE_SA_KEY`, `XLETTER_ACTIVITIES_SHEET_ID`. | `src/xletter/journal/sync/activities.py` (`GoogleSheetsClient`), no standalone Sheets helper found. | Keep `XLETTER_CONFIG_DIR` as a worker-side path shim; do not force legacy single-underscore names into shared loader. Use shared Sheets only inside the journal sync client after credential construction remains local. |
+| Auto-Admissions | `src/xadmissions/config.py` (`load_config_dir`, `_read_yaml`, optional models). | Existing `ConfigBundle` and per-file models (`MailboxConfig`, `TrackerConfig`, etc.). | `XADMISSIONS_SA_KEY`, `GOOGLE_APPLICATION_CREDENTIALS`; config directory remains CLI/path supplied. | `src/xadmissions/google_read.py`; tracker sheet id lives in `TrackerConfig`. | Mechanical per YAML file using explicit `paths=[config_dir / "...yaml"]`; keep sign-off hash logic and optional-file semantics in worker code. |
+
+General migration rule: start with files that already read a single YAML mapping
+into a pydantic model. Do not migrate catalog/data YAML, round-trip YAML stores
+that preserve comments, or sign-off/hash workflows until their domain behaviour
+is explicitly pinned in the worker's own tests. Any legacy single-underscore or
+directory-style env convention remains a worker-side shim that passes explicit
+`paths`/`env_prefix` to the shared loader; the framework only understands the
+new double-underscore overlay.
 
 ## Acceptance criteria
 
@@ -134,8 +160,8 @@ config = ["pydantic>=2", "pyyaml>=6"]
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 4 next (migration recipe table).
-- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog.
+- Current phase: final verification and rebase.
+- Completed: Phase 1 config loader with optional `[config]` extra and dev test deps for CI; Phase 2 `gsheets` helper with injected-service API, fake tests, no google imports; Phase 3 onboarding docs, worker-template config module, and changelog; Phase 4 migration recipe table.
 - Verification so far:
   - `uv run pytest tests/test_config_loader.py -q` -> `10 passed in 0.38s`
   - `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
@@ -143,10 +169,11 @@ config = ["pydantic>=2", "pyyaml>=6"]
   - `uv run pytest tests/test_config_loader.py tests/test_gsheets.py -q` -> `23 passed in 0.07s`
   - `uv run pytest tests/test_worker_template.py::test_template_generates_expected_layout tests/test_worker_template.py::test_template_config_loads_defaults_and_env_overlay tests/test_shared_config_sheets_docs.py -q` -> `4 passed in 2.01s`
   - `uv run pytest tests/test_worker_template.py -q` -> `13 passed in 14.07s`
+  - `uv run pytest tests/test_shared_config_sheets_docs.py::test_plan_contains_worker_migration_recipe -q` -> RED before recipe (`assert '## Migration recipe' in text`)
 - Decisions:
   - `SecretEnvName` is a pydantic `Annotated[str, ...]` marker; unset secret env vars warn for otherwise-valid configs and are folded into `ConfigError.problems` when validation already fails.
   - `pydantic`/`pyyaml` are optional under `[config]` and also in the dev dependency group so CI's existing `uv sync` can run the config tests without changing core dependencies.
   - Template tests now pass `vcs_ref="HEAD"` to Copier so they exercise the branch head, including newly added template files.
   - Re-verified Auto-Marketer on `origin/main`: no standalone sheets helper; Sheets access lives in `src/xletter/journal/sync/activities.py`.
 - Known-failing tests: none from focused Phase 1-3 runs.
-- Next concrete step: add the worker migration recipe table, including current loader files, model extraction targets, env var names, Sheets call sites, and worker-side shims for legacy quirks.
+- Next concrete step: run the Phase 4 doc test green, then full local gates (`make check`, prod-import, `make template-smoke`) before rebasing onto `origin/main`.

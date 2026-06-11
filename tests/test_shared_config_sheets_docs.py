@@ -25,3 +25,21 @@ def test_changelog_records_public_config_and_sheets_surfaces():
     assert "`clonway_cockpit.config`" in text
     assert "`clonway_cockpit.gsheets`" in text
     assert "`clonway-cockpit[config]`" in text
+
+
+def test_plan_contains_worker_migration_recipe():
+    text = _read("docs/superpowers/plans/2026-06-fleet-audit-shared-config-sheets.md")
+
+    assert "## Migration recipe" in text
+    for worker in (
+        "Auto-Bookkeeper",
+        "Auto-Orchestrator",
+        "Auto-Secretary",
+        "Auto-HR",
+        "Auto-Inspector",
+        "Auto-Marketer",
+        "Auto-Admissions",
+    ):
+        assert f"| {worker} |" in text
+    assert "legacy single-underscore" in text
+    assert "catalog/data YAML" in text
