@@ -315,7 +315,23 @@ def negotiating_responder(
             )
             if not mine:
                 return None
-            return _negotiate(persona, message, env, mine, reply_to=env.recipient)
+            # Spec step 4/6: process the redirected asks as a SYNTHETIC NOTICE to me. It carries
+            # NO facts — the original provenance lived on the notice the redirect target never
+            # saw — so any reflex is structurally refused (build_proposal finds no provenance),
+            # fail-safe by construction. Stripping a leading "re:" keeps the composed reply's
+            # summary from double-prefixing ("re: re: …").
+            syn_summary = env.summary
+            if syn_summary.lower().startswith("re:"):
+                syn_summary = syn_summary[3:].strip() or env.summary
+            synthetic = HandoffEnvelope(
+                kind="notice",
+                task_id=env.task_id,
+                origin=env.origin,
+                recipient=persona.handle,
+                summary=syn_summary,
+                asks=mine,
+            )
+            return _negotiate(persona, message, synthetic, mine, reply_to=env.recipient)
         if env.recipient == persona.handle:  # kind == "notice"
             return _negotiate(persona, message, env, env.asks, reply_to=env.origin)
         return None  # D10: an envelope message NEVER falls through to inner

@@ -340,3 +340,106 @@ def test_no_asks_notice_and_unknown_or_soulless_colleague(tmp_path: Path) -> Non
     assert (
         responder(ghost, agent_msg(render_envelope(make_notice(recipient="ghost")), "vera")) is None
     )
+
+
+def test_strict_mode_with_firing_still_audits(tmp_path: Path) -> None:
+    # S6/D5: quiet_on_error=False, but a reflex fired -> the GatewayError is still swallowed so
+    # the audit posts; strict mode only re-raises when NOTHING was actioned.
+    completer = FakeStructuredCompleter([GatewayError("down")])
+    kit = make_kit(PersonaMemory(tmp_path, "milo"))
+    colleagues, responder = build(tmp_path, completer, kits={"milo": kit}, quiet_on_error=False)
+    milo = persona_of(colleagues, "milo")
+    reply = responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    assert reply is not None
+    response = parse_envelope(reply)
+    assert response is not None
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[HOLD_ASK].decision == "reflexed" and by_ask[HOLD_ASK].applied is True
+    assert by_ask[LETTER_ASK].decision == "defer"
+
+
+def test_d5_responder_reflex_then_transcript_fail_then_retry(tmp_path: Path, monkeypatch) -> None:
+    # Spec step 9 / D5: reflex applies, the PERSONA transcript write fails and propagates; the
+    # live transport redelivers; the retry does NOT re-apply the hold (idempotent) yet still posts
+    # the audit ("previously applied"). Exactly one run invocation total.
+    runs: list = []
+    kit = make_kit(PersonaMemory(tmp_path, "milo"), run=lambda p: runs.append(p) or True)
+    completer = FakeStructuredCompleter(
+        [
+            {"say": "", "decisions": [{"ask": LETTER_ASK, "decision": "defer"}]},
+            {"say": "", "decisions": [{"ask": LETTER_ASK, "decision": "defer"}]},
+        ]
+    )
+    colleagues, responder = build(tmp_path, completer, kits={"milo": kit})
+    milo = persona_of(colleagues, "milo")
+
+    from clonway_cockpit.chat_memory import PERSONA as _PERSONA
+    from clonway_cockpit.chat_memory import ThreadTranscript
+
+    real_record = ThreadTranscript.record
+
+    def flaky_record(self, role, text):
+        if role == _PERSONA:
+            raise RuntimeError("disk full")
+        return real_record(self, role, text)
+
+    monkeypatch.setattr(ThreadTranscript, "record", flaky_record)
+    with pytest.raises(RuntimeError):
+        responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    assert len(runs) == 1
+    assert kit.log.seen("rtw-402", "payroll.hold")
+
+    monkeypatch.undo()  # transcript writes succeed on redelivery
+    reply = responder(milo, agent_msg(render_envelope(make_notice()), "vera"))
+    assert len(runs) == 1  # the hold did NOT re-apply
+    response = parse_envelope(reply)
+    assert response is not None
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[HOLD_ASK].decision == "reflexed" and by_ask[HOLD_ASK].applied is True
+    assert by_ask[HOLD_ASK].note == "previously applied"
+
+
+def test_redirect_target_with_kit_does_not_reflex(tmp_path: Path) -> None:
+    # The synthetic-notice redirect path carries NO facts, so a redirect target that HAS a reflex
+    # kit still cannot fire it (no provenance). The ask goes to the model instead.
+    def make_response_env_local():
+        return HandoffEnvelope(
+            kind="response",
+            task_id="rtw-402",
+            origin="milo",
+            recipient="vera",
+            summary="re: right-to-work failed for employee 402",
+            decisions=(
+                AskDecision(
+                    ask=HOLD_ASK, decision="reflexed", capability="payroll.hold", applied=True
+                ),
+                AskDecision(ask=LETTER_ASK, decision="decline", redirect="quill"),
+            ),
+        )
+
+    runs: list = []
+    # Give quill a kit whose matcher WOULD match the letter ask if facts/provenance existed.
+    bank = ReflexBank()
+    bank.register(
+        ReflexRule(
+            capability_key="letter.hold",
+            description="would match the letter ask",
+            matcher=lambda env: next((a for a in env.asks if "write to employee" in a), None),
+            run=lambda p: runs.append(p) or True,
+        )
+    )
+    log = ReflexLog(PersonaMemory(tmp_path, "quill"))
+    quill_kit = ReflexKit(bank=bank, policy=ReflexPolicy(bank.keys(), log), log=log)
+    completer = FakeStructuredCompleter(
+        [{"say": "The letter's mine.", "decisions": [{"ask": LETTER_ASK, "decision": "accept"}]}]
+    )
+    colleagues, responder = build(tmp_path, completer, kits={"quill": quill_kit})
+    quill = persona_of(colleagues, "quill")
+    reply = responder(quill, agent_msg(render_envelope(make_response_env_local()), "milo"))
+    response = parse_envelope(reply or "")
+    assert response is not None
+    assert len(runs) == 0  # NO reflex fired — no provenance on a redirected ask
+    by_ask = {d.ask: d for d in response.decisions}
+    assert by_ask[LETTER_ASK].decision == "accept"
+    # And the composed summary is single-prefixed, not "re: re: …".
+    assert not response.summary.lower().startswith("re: re:")
