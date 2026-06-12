@@ -7,7 +7,7 @@ from datetime import date as Date
 
 import pytest
 
-from clonway_cockpit.signals.model import Signal, build_signals
+from clonway_cockpit.signals.model import build_signals
 from clonway_cockpit.state import NeedsItem
 
 _NOW = datetime(2026, 5, 25, 9, 0, 0, tzinfo=UTC)
@@ -124,7 +124,9 @@ def test_factory_emit_rejects_foreign_worker_signal(monkeypatch, caplog) -> None
 
     assert out == ()
     assert client.store == {}
-    assert any(record.exc_info and record.exc_info[0] is SignalIdentityError for record in caplog.records)
+    assert any(
+        record.exc_info and record.exc_info[0] is SignalIdentityError for record in caplog.records
+    )
 
 
 def test_factory_kind_resolution_order_and_explicit_validation() -> None:
@@ -133,7 +135,10 @@ def test_factory_kind_resolution_order_and_explicit_validation() -> None:
     factory = SignalFactory(
         worker_id="xhr",
         flag_env="XHR_EMIT_SIGNALS",
-        title_kinds={"Bills due this week": "approval.pending", "DBS expiring": "credential.expiring"},
+        title_kinds={
+            "Bills due this week": "approval.pending",
+            "DBS expiring": "credential.expiring",
+        },
     )
 
     assert (
@@ -141,7 +146,9 @@ def test_factory_kind_resolution_order_and_explicit_validation() -> None:
         == "credential.expiring"
     )
     assert (
-        factory.make(title="Bills due this week", detail="Override legacy", level="warn", now=_NOW).kind
+        factory.make(
+            title="Bills due this week", detail="Override legacy", level="warn", now=_NOW
+        ).kind
         == "approval.pending"
     )
     assert (

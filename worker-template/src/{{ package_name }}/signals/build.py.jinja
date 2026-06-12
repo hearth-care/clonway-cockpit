@@ -36,10 +36,17 @@ from collections.abc import Sequence
 from datetime import date as Date
 from datetime import datetime
 
+from clonway_cockpit.signals.factory import SignalFactory
 from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
 from clonway_cockpit.signals.model import Signal
 
 _WORKER = "{{ worker_id }}"
+_TITLE_KINDS: dict[str, str] = {}
+FACTORY = SignalFactory(
+    worker_id=_WORKER,
+    flag_env="{{ emit_flag }}",
+    title_kinds=_TITLE_KINDS,
+)
 
 
 @scan_horizon
@@ -51,11 +58,12 @@ def scan_{{ package_name }}_horizon(*, today: Date, now: datetime) -> Sequence[S
     live domain state, each with a real ``due_at``. Until then the guarded
     ``xfail`` test keeps this empty horizon visible (proactive by construction).
 
-    Build each Signal with a stable ``title`` (drives the dedup key — keep it
-    constant as the item escalates) and a ``source_id`` (per-instance business
-    id, folded into the dedup key so two concurrent same-title items get distinct
-    keys). ``clonway_cockpit.signals.model.build_signals`` maps a tuple of
-    ``NeedsItem`` 1:1 if you keep a cockpit needs-list.
+    Build each Signal with ``FACTORY.make(...)`` and a stable ``title`` (drives
+    the dedup key — keep it constant as the item escalates) plus a ``source_id``
+    (per-instance business id, folded into the dedup key so two concurrent
+    same-title items get distinct keys). Add worker-owned title→kind mappings to
+    ``_TITLE_KINDS`` above and enable ``CLONWAY_SIGNALS_STRICT_KINDS=1`` in CI
+    once the real horizon titles are known.
     """
     # TODO({{ worker_id }}): scan real domain state and yield forward Signals.
     return ()

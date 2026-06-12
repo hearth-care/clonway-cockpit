@@ -12,9 +12,9 @@ from typing import Any
 
 from clonway_cockpit.signals.emit import emit_signals
 from clonway_cockpit.signals.model import (
+    _TITLE_KIND,
     SIGNAL_KINDS,
     Signal,
-    _TITLE_KIND,
     _kind_for,
     dedup_key,
     urgency_from_due_at,

@@ -234,6 +234,19 @@ def test_ac_c6_3_scan_horizon_exists_and_returns_empty_signal_set(tmp_path: Path
         assert all(isinstance(s, Signal) for s in out)
 
 
+def test_template_signal_modules_use_factory_without_private_model_imports(tmp_path: Path) -> None:
+    dst = _generate(tmp_path, worker_id="xgenfactory")
+    build_source = (dst / "src/xgenfactory/signals/build.py").read_text()
+    emit_source = (dst / "src/xgenfactory/signals/emit.py").read_text()
+
+    assert "SignalFactory" in build_source
+    assert "FACTORY.emit" in emit_source
+    assert "from clonway_cockpit.signals.factory import SignalFactory" in build_source
+    assert "from xgenfactory.signals.build import FACTORY" in emit_source
+    assert "_dedup_key" not in build_source
+    assert "_urgency_from_due_at" not in build_source
+
+
 # --- AC-C6-1 — cockpit opens the three-region shell (headless render) -------
 
 

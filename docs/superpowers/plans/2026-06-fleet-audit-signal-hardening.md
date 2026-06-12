@@ -112,9 +112,9 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 - Files: `factory.py`, `model.py` (fallback hook), tests.
 
 ### Phase 4 — template + docs + changelog
-- [ ] Worker-template `signals/*.jinja` → factory; `make template-smoke` green; template tests assert the generated build module imports no underscore names.
-- [ ] Docs: `docs/onboarding-a-worker.md` signal section rewritten around the factory; migration recipe table (worker · wrapper file · title table to register · CI strict-mode line).
-- [ ] Changelog `[Unreleased]`: new factory (additive), deprecations (warn), future default removal (notice).
+- [x] Worker-template `signals/*.jinja` → factory; `make template-smoke` green; template tests assert the generated build module imports no underscore names.
+- [x] Docs: `docs/onboarding-a-worker.md` signal section rewritten around the factory; migration recipe table (worker · wrapper file · title table to register · CI strict-mode line).
+- [x] Changelog `[Unreleased]`: new factory (additive), deprecations (warn), future default removal (notice).
 
 ## Acceptance criteria
 
@@ -145,9 +145,10 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260612T022623Z.
-- Current phase: Phase 4 — template + docs + changelog.
-- Completed: rebuilt worktree from `origin/claude/plan-signal-hardening`; baseline `uv run pytest -q` passed (`758 passed in 15.10s`); baseline `pre-commit run --all-files` failed because `.pre-commit-config.yaml` is absent; Phase 1 tests were written red first, then public `dedup_key` / `urgency_from_due_at`, deprecated underscore shims, and the staged `build_signals()` default-worker warning were implemented. Phase 2 added `SignalFactory`, golden wire parity, sealed API/TypeError checks, and identity mismatch via the build-failure path. Phase 3 added factory title-kind resolution, warn-once fallback, strict mode, explicit-kind validation, and `unknown_title_kinds=N` emit logging.
-- Verification: `uv run pytest tests/test_signal_model.py tests/test_signal_factory.py -q` -> `54 passed in 0.02s`.
-- Decisions/deviations: used existing `tests/test_signal_model.py`; `tests/test_signals_model.py` named in the plan does not exist. `.claude/` was already ignored. No wire shape or dedup recipe changes were made. Unknown-title warn-once scope is `(worker_id, title)` per process.
-- Next concrete step: update `worker-template/src/{{ package_name }}/signals/*.jinja`, add template tests for factory usage/no underscore imports, then docs and changelog.
-- Known-failing tests: none after the Phase 2/3 focused run.
+- Current phase: complete pending final push/PR finish protocol.
+- Completed: rebuilt worktree from `origin/claude/plan-signal-hardening`; baseline `uv run pytest -q` passed (`758 passed in 15.10s`); baseline `pre-commit run --all-files` failed because `.pre-commit-config.yaml` is absent; Phase 1 tests were written red first, then public `dedup_key` / `urgency_from_due_at`, deprecated underscore shims, and the staged `build_signals()` default-worker warning were implemented. Phase 2 added `SignalFactory`, golden wire parity, sealed API/TypeError checks, and identity mismatch via the build-failure path. Phase 3 added factory title-kind resolution, warn-once fallback, strict mode, explicit-kind validation, and `unknown_title_kinds=N` emit logging. Phase 4 updated the generated worker template, onboarding docs, and changelog.
+- Verification: after rebasing onto latest `origin/main`, `make check` -> ruff check passed, ruff format passed (`142 files already formatted`), mypy passed (`Success: no issues found in 59 source files`), pytest passed (`913 passed in 18.45s`). `make template-smoke` -> generated xsmoke, generated pytest `15 passed, 1 xfailed`, generated ruff check passed, generated ruff format `18 files already formatted`, generated mypy passed (`Success: no issues found in 12 source files`), CLI flag-off/flag-on scans passed, `template-smoke PASSED for xsmoke (job)`.
+- Private-import survey: `grep -R "signals.model import" -n /Users/olliepage/Developer/*/src /Users/olliepage/Developer/*/xquill` found underscore helper imports still present in Auto-HR `src/xhr/signals/build.py`, Auto-Inspector `src/xcqc/signals/build.py`, Auto-Marketer `src/xletter/signals/build.py`, and Auto-Secretary `xquill/signals/build.py`; deprecation aliases remain required.
+- Decisions/deviations: used existing `tests/test_signal_model.py`; `tests/test_signals_model.py` named in the plan does not exist. On rebase, `origin/main` already had `CHANGELOG.md`, so signal-factory entries were merged into its Keep-a-Changelog structure. `.claude/` was already ignored. No wire shape or dedup recipe changes were made. Unknown-title warn-once scope is `(worker_id, title)` per process. The template test helper now uses the exact `git rev-parse HEAD` source ref already present on `origin/main`. Rebase surfaced a generated-worker mypy failure in `shell.UsageModule`; the protocol was narrowed to the actual `load()` / `record(key, action)` calls so generated workers satisfy it.
+- Next concrete step: final rebase onto `origin/main`, rerun required final gates if the rebase changes code, push with lease, mark PR ready/needs-qa, and post the DONE comment.
+- Known-failing tests: none after `make check` and `make template-smoke`.

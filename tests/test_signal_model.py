@@ -196,12 +196,8 @@ def test_build_signals_explicit_worker_does_not_warn(recwarn):  # C12
 
 
 def test_dedup_key_distinct_per_source_id_stable_across_detail():  # TB9
-    a = build_signals(
-        (_need_due(source_id="4-weekly:2026-05-29"),), now=_NOW, worker="xbook"
-    )[0]
-    b = build_signals(
-        (_need_due(source_id="2-weekly:2026-05-29"),), now=_NOW, worker="xbook"
-    )[0]
+    a = build_signals((_need_due(source_id="4-weekly:2026-05-29"),), now=_NOW, worker="xbook")[0]
+    b = build_signals((_need_due(source_id="2-weekly:2026-05-29"),), now=_NOW, worker="xbook")[0]
     assert a.dedup_key != b.dedup_key  # two concurrent cycles → distinct (E7 closed)
     c = build_signals(
         (

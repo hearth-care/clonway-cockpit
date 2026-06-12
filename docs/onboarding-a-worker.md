@@ -290,27 +290,61 @@ Examples from the fleet:
 
 ---
 
-## 4. `signals/emit.py` — a thin wrapper
+## 4. `signals/build.py` + `signals/emit.py` — the sealed factory wrapper
 
-Don't reimplement the GCS flush. Delegate to the shared helper:
+Don't construct worker identity by hand. Bind a `SignalFactory` once, then use
+that factory for both construction and emission:
+
+```python
+# src/<worker>/signals/build.py
+from __future__ import annotations
+
+from clonway_cockpit.signals.factory import SignalFactory
+from clonway_cockpit.signals.horizon import compose_horizon, scan_horizon
+
+_TITLE_KINDS = {
+    "DBS expiring": "credential.expiring",
+    "Probation review due": "deadline.approaching",
+}
+
+FACTORY = SignalFactory(
+    worker_id="<worker>",
+    flag_env="<WORKER>_EMIT_SIGNALS",
+    title_kinds=_TITLE_KINDS,
+)
+
+
+@scan_horizon
+def scan_staff_records(*, today, now):
+    return (
+        FACTORY.make(
+            title="DBS expiring",
+            detail="Alice Example expires this week",
+            level="warn",
+            capability_key="staff-records",
+            source_id="dbs:alice",
+            due_at=today,
+            now=now,
+        ),
+    )
+
+
+build_<worker>_signals = compose_horizon(scan_staff_records)
+```
 
 ```python
 # src/<worker>/signals/emit.py
-from __future__ import annotations
-
 from datetime import datetime
 from datetime import date as Date
 
-from clonway_cockpit.signals.emit import emit_signals, flag_enabled
+from clonway_cockpit.signals.emit import flag_enabled
 from clonway_cockpit.signals.model import Signal
 
-from <worker>.signals.build import build_<worker>_signals
-
-_FLAG = "<WORKER>_EMIT_SIGNALS"
+from <worker>.signals.build import FACTORY, build_<worker>_signals
 
 
 def _enabled() -> bool:
-    return flag_enabled(_FLAG)
+    return flag_enabled(FACTORY.flag_env)
 
 
 def scan_and_emit(
@@ -319,9 +353,7 @@ def scan_and_emit(
     now: datetime | None = None,
     run_id: str | None = None,
 ) -> tuple[Signal, ...]:
-    return emit_signals(
-        worker_id="<worker>",
-        flag_env=_FLAG,
+    return FACTORY.emit(
         build=build_<worker>_signals,
         now=now,
         today=today,
@@ -329,23 +361,41 @@ def scan_and_emit(
     )
 ```
 
-The helper does the flag check (returns `()` when off — zero work, no build
-call), resolves `now`/`today`/`run_id` (`CLOUD_RUN_EXECUTION` env → uuid
-fallback), writes `signals/<worker>/latest.jsonl` every run (incl. empty, so a
-now-quiet worker clears its old set) plus a dated archive
+`FACTORY.make(...)` seals `worker`, `emitted_at`, and `dedup_key` so callers
+cannot accidentally emit another worker's identity or mint keys with a copied
+recipe. Explicit `kind=` is allowed but validated; otherwise resolution is:
+worker `title_kinds`, then the framework legacy table, then an observable
+`action.required` fallback. In worker CI set
+`CLONWAY_SIGNALS_STRICT_KINDS=1` so any new or renamed title fails the PR until
+it is registered. Production should leave strict mode unset so signal emission
+keeps the existing never-crash posture.
+
+`FACTORY.emit(...)` keeps the same flag check (returns `()` when off — zero
+work, no build call), resolves `now`/`today`/`run_id`
+(`CLOUD_RUN_EXECUTION` env -> uuid fallback), writes
+`signals/<worker>/latest.jsonl` every run (incl. empty, so a now-quiet worker
+clears its old set) plus a dated archive
 `signals/<worker>/<YYYY-MM-DD>/<run_id>.jsonl` only when non-empty, and degrades
-silently on any GCS/build failure (never crashes a run).
+silently on any GCS/build failure (never crashes a run). It also rejects any
+already-built `Signal` whose `.worker` does not match the factory.
+
+Migration checklist:
+
+| Worker | Wrapper file | Register titles in | CI strict-mode line |
+| --- | --- | --- | --- |
+| xbook | `src/xbook/signals/build.py` + `emit.py` | existing needs titles plus forward horizon titles | `CLONWAY_SIGNALS_STRICT_KINDS=1 uv run pytest` |
+| xhr | `src/xhr/signals/build.py` + `emit.py` | staff-record and people-operation titles | `CLONWAY_SIGNALS_STRICT_KINDS=1 uv run pytest` |
+| xletter | `src/xletter/signals/build.py` + `emit.py` | campaign, review, and send-window titles | `CLONWAY_SIGNALS_STRICT_KINDS=1 uv run pytest` |
+| xquill | `src/xquill/signals/build.py` + `emit.py` | promise and commitment-deadline titles | `CLONWAY_SIGNALS_STRICT_KINDS=1 uv run pytest` |
 
 **xquill's deviation — a project-pinned client.** xquill runs as a launchd
 daemon whose env is HOME-only, so a bare `storage.Client()` can't resolve a GCP
-project. Pass `project="clonway-care-bookkeeper"`:
+project. Pass `project=...` through `FACTORY.emit(...)`:
 
 ```python
-    return emit_signals(
-        worker_id="xquill",
-        flag_env="XQUILL_EMIT_SIGNALS",
+    return FACTORY.emit(
         build=build_xquill_signals,
-        project="clonway-care-bookkeeper",  # launchd env can't resolve a project
+        project="<gcp-project>",  # launchd env can't resolve a project
     )
 ```
 
