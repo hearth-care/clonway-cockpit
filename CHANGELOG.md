@@ -87,6 +87,10 @@ Record them here and bump the release tag before merging.
   - `Delivery` — one delivered `Signal` with `emitted_by_run` and `object_path`
     provenance fields for audit and dedup.
   - `CursorStore` (Protocol) — per-`(consumer_id, worker)` high-water mark.
+    The cursor is an opaque token recording the latest date reached plus the
+    run_ids processed within it, so listing is robust to the non-monotonic
+    trailing `run_id` (no same-day emission is skipped); legacy bare-object-name
+    cursors still decode.
   - `FileCursorStore` — local-state-directory backed cursor store (atomic
     write via rename; suitable for persistent workers).
   - `GcsCursorStore` — GCS-backed cursor store with generation-match

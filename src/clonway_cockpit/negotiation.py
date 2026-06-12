@@ -699,8 +699,12 @@ class NegotiatedSpace:
                         occurred_at=now,
                     ),
                 )
+        # Always drain the ledger's pending failures so the buffer cannot grow
+        # unbounded for the space's lifetime when no callback is registered
+        # (default ``on_handoff_failed=None``); only dispatch when one is set.
+        pending = self.ledger.consume_failures()
         if self.on_handoff_failed is not None:
-            for rec in self.ledger.consume_failures():
+            for rec in pending:
                 _safe_callback(
                     self.on_handoff_failed,
                     HandoffFailure(

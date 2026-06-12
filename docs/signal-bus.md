@@ -17,7 +17,10 @@ signals/<worker>/<YYYY-MM-DD>/<run_id>.jsonl
 ```
 
 This is the **source of truth for consumers**. Each object is append-only with
-a stable name; a cursor over object names is exact.
+a stable name. The `<YYYY-MM-DD>` date segment is chronological and sorts
+lexicographically; the trailing `<run_id>` is **not** monotonic (`uuid4` / the
+Cloud Run `<job>-<random>` execution suffix), so within a single date
+object-name order is *not* emission order. The cursor accounts for this (§3).
 
 `signals/<worker>/latest.jsonl` is a human/dashboard snapshot that is
 overwritten on every run (including empty runs that clear the open set). **Never
@@ -65,6 +68,16 @@ deliveries: list[Delivery] = poll(sub, cursor_store=cs, on_delivery=handle_deliv
 ---
 
 ## 3. Cursor stores
+
+The cursor is a per-`(consumer_id, worker)` high-water mark. Because the trailing
+`run_id` is non-monotonic (§1), a bare last-object-name would lexically exclude
+later same-day emissions whose name sorts before it — silently losing them. So
+the cursor records the **latest date reached plus the set of run_ids already
+processed within that date** (everything in strictly-earlier dates is implicitly
+done). `poll()` lists from the cursor's *date prefix* (`start_offset`) and skips
+already-processed run_ids, so a same-day, lexically-smaller, later-emitted object
+is still delivered. The stored value is opaque to consumers (a small JSON blob);
+treat it as a token. Legacy bare-object-name cursors are still accepted on read.
 
 ### `FileCursorStore`
 
@@ -115,9 +128,14 @@ at emit time and is the chronological anchor.
 
 ### In-object-name order per worker
 
-Within a worker, deliveries arrive in archive object-name order. Archive
-names are `signals/<worker>/<ISO-date>/<run_id>.jsonl` — lexicographic order
-is chronological.
+Within a worker, deliveries arrive in archive object-name order. Archive names
+are `signals/<worker>/<ISO-date>/<run_id>.jsonl`, so ordering is chronological
+**across dates** (the ISO-date segment sorts chronologically). **Within a single
+date** the trailing `run_id` is non-monotonic (§1), so same-day deliveries are in
+object-name order, which is not necessarily emission order — never rely on
+intra-date ordering for causality. Delivery is still complete: the cursor lists
+from the date prefix and tracks processed run_ids, so no same-day object is
+skipped (see §3).
 
 Across workers, order follows the iteration order of `sub.workers` (or
 discovery order for `workers=None`).

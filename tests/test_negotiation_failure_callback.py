@@ -208,7 +208,28 @@ def test_callback_declined_fires(tmp_path: Path) -> None:  # CC-NEG-FAIL-DEC-1
     assert declined[0].task_id == "rtw-402"
     assert declined[0].initiator == "vera"
     assert declined[0].counterparty == "milo"
-    assert HOLD_ASK in declined[0].summary or len(declined[0].summary) <= 80
+    assert declined[0].summary == HOLD_ASK[:80]
+
+
+def test_pending_failures_drained_without_callback(tmp_path: Path) -> None:  # CC-NEG-FAIL-DEC-3
+    """With on_handoff_failed=None the ledger's pending-failure buffer is still
+    drained each sweep, so it cannot grow unbounded for the space's lifetime."""
+    completer = FakeCompleter(
+        [
+            {
+                "say": "can't help",
+                "decisions": [
+                    {"ask": HOLD_ASK, "decision": "decline"},
+                    {"ask": LETTER_ASK, "decision": "defer"},
+                ],
+            }
+        ]
+    )
+    _, _, space = build_space(tmp_path, completer, on_handoff_failed=None)
+    space.post_notice("vera", make_notice())
+    # The declined ask produced a failure record, but the sweep drained it even
+    # though no callback was registered — consume_failures returns nothing left.
+    assert space.ledger.consume_failures() == []
 
 
 def test_callback_declined_not_fired_for_redirect(tmp_path: Path) -> None:  # CC-NEG-FAIL-DEC-2

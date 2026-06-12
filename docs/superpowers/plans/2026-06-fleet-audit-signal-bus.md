@@ -117,11 +117,13 @@ The acceptance demo for the whole design is one wired chain in a sandbox: worker
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; rebased onto `origin/main`; local gates passed.
-- Next concrete step: push with `--force-with-lease`, mark ready, relabel to `agent:needs-qa`, and post DONE with real gate tails.
-- Decisions taken: stayed on branch `claude/plan-signal-bus` per dispatcher override; ignored the older "Next-agent pickup" instruction to start `claude/signal-bus`. Signal-hardening sealed factory was not present in this branch/main shape, so `failure_to_signal` uses the planned fallback (`worker_id`/`flag_env` plus `emit_signals`).
+- Current phase: QA-fix round (2nd). Implementation complete; addressed QA FAIL (qa-claude-211327) blocking defect + two carried non-blockers.
+- Next concrete step: re-run full gates, push with `--force-with-lease`, mark ready, relabel to `agent:needs-qa`, post DONE with real gate tails.
+- Decisions taken: stayed on branch `claude/plan-signal-bus` per dispatcher override. Signal-hardening sealed factory not present in this branch/main shape, so `failure_to_signal` uses the planned fallback (`worker_id`/`flag_env` plus `emit_signals`).
+- **QA-fix (blocking): cursor robust to non-monotonic same-day run_ids.** `subscribe._archive_objects_after` previously used the full last-object name as GCS `start_offset`, lexically excluding any later same-date emission whose `run_id` sorts before the cursor → permanent silent loss (run_ids are `uuid4`/Cloud Run suffix, non-monotonic). Realised the plan's own §Risks intent: cursor is now `{"d":<date>,"s":[<run_id>,…]}`, listing anchors at the cursor's *date prefix* and skips processed run_ids; legacy bare-name cursors still decode. New regressions: `test_poll_same_date_nonmonotonic_run_id_no_loss`, `test_archive_objects_after_same_date_smaller_run_id`. Updated POLL-3/POLL-5/POLL-6B to assert the decoded cursor. Docs (`signal-bus.md` §1/§3/§4 + subscribe docstrings) corrected: intra-date object-name order is NOT chronological.
+- **QA-fix (non-blocking ×2):** `negotiation._sweep` now drains `ledger.consume_failures()` unconditionally (was only when `on_handoff_failed` set) so the buffer can't grow unbounded under the default `None` — regression `test_pending_failures_drained_without_callback`. Tightened the vacuous `test_callback_declined_fires` assertion to `summary == HOLD_ASK[:80]`.
 - Deviation recorded: `poll()` keeps the list-return API from the spec and adds optional `on_delivery` for action consumers. The callback form is the documented at-least-once path: cursor commit happens only after the consumer callback returns; a callback exception leaves the object uncommitted for re-delivery.
-- Known failing tests: none at this checkpoint. Latest full proof: `make check` -> `1021 passed, 7 warnings`; `pre-commit run --all-files` -> all hooks passed.
+- Known failing tests: none at this checkpoint.
 
 ## Acceptance criteria
 

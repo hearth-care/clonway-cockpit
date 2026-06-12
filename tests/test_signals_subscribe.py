@@ -18,6 +18,7 @@ from clonway_cockpit.signals.subscribe import (
     FileCursorStore,
     Subscription,
     _archive_objects_after,
+    _decode_cursor,
     _discover_workers,
     _matches,
     _run_id_from_path,
@@ -337,8 +338,10 @@ def test_poll_advances_cursor_after_each_object(tmp_path: Path):  # CC-SIG-SUB-P
     cs = FileCursorStore(tmp_path)
     sub = Subscription(consumer_id="xbook", workers=("xbook",))
     poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
-    # Cursor is now at r2 (the last object processed).
-    assert cs.load("xbook", "xbook") == "signals/xbook/2026-06-02/r2.jsonl"
+    # Cursor is now at r2's date with r2 in the processed set (the last object).
+    active_date, processed = _decode_cursor(cs.load("xbook", "xbook"))
+    assert active_date == "2026-06-02"
+    assert processed == {"r2"}
     # Second poll: no new objects → empty.
     result2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
     assert result2 == []
@@ -372,7 +375,9 @@ def test_poll_restart_resume_three_runs(tmp_path: Path):  # CC-SIG-SUB-POLL-5
 
     result = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
     assert [d.signal.source_id for d in result] == ["s0", "s1", "s2"]
-    assert cs.load("consumer", "xbook") == "signals/xbook/2026-06-03/r3.jsonl"
+    active_date, processed = _decode_cursor(cs.load("consumer", "xbook"))
+    assert active_date == "2026-06-03"
+    assert processed == {"r3"}
 
     # Restart: second poll returns nothing — exactly-once semantics maintained.
     result2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
@@ -426,7 +431,14 @@ def test_poll_with_callback_commits_after_callback_returns(tmp_path: Path):  # C
         on_delivery=_process,
     )
     assert [d.signal.source_id for d in r1] == ["a"]
-    assert events == ["process:a", "save:signals/xbook/2026-06-01/r1.jsonl"]
+    # Callback runs before the cursor is committed; the saved cursor records the
+    # object's date + run_id (encoded form).
+    assert len(events) == 2
+    assert events[0] == "process:a"
+    assert events[1].startswith("save:")
+    active_date, processed = _decode_cursor(events[1].removeprefix("save:"))
+    assert active_date == "2026-06-01"
+    assert processed == {"r1"}
 
 
 def test_poll_with_callback_exception_leaves_cursor_uncommitted(
@@ -462,6 +474,50 @@ def test_poll_with_callback_exception_leaves_cursor_uncommitted(
     )
     assert [d.signal.source_id for d in r2] == ["a"]
     assert calls == ["a", "a"]
+
+
+def test_poll_same_date_nonmonotonic_run_id_no_loss(tmp_path: Path):  # CC-SIG-SUB-POLL-14
+    """Regression: a later-emitted object in the SAME date with a lexically-smaller
+    run_id must still be delivered, not silently skipped.
+
+    run_ids are non-monotonic (``uuid4().hex`` / the Cloud Run ``<job>-<random>``
+    execution suffix), so within one date object-name order != emission order. A
+    cursor that uses the full last-object name as ``start_offset`` would exclude
+    every later same-day emission whose name sorts before it — permanent loss.
+    """
+    client = _FakeClient()
+    cs = FileCursorStore(tmp_path)
+    sub = Subscription(consumer_id="c", workers=("xbook",))
+
+    # First emission: lexically-large run_id.
+    _write_archive(
+        client._store, "xbook", "2026-06-01", "ffaa11", [_make_signal(source_id="first")]
+    )
+    r1 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert [d.signal.source_id for d in r1] == ["first"]
+
+    # Second, LATER emission, same date, lexically-SMALLER run_id.
+    _write_archive(
+        client._store, "xbook", "2026-06-01", "0011bb", [_make_signal(source_id="second")]
+    )
+    r2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert [d.signal.source_id for d in r2] == ["second"]  # not lost behind the cursor
+
+    # Third poll: both processed, nothing new.
+    r3 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert r3 == []
+
+
+def test_archive_objects_after_same_date_smaller_run_id():  # CC-SIG-SUB-LIST-5
+    """A same-date object whose run_id sorts before the cursor is still listed."""
+    client = _FakeClient()
+    _write_archive(client._store, "xbook", "2026-06-01", "ffaa11", [_make_signal()])
+    _write_archive(client._store, "xbook", "2026-06-01", "0011bb", [_make_signal()])
+    bkt = client.bucket("test-bucket")
+    names = _archive_objects_after(
+        bkt, worker="xbook", cursor="signals/xbook/2026-06-01/ffaa11.jsonl"
+    )
+    assert names == ["signals/xbook/2026-06-01/0011bb.jsonl"]
 
 
 # ---------------------------------------------------------------------------

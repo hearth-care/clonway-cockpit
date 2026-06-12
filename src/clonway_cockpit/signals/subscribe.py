@@ -99,10 +99,11 @@ class Delivery:
 class CursorStore(Protocol):
     """Per-``(consumer_id, worker)`` high-water mark.
 
-    The cursor value is the **object name** (``signals/<w>/<d>/<id>.jsonl``)
-    of the last fully-processed archive object. :func:`poll` calls
-    ``load`` once per worker at the start and ``save`` once per worker after
-    all objects for that worker have been consumed.
+    The cursor value is an **opaque token** the store round-trips verbatim — do
+    not parse it. (It encodes the latest date reached plus the run_ids already
+    processed in that date; see :func:`_decode_cursor` for why a bare object name
+    is unsafe with non-monotonic run_ids.) :func:`poll` calls ``load`` once per
+    worker at the start and ``save`` per object as it advances the mark.
     """
 
     def load(self, consumer_id: str, worker: str) -> str | None: ...
@@ -252,30 +253,83 @@ def _discover_workers(bucket_obj: Any) -> list[str]:
     return sorted(seen)
 
 
+def _date_from_path(obj_name: str) -> str:
+    """``signals/<w>/<date>/<run_id>.jsonl`` → ``<date>``."""
+    return obj_name.split("/")[-2]
+
+
+def _decode_cursor(cursor: str | None) -> tuple[str | None, set[str]]:
+    """Decode a stored cursor into ``(active_date, processed_run_ids)``.
+
+    The cursor is the high-water mark per ``(consumer, worker)``. Because archive
+    object names end in a **non-monotonic** ``run_id`` (``uuid4`` / Cloud Run
+    ``<job>-<random>`` execution suffix), object-name order within a single date
+    is NOT emission order — so a bare last-object-name high-water mark would skip
+    any later same-day emission whose name sorts before it. Instead the cursor
+    carries the latest date reached plus the set of run_ids already processed
+    *within that date*; everything in strictly-earlier dates is implicitly done.
+
+    Two on-wire forms are accepted:
+
+    - the current JSON form ``{"d": "<date>", "s": ["<run_id>", ...]}``; and
+    - a legacy bare object name ``signals/<w>/<date>/<run_id>.jsonl`` (decoded as
+      that object's date + its single run_id), so older persisted cursors resume.
+    """
+    if cursor is None:
+        return None, set()
+    try:
+        obj = json.loads(cursor)
+    except (ValueError, TypeError):
+        obj = None
+    if isinstance(obj, dict) and "d" in obj:
+        return str(obj["d"]), {str(r) for r in obj.get("s", [])}
+    # Legacy bare object name.
+    return _date_from_path(cursor), {_run_id_from_path(cursor)}
+
+
+def _encode_cursor(date: str, processed: set[str]) -> str:
+    """Encode ``(active_date, processed_run_ids)`` into the stored cursor string."""
+    return json.dumps({"d": date, "s": sorted(processed)}, separators=(",", ":"))
+
+
 def _archive_objects_after(
     bucket_obj: Any,
     *,
     worker: str,
     cursor: str | None,
 ) -> list[str]:
-    """Sorted archive object names for ``worker`` strictly after ``cursor``.
+    """Sorted archive object names for ``worker`` not yet processed per ``cursor``.
 
-    Uses ``start_offset`` to skip the date prefix before the cursor (risk note:
-    listing grows with archive depth — revisit when a retention policy is set on
-    the bucket).
+    Listing starts at the cursor's **date prefix** (``signals/<w>/<date>/``), not
+    the full cursor object name, so same-date objects emitted *after* the cursor
+    but with a lexically-smaller ``run_id`` are still listed (run_ids are
+    non-monotonic — see :func:`_decode_cursor`). Already-processed objects are
+    then filtered out: anything in a strictly-earlier date, and any run_id already
+    recorded in the active date's processed set.
+
+    Risk note: listing grows with archive depth within the active date — revisit
+    when a retention policy is set on the bucket.
     """
     prefix = f"signals/{worker}/"
-    # start_offset is the cursor itself (inclusive); we skip it below.
-    start = cursor if cursor is not None else prefix
+    active_date, processed = _decode_cursor(cursor)
+    # Anchor the listing at the active date's prefix (ISO dates sort
+    # chronologically, so this safely skips every fully-processed earlier date).
+    start = f"{prefix}{active_date}/" if active_date is not None else prefix
     names = sorted(
         blob.name
         for blob in bucket_obj.list_blobs(prefix=prefix, start_offset=start)
         if blob.name.endswith(".jsonl") and len(blob.name.split("/")) == 4
     )
-    # start_offset is inclusive — skip the cursor object itself (already processed).
-    if cursor is not None and names and names[0] == cursor:
-        names = names[1:]
-    return names
+    out: list[str] = []
+    for name in names:
+        date = _date_from_path(name)
+        if active_date is not None:
+            if date < active_date:
+                continue  # defensive — start_offset already excludes these
+            if date == active_date and _run_id_from_path(name) in processed:
+                continue  # already processed within the active date
+        out.append(name)
+    return out
 
 
 def _read_signals(bucket_obj: Any, obj_name: str) -> list[Signal]:
@@ -330,9 +384,12 @@ def poll(
 ) -> list[Delivery]:
     """Return new :class:`Delivery` items since the last cursor, or ``[]`` on error.
 
-    **Ordering.** Deliveries within a worker are in object-name order (chronological
-    for ISO-date archive prefixes). Workers iterate in the order given by
-    ``sub.workers`` (or discovery order when ``workers=None``).
+    **Ordering.** Deliveries within a worker are in object-name order — chronological
+    *across* ISO-date prefixes, but not within a single date (the trailing ``run_id``
+    is non-monotonic, so intra-date order is not emission order; don't rely on it for
+    causality). Delivery is still complete: no same-date object is skipped (the cursor
+    lists from the date prefix and tracks processed run_ids). Workers iterate in the
+    order given by ``sub.workers`` (or discovery order when ``workers=None``).
 
     **Cursor discipline.** The cursor advances per-object, inside :func:`poll`,
     after all matching signals in that object are collected or processed. If
@@ -382,6 +439,7 @@ def poll(
         except Exception:  # noqa: BLE001
             _log.exception("signal poll: listing failed for worker %s", worker)
             continue
+        active_date, processed = _decode_cursor(cursor)
         for obj_name in obj_names:
             signals = _read_signals(bkt, obj_name)
             run_id = _run_id_from_path(obj_name)
@@ -406,10 +464,18 @@ def poll(
                             break
             if callback_failed:
                 break
-            # Advance cursor per-object. Failure here means re-delivery of this
-            # object on the next poll — at-least-once guarantee.
+            # Advance the cursor per-object: record this object's date + run_id in
+            # the high-water mark. A later same-date object with a lexically-smaller
+            # run_id is still found next poll (date-prefix listing + processed set);
+            # crossing into a newer date resets the processed set. Failure here means
+            # re-delivery of this object on the next poll — at-least-once guarantee.
+            obj_date = _date_from_path(obj_name)
+            if active_date is None or obj_date > active_date:
+                active_date, processed = obj_date, {run_id}
+            else:  # same date as the active cursor — accumulate
+                processed = processed | {run_id}
             try:
-                cursor_store.save(sub.consumer_id, worker, obj_name)
+                cursor_store.save(sub.consumer_id, worker, _encode_cursor(active_date, processed))
             except Exception:  # noqa: BLE001
                 _log.exception(
                     "cursor save failed for %s/%s — object will be re-delivered",
