@@ -242,6 +242,10 @@ class GcsCursorStore:
 # ---------------------------------------------------------------------------
 
 
+class _ArchiveReadError(Exception):
+    """Archive object was listed but could not be downloaded."""
+
+
 def _discover_workers(bucket_obj: Any) -> list[str]:
     """List distinct worker names from archive objects under ``signals/``."""
     seen: set[str] = set()
@@ -336,9 +340,9 @@ def _read_signals(bucket_obj: Any, obj_name: str) -> list[Signal]:
     """Download and deserialise one NDJSON archive object into Signals."""
     try:
         text = bucket_obj.blob(obj_name).download_as_text()
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         _log.debug("could not download archive object %s", obj_name)
-        return []
+        raise _ArchiveReadError(obj_name) from exc
     out: list[Signal] = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -441,7 +445,10 @@ def poll(
             continue
         active_date, processed = _decode_cursor(cursor)
         for obj_name in obj_names:
-            signals = _read_signals(bkt, obj_name)
+            try:
+                signals = _read_signals(bkt, obj_name)
+            except _ArchiveReadError:
+                break
             run_id = _run_id_from_path(obj_name)
             callback_failed = False
             for s in signals:

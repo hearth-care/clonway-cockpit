@@ -82,6 +82,40 @@ class _FakeClient:
         return _FakeBucket(self._store)
 
 
+class _TransientReadError(Exception):
+    pass
+
+
+class _FlakyDownloadBlob(_FakeBlob):
+    def __init__(self, store: dict[str, str], name: str, failures: dict[str, int]) -> None:
+        super().__init__(store, name)
+        self._failures = failures
+
+    def download_as_text(self) -> str:
+        if self._failures.get(self.name, 0) > 0:
+            self._failures[self.name] -= 1
+            raise _TransientReadError(self.name)
+        return super().download_as_text()
+
+
+class _FlakyDownloadBucket(_FakeBucket):
+    def __init__(self, store: dict[str, str], failures: dict[str, int]) -> None:
+        super().__init__(store)
+        self._failures = failures
+
+    def blob(self, name: str) -> _FakeBlob:
+        return _FlakyDownloadBlob(self._store, name, self._failures)
+
+
+class _FlakyDownloadClient(_FakeClient):
+    def __init__(self, failures: dict[str, int]) -> None:
+        super().__init__()
+        self._failures = failures
+
+    def bucket(self, name: str) -> _FakeBucket:
+        return _FlakyDownloadBucket(self._store, self._failures)
+
+
 class _BoomClient:
     """Raises on bucket() — simulates creds absent."""
 
@@ -474,6 +508,28 @@ def test_poll_with_callback_exception_leaves_cursor_uncommitted(
     )
     assert [d.signal.source_id for d in r2] == ["a"]
     assert calls == ["a", "a"]
+
+
+def test_poll_download_failure_leaves_cursor_uncommitted(tmp_path: Path):  # CC-SIG-SUB-POLL-6D
+    """Transient per-object read failure must not advance past unread signals."""
+    failures: dict[str, int] = {}
+    client = _FlakyDownloadClient(failures)
+    obj_name = _write_archive(
+        client._store, "xbook", "2026-06-01", "r1", [_make_signal(source_id="a")]
+    )
+    failures[obj_name] = 1
+    cs = FileCursorStore(tmp_path)
+    sub = Subscription(consumer_id="xbook", workers=("xbook",))
+
+    r1 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert r1 == []
+    assert cs.load("xbook", "xbook") is None
+
+    r2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert [d.signal.source_id for d in r2] == ["a"]
+    active_date, processed = _decode_cursor(cs.load("xbook", "xbook"))
+    assert active_date == "2026-06-01"
+    assert processed == {"r1"}
 
 
 def test_poll_same_date_nonmonotonic_run_id_no_loss(tmp_path: Path):  # CC-SIG-SUB-POLL-14
