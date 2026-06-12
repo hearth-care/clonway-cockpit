@@ -55,6 +55,9 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
             "package_name": worker_id,
             "deploy_shape": deploy_shape,
             "clonway_rev": "main",
+            # ci_rev must be a SHA or tag (not "main") per fleet policy.
+            # Tests use a sentinel SHA; real operators supply the actual pin.
+            "ci_rev": "0000000000000000000000000000000000000001",
         },
         defaults=True,
         quiet=True,
@@ -426,3 +429,106 @@ def test_ac_c6_4_cli_registers_agent_flags(tmp_path: Path) -> None:
         src = _inspect.getsource(cli._root)
         assert "--agent-stdio" in src
         assert "--allow-apply" in src
+
+
+# --- template CI shape -------------------------------------------------------
+# These tests read the Jinja template files directly rather than running copier,
+# because copier clones the source repo and resolves the default branch — which
+# would not reflect in-progress changes on a feature branch. The generated
+# output cannot be executed anyway (GitHub Actions), so shape assertions against
+# the template source are both sufficient and reliable.
+
+_TEMPLATE_ROOT = _REPO_ROOT / "worker-template"
+_CI_JINJA = _TEMPLATE_ROOT / ".github" / "workflows" / "ci.yml.jinja"
+_PRECOMMIT_JINJA = _TEMPLATE_ROOT / ".pre-commit-config.yaml.jinja"
+
+
+def test_template_ci_uses_reusable_workflow() -> None:
+    ci_text = _CI_JINJA.read_text()
+    assert "hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@" in ci_text, (
+        "ci.yml.jinja must delegate to the fleet's reusable-ci.yml"
+    )
+
+
+def test_template_ci_does_not_contain_full_job_steps() -> None:
+    ci_text = _CI_JINJA.read_text()
+    assert "astral-sh/setup-uv" not in ci_text, (
+        "ci.yml.jinja is a thin caller — setup-uv steps belong in reusable-ci.yml"
+    )
+
+
+def test_template_ci_uses_ci_rev_not_clonway_rev() -> None:
+    """The CI template must pin to ``{{ ci_rev }}``, not ``{{ clonway_rev }}`` or literal @main.
+
+    Copier reads from the git default branch during generation, so we assert on
+    the raw jinja source (same pattern as the other CI shape tests).  The two
+    invariants together prove no generated worker can receive ``@main``:
+    (a) the template uses the ci_rev variable, and
+    (b) copier.yml has a validator that rejects ci_rev == "main".
+    """
+    ci_text = _CI_JINJA.read_text()
+    assert "reusable-ci.yml@{{ ci_rev }}" in ci_text, (
+        "ci.yml.jinja must pin the reusable workflow using {{ ci_rev }}, not {{ clonway_rev }}"
+    )
+    assert "reusable-ci.yml@{{ clonway_rev }}" not in ci_text, (
+        "ci.yml.jinja must not use {{ clonway_rev }} for the CI workflow pin — "
+        "clonway_rev is the Python package pin; ci_rev is the CI workflow pin"
+    )
+    assert "reusable-ci.yml@main" not in ci_text, (
+        "ci.yml.jinja must not hard-code @main for the reusable-ci.yml pin"
+    )
+
+
+def _eval_ci_rev_validator(ci_rev_value: str) -> str:
+    """Evaluate the copier.yml ci_rev validator; returns error message or ''."""
+    import yaml as _yaml
+    from jinja2 import Environment
+    from jinja2_ansible_filters import AnsibleCoreFiltersExtension
+
+    copier_text = (_REPO_ROOT / "copier.yml").read_text()
+    data = _yaml.safe_load(copier_text)
+    validator_src = data["ci_rev"]["validator"]
+    env = Environment(extensions=[AnsibleCoreFiltersExtension])
+    return env.from_string(validator_src).render(ci_rev=ci_rev_value).strip()
+
+
+def test_copier_yml_ci_rev_rejects_non_pinned_refs() -> None:
+    """ci_rev validator must reject branch names, 'main', and empty values."""
+    for invalid in ("feature-branch", "main", "develop", "", "HEAD", "claude/my-branch"):
+        msg = _eval_ci_rev_validator(invalid)
+        assert msg, f"ci_rev validator should reject {invalid!r} but produced no error"
+
+
+def test_copier_yml_ci_rev_accepts_sha_and_tag() -> None:
+    """ci_rev validator must accept a 40-char hex SHA or a vX.Y.Z release tag."""
+    for valid in (
+        "0000000000000000000000000000000000000001",
+        "v0.2.0",
+        "v1.0.0-rc1",
+        "abc123def456789012345678901234567890abcd",
+    ):
+        msg = _eval_ci_rev_validator(valid)
+        assert not msg, f"ci_rev validator should accept {valid!r} but returned: {msg!r}"
+
+
+def test_template_ci_checks_existing_run_ci_label() -> None:
+    """Generated workers must re-run CI on new commits when run-ci label is already applied."""
+    ci_text = _CI_JINJA.read_text()
+    assert "synchronize" in ci_text, (
+        "ci.yml.jinja pull_request trigger must include 'synchronize' so new commits run CI "
+        "when the run-ci label is already applied to the PR"
+    )
+    assert "contains(github.event.pull_request.labels.*.name" in ci_text, (
+        "ci.yml.jinja ci-job condition must use contains(...labels.*.name...) for synchronize events"
+    )
+
+
+def test_template_pre_commit_jinja_exists() -> None:
+    assert _PRECOMMIT_JINJA.exists(), "worker-template must include .pre-commit-config.yaml.jinja"
+
+
+def test_template_pre_commit_contains_ruff_and_mypy() -> None:
+    text = _PRECOMMIT_JINJA.read_text()
+    assert "ruff" in text
+    assert "mypy" in text
+    assert "id: pytest" not in text, "no pytest hook in the fleet baseline (fleet policy: CI only)"

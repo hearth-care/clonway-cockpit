@@ -6,6 +6,9 @@ docs/release-policy.md and docs/pin-sync.md.
 The format is based on Keep a Changelog 1.1.0, and this project follows the
 pre-1.0 rules documented in docs/release-policy.md.
 
+Input renames on `reusable-ci.yml` are breaking changes for all callers.
+Record them here and bump the release tag before merging.
+
 ## [Unreleased]
 
 ### Added
@@ -94,6 +97,38 @@ pre-1.0 rules documented in docs/release-policy.md.
 - Calling `build_signals(...)` without `worker=` is deprecated. This release
   keeps the old `xbook` default with a `DeprecationWarning`; a future release
   will require the worker id explicitly.
+
+- **`reusable-ci.yml`** — new public contract surface: a `workflow_call` reusable CI
+  workflow for the fleet. Inputs: `lint-paths` (default `.`), `mypy-args` (default
+  `src`), `pytest-args` (default `-q`), `prod-import-package` (default empty),
+  `python-version` (default `3.12`), `runs-on` (default `ubuntu-latest`), and
+  `uv-python-downloads` (default `automatic`; use `never` for workers that must
+  use preinstalled Python). Jobs: `lint` (ruff + ruff-format + mypy), `test`
+  (pytest), `prod-import` (conditional). Callers pin by release tag (`@v0.2.0`)
+  or full SHA — never `@main`. See `docs/ci-adoption.md` for the per-worker
+  adoption checklist.
+
+- **`.pre-commit-config.yaml`** — fleet pre-commit baseline: trailing-whitespace,
+  EOF fixer, check-added-large-files, check-merge-conflict, detect-private-key
+  (pre-commit-hooks v6.0.0); ruff + ruff-format (ruff-pre-commit v0.15.17); mypy
+  via `uv run` (uses the repo's own pinned mypy, not a hook venv). No pytest hook
+  (fleet policy: full suite in CI only).
+
+- **`worker-template/.pre-commit-config.yaml.jinja`** — stamps the pre-commit
+  baseline into every new worker generated from the template.
+
+- **`docs/ci-adoption.md`** — per-worker adoption checklist: divergence table for
+  all 8 workers, caller shapes, gotchas, and mechanical steps.
+
+- **`ci.yml`** — this repo's CI converted to a thin `workflow_call` caller
+  (`uses: ./.github/workflows/reusable-ci.yml`). The `prod-import-package:
+  clonway_cockpit` input enables the import-smoke job. The `concurrency` stanza
+  and `gitleaks` job remain in the caller.
+
+- **`worker-template/.github/workflows/ci.yml.jinja`** — rewritten as a thin caller
+  (delegates to `reusable-ci.yml@{{ ci_rev }}`). Default worker inputs:
+  `lint-paths: "src tests"`, `mypy-args: ""` (bare mypy, config-driven). Includes
+  label guard (`run-ci`) and `merge_group` trigger matching the fleet's adopted shape.
 
 ## [0.1.0] - 2026-06-11
 

@@ -2890,4 +2890,3 @@ verify-before-claiming-done rule). Framework slices are DONE = coded+merged; not
 - Type consistency spot-checks: `ReflexKit(bank, policy, log)` is constructed identically in
   Tasks 6/8/12–13 test helpers; `negotiating_responder` keyword args match between Tasks 8 and
   13; `AskDecision`/`PlanStep` field names match Tasks 1, 8, and 12.
-

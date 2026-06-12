@@ -1,0 +1,37 @@
+# Fleet pre-commit baseline — identical across all Clonway worker repos.
+# Template copy: worker-template/.pre-commit-config.yaml.jinja
+#
+# Policy (global CLAUDE.md §"Tests"):
+#   Fast hooks on commit — ruff, format, mypy, and cheap hygiene checks.
+#   Full pytest suite runs in CI only, never as a pre-commit hook.
+#   If a repo needs a pytest hook (e.g. for manual invocation only), add it
+#   with `stages: [manual]`.
+#
+# mypy runs via `uv run` so it uses the repo's own pinned mypy + stubs rather
+# than a separate hook virtualenv, ensuring hook results match CI exactly.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        language: system
+        entry: uv run mypy src
+        types: [python]
+        pass_filenames: false

@@ -74,3 +74,8 @@ Release from the changelog section.
 
 Full `pytest` suite runs in CI on every push/PR, not on every commit (keep pre-commit hooks
 fast — ruff/format/mypy). Run locally with `uv run pytest -q`.
+
+`.pre-commit-config.yaml` is the fleet baseline (trailing-whitespace, EOF, ruff, ruff-format,
+mypy via `uv run`). No pytest hook — full suite stays in CI. Install once with
+`uv run pre-commit install`; the same file is stamped into every new worker via
+`worker-template/.pre-commit-config.yaml.jinja`.
