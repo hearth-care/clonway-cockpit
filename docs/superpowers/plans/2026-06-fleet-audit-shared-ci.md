@@ -149,8 +149,8 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** QA FAIL 2026-06-12T07:00Z addressed locally; full local gates still to run
-after final rebase check.
+**Current phase:** COMPLETE — QA FAIL 2026-06-12T07:00Z addressed, branch confirmed up to
+date with `origin/main`, full local gates green in current fixer pass.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -218,8 +218,11 @@ after final rebase check.
 - Open adoption PRs for each worker per `docs/ci-adoption.md` (start with auto-hr).
 - Cut `v0.2.0` release tag once release-engineering plan lands.
 
-**Known-failing:** none at focused-test level. Current focused regression failed before the fix
+**Known-failing:** none. Current focused regression failed before the fix
 (`uv run pytest tests/test_ci_shape.py::test_reusable_has_documented_inputs
 tests/test_ci_shape.py::test_reusable_propagates_uv_python_downloads_inside_called_jobs
 tests/test_ci_shape.py::test_auto_orchestrator_adoption_uses_uv_python_downloads_input -q`
-→ 3 failed) and passed after (`3 passed in 0.02s`). Full local gates are next.
+→ 3 failed) and passed after (`3 passed in 0.02s`). Final gates:
+`make test` → 939 passed in 26.57s; `uv run pre-commit run --all-files` → all 8 hooks passed;
+`make check` → ruff, format, mypy, pytest 939 passed in 21.34s; `make template-smoke` → xsmoke
+15 passed / 1 xfailed, ruff, format, mypy, CLI smoke all clean.
