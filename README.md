@@ -81,6 +81,9 @@ screen with no model fails the build; a model that never emits on a real path fa
   and drive any worker (read frames, route the write gate to a human).
 - Auto-Orchestrator `docs/agent-driving.md` — how the orchestrator drives the fleet
   via `CockpitClient` (`xops.drive`).
+- [docs/fleet-conformance.md](docs/fleet-conformance.md) — which fleet workers are
+  cockpit-conformant, verified when and against what commit (current source of truth
+  for adoption status).
 
 ## Layout
 

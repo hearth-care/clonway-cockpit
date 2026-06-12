@@ -41,6 +41,10 @@ and the one that's been paused. Everything below works _locally_ without it.
 
 ## Fleet adoption matrix
 
+> **Adoption status superseded.** For current cockpit-channel and contract-test conformance per
+> worker, see [fleet-conformance.md](fleet-conformance.md) (updated 2026-06-12 and governed by a
+> verification recipe). The persona notes below remain valid.
+
 _Observed from fetched sibling repo `origin/main` refs on 2026-06-09. This is repo state, not a
 production traffic claim._
 
