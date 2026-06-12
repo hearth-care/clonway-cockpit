@@ -21,14 +21,14 @@ Short SHAs are first 7 chars of the full commit hash. "Observed pin" = the `rev 
 
 | Worker | Repo | Cockpit command | Observed cockpit pin | Contract test present | Dynamic drive path | Last verified | Known exceptions |
 |---|---|---|---|---|---|---|---|
-| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `8449c2d` | No | not proven in CI | `bdd519a` · 2026-06-12 | — |
-| xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `a75f7a0` | No | not proven in CI | `4d23729` · 2026-06-12 | ~60 s first-frame delay observed on first invocation |
+| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `8449c2d` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelf (`["f","q"]`) | `bdd519a` · 2026-06-12 | — |
+| xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `a75f7a0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelves and walks deep (`["b","q"]`, `["h","x","q"]`, capability-key paths) | `4d23729` · 2026-06-12 | ~60 s first-frame delay observed on first invocation |
 | xletter | hearth-care/auto-marketer | _(no `--agent-stdio`)_ | `4c63daf` | No | n/a | `f789fe7` · 2026-06-12 | Not cockpit-drivable; `--agent-stdio` absent from CLI |
 | xquill | hearth-care/auto-secretary | _(no `--agent-stdio`)_ | `4c63daf` | No | n/a | `192f1aa` · 2026-06-12 | Not cockpit-drivable; `--agent-stdio` absent from CLI |
-| xadmissions | hearth-care/auto-admissions | `uv run xadmissions --agent-stdio` | `4c63daf` | No | not proven in CI | `33dea4e` · 2026-06-12 | — |
+| xadmissions | hearth-care/auto-admissions | `uv run xadmissions --agent-stdio` | `4c63daf` | Partial | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; drives `["q"]` and `["enter","enter","q"]` beyond home | `33dea4e` · 2026-06-12 | `assert_render_model_parity` not called — parity gap; see open gaps |
 | xcqc | hearth-care/auto-inspector | `uv run xcqc --agent-stdio` | `4c63daf` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `11b487c` · 2026-06-12 | — |
 | xsource | hearth-care/Auto-Procurer | `uv run xsource --agent-stdio` | `4c63daf` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `354fd63` · 2026-06-12 | — |
-| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `4c63daf` | No | not proven in CI | `746eaaf` · 2026-06-12 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
+| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `4c63daf` | Yes | `assert_drives_clean` in `tests/cli/test_bridge_agent_contract.py`; drives `["q"]` and `["d","x","q"]` to `worker_drilldown` | `746eaaf` · 2026-06-12 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
 
 **Contract test present** = the worker's test suite imports `clonway_cockpit.contract` and calls
 **both** `assert_render_model_parity` and `assert_drives_clean`. A partial import (one function
@@ -89,9 +89,10 @@ include a refreshed "Last verified" for that row.
 
 - **xletter, xquill**: No `--agent-stdio`. Adoption decision deferred; see
   [persona-platform-getting-started.md](persona-platform-getting-started.md) §C.
-- **Contract tests missing** for xbook, xhr, xadmissions, xops bridge. xcqc and xsource are
-  the reference implementations; add `tests/test_cockpit_contract.py` in each remaining worker
-  to complete the fleet.
+- **xadmissions parity gap**: `tests/cockpit/test_agent_contract.py` calls `assert_drives_clean`
+  but not `assert_render_model_parity` — a missing `model_*` twin would not be caught in CI.
+  xcqc and xsource are the full reference implementations (both functions); all other
+  agent-stdio workers (xbook, xhr, xops bridge) now also ship both.
 - **Pins on raw SHA**: All workers except xbook are on `4c63daf` (a raw SHA). Supported line
   is `v0.1.0`; see [pin-sync.md](pin-sync.md) for the update recipe.
 - **xbook pin**: On raw SHA `8449c2d`, not on the supported `v0.1.0` tag.
