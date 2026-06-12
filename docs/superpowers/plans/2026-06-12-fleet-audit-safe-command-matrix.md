@@ -32,7 +32,7 @@ to run?" has one fleet-wide answer format.
 
 ## Deliverables
 
-- [ ] Phase 1 — `docs/safe-command-matrix.md` defining the column contract; one row per
+- [x] Phase 1 — `docs/safe-command-matrix.md` defining the column contract; one row per
   CLI subcommand/flag combination a worker exposes:
   - Command (exact invocation shape)
   - Help-only (prints usage and exits — MUST NOT touch network, credentials, or disk
@@ -46,7 +46,7 @@ to run?" has one fleet-wide answer format.
   - Credentials required (which credential, or "none"; help-only rows MUST be "none")
   - Expected first output (what a caller sees first — frame kind, header line, or
     prompt — so a hang or a surprise write is detectable immediately)
-- [ ] Phase 2 — the classification rules, each falsifiable:
+- [x] Phase 2 — the classification rules, each falsifiable:
   - Every command has exactly one safety class (the highest-impact behaviour it can
     reach in its default invocation).
   - Default invocation is never riskier than its name implies: anything named
@@ -57,24 +57,24 @@ to run?" has one fleet-wide answer format.
     network.
   - Matrix freshness: adding or changing a subcommand without updating the matrix fails
     the worker's own review checklist.
-- [ ] Phase 3 — a worked example: the matrix for the template scaffold's command surface
+- [x] Phase 3 — a worked example: the matrix for the template scaffold's command surface
   (`<worker>` bare, `--agent-stdio`, `--allow-apply`, `signals scan`), demonstrating
   every column.
-- [ ] Phase 4 — adoption pointers: one line in `docs/onboarding-a-worker.md` and one in
+- [x] Phase 4 — adoption pointers: one line in `docs/onboarding-a-worker.md` and one in
   `worker-template/README.md.jinja` requiring each worker to publish
   `docs/safe-command-matrix.md` in its own repo against this standard.
 
 ## Acceptance criteria
 
-- [ ] `docs/safe-command-matrix.md` exists with all eight columns defined and the
+- [x] `docs/safe-command-matrix.md` exists with all eight columns defined and the
   safety-class vocabulary closed (a command cannot be given a class not in the doc).
-- [ ] Each Phase 2 rule is stated so a reviewer can fail a specific row against it —
+- [x] Each Phase 2 rule is stated so a reviewer can fail a specific row against it —
   including the three audit-observed violation patterns by name: dry-runs that write
   local state, report commands that default to write, help paths that hydrate secrets.
-- [ ] The worked example covers the template's commands with no empty cells.
-- [ ] Both adoption pointers are present; no worker-specific claims are made in this
+- [x] The worked example covers the template's commands with no empty cells.
+- [x] Both adoption pointers are present; no worker-specific claims are made in this
   repo beyond the template example.
-- [ ] The standard explains its relationship to the cockpit write gate: the gate covers
+- [x] The standard explains its relationship to the cockpit write gate: the gate covers
   walks; the matrix covers the whole CLI surface; the two must agree where they overlap
   (an external post/apply row must reference its gate or flag).
 
