@@ -506,7 +506,7 @@ deadline-aware with the rest of the fleet.
 
 ## Checklist
 
-- [ ] `docs/safe-command-matrix.md` published in the worker repo, one row per CLI subcommand/flag, all eight columns populated — see [`docs/safe-command-matrix.md`](../docs/safe-command-matrix.md) in clonway-cockpit for the column contract, safety-class vocabulary, and classification rules.
+- [ ] `docs/safe-command-matrix.md` published in the worker repo, one row per CLI subcommand/flag, all eight columns populated — see [`docs/safe-command-matrix.md`](safe-command-matrix.md) in clonway-cockpit for the column contract, safety-class vocabulary, and classification rules.
 - [ ] `clonway-cockpit` git dep pinned in `pyproject.toml`
 - [ ] Dockerfile git-fix added (slim-Docker builds only — skip for launchd)
 - [ ] `signals/build.py` with pure `build_<worker>_signals(today=, now=)` on real state
