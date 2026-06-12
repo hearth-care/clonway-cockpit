@@ -42,12 +42,12 @@ Detailed persona-platform status (what's live, what's local-only, recommended ne
 
 ## Agent-navigable by construction
 
-Every Clonway worker is **one binary serving two audiences** — a human TUI *and*
-an agent-drivable surface — over the **same render loop, same code path, same
-write gate**. There is no second implementation and no distinction between a human
-operating a worker and an agent operating it. This is a structural property of the
-framework, but how much of it a given consumer inherits depends on where they are
-in the adoption chain:
+A **conformant** worker built on this framework is **one binary serving two
+audiences** — a human TUI *and* an agent-drivable surface — over the **same
+render loop, same code path, same write gate**. There is no second implementation
+and no distinction between a human operating a conformant worker and an agent
+operating it. This is a structural property of the framework, but how much of it
+a given consumer inherits depends on where they are in the adoption chain:
 
 **(a) The framework ships the gate and the channel.** `contract.py`
 (`assert_render_model_parity` + `assert_drives_clean`) and `agent.py`
