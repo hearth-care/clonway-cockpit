@@ -184,6 +184,11 @@ new double-underscore overlay.
   - QA-follow-up RED: `uv run pytest tests/test_shared_config_sheets_docs.py::test_onboarding_docs_include_config_and_sheets_examples -q` -> failed because onboarding still contained `XEXAMPLE__SYNC__WINDOW_DAYS` and lacked the explicit env-only label.
   - QA-follow-up GREEN: `uv run pytest tests/test_shared_config_sheets_docs.py::test_onboarding_docs_include_config_and_sheets_examples -q` -> `1 passed in 0.01s`
   - QA-follow-up docs file: `uv run pytest tests/test_shared_config_sheets_docs.py -q` -> `3 passed in 0.01s`
+  - Final rebase: `git fetch origin && git rebase origin/main` -> `Current branch claude/plan-shared-config-sheets is up to date.`
+  - Final `make check` -> ruff `All checks passed!`; format `131 files already formatted`; mypy `Success: no issues found in 54 source files`; pytest `881 passed in 17.57s`
+  - Final prod import: `uv run --no-dev python -c "import clonway_cockpit"` -> exit 0, no output
+  - Final `pre-commit run --all-files` -> `InvalidConfigError: .pre-commit-config.yaml is not a file` (repo has no pre-commit config)
+  - Final `make template-smoke` -> generated xsmoke from local checkout; generated pytest `15 passed, 1 xfailed`; ruff passed; format `18 files already formatted`; mypy `Success: no issues found in 12 source files`; CLI off `signals: disabled`; CLI on `signals: emitted 0`; `template-smoke PASSED for xsmoke (job)`
   - `git rebase origin/main` after QA fix -> `Current branch claude/plan-shared-config-sheets is up to date.`
   - `make check` after QA fix -> ruff passed; format `131 files already formatted`; mypy `Success: no issues found in 54 source files`; pytest `881 passed in 17.71s`
   - `uv run --no-dev python -c "import clonway_cockpit"` after QA fix -> exit 0, no output
@@ -197,4 +202,4 @@ new double-underscore overlay.
   - QA docs fix changes an operator-facing onboarding step: worker pins now use the release tag named in `docs/pin-sync.md` (example `rev = "v0.1.0"`), not raw commit SHAs.
   - QA follow-up keeps the three-field onboarding model flat and documents the matching env overlay `XEXAMPLE__SYNC_WINDOW_DAYS=14`; nested double-underscore examples now use a generic nested-field shape to avoid implying the flat example has `sync.window_days`.
 - Known-failing tests: none from focused QA-fix runs.
-- Next concrete step: commit/push this QA follow-up increment, rebase onto `origin/main`, run full gates, post any required runbook delta, mark PR ready/needs-qa, and add DONE evidence.
+- Next concrete step: commit/push this final handoff-note update, post the required runbook delta, mark PR ready/needs-qa, and add DONE evidence.
