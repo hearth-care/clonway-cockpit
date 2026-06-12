@@ -1,4 +1,4 @@
-.PHONY: test lint format typecheck check template-smoke
+.PHONY: test lint format typecheck docs check template-smoke
 
 test:
 	uv run pytest -q
@@ -11,6 +11,9 @@ format:
 
 typecheck:
 	uv run mypy src
+
+docs:
+	uv run pdoc clonway_cockpit -o build/docs
 
 # All the gates CI runs, in one shot.
 check: lint format typecheck test
