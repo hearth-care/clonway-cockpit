@@ -28,8 +28,10 @@ See ``docs/cross-worker-handoffs.md`` and the design spec
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -52,6 +54,63 @@ from .persona_soul import SoulError
 from .private_memory import PersonaMemory
 from .receptionist import route
 from .reflex import ReflexFiring, ReflexKit, fire_reflexes
+
+_log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class HandoffFailure:
+    """Programmatic record of a failed cross-worker handoff.
+
+    Passed to :attr:`NegotiatedSpace.on_handoff_failed` when a handoff ends in
+    a way that the initiating worker cannot act on without a programmatic hook.
+    Default (``on_handoff_failed=None``) preserves today's behaviour: the stall
+    text posts to the room owner; no other notification occurs.
+
+    ``reason`` is a closed set so consumers can branch without parsing strings:
+
+    - ``"declined"``: a counterparty explicitly declined an ask (bare decline,
+      no valid redirect).
+    - ``"stalled"``: no response arrived before the stall sweep fired.
+    - ``"parse_failed"``: a reply attributed to an open task failed the
+      origin-integrity check (forged or malformed envelope).
+    - ``"reflex_refused"``: a reflex matched the ask but its ``run()`` returned
+      ``False``; the ask was not handled.
+
+    ``summary`` is one PII-light line (title-level, no message bodies).
+    ``counterparty`` is ``None`` for ``"stalled"`` (nobody responded).
+    """
+
+    task_id: str
+    initiator: str  # persona/worker handle that originated the handoff
+    counterparty: str | None  # persona/worker that caused the failure; None for "stalled"
+    reason: str  # "declined" | "stalled" | "parse_failed" | "reflex_refused"
+    summary: str  # one PII-light line
+    occurred_at: datetime
+
+
+@dataclass(frozen=True)
+class _FailureRecord:
+    """Internal accumulator — drained by NegotiatedSpace._sweep."""
+
+    task_id: str
+    initiator: str
+    counterparty: str
+    reason: str
+    summary: str
+
+
+def _safe_callback(cb: Callable[[HandoffFailure], None], failure: HandoffFailure) -> None:
+    """Invoke the callback, swallowing any exception it raises.
+
+    The negotiation loop must never die to an observer — a raising callback is
+    logged at ERROR and otherwise ignored so ledger state is never corrupted.
+    """
+    try:
+        cb(failure)
+    except Exception:  # noqa: BLE001
+        _log.exception("on_handoff_failed callback raised for task %s", failure.task_id)
+
 
 NEGOTIATION_BRIEF = """\
 You are deciding how to respond to a colleague's handoff, not acting on it.
@@ -391,13 +450,30 @@ class TaskLedger:
         self._planned: set[str] = set()
         self._stalled: set[str] = set()
         self._duplicates: list[str] = []
+        self._pending_failures: list[_FailureRecord] = []
 
     def feed(self, message: ChatMessage) -> None:
         if message.is_owner:
             return
         env = parse_envelope(message.text)
-        if env is None or env.origin != message.author:
-            return  # prose, or a forged/echoed frame (D1)
+        if env is None:
+            return  # prose — no task attribution possible
+        if env.origin != message.author:
+            # Forged or echoed frame (D1). When the envelope references an open task it
+            # is a response that failed the origin-integrity check — record parse_failed
+            # so the initiating worker can react programmatically.
+            if env.kind == "response" and env.task_id in self._tasks:
+                notice, _ = self._tasks[env.task_id]
+                self._pending_failures.append(
+                    _FailureRecord(
+                        task_id=env.task_id,
+                        initiator=notice.origin,
+                        counterparty=message.author,
+                        reason="parse_failed",
+                        summary=f"origin mismatch on response to {notice.summary!r:.60}",
+                    )
+                )
+            return
         if env.kind == "notice":
             if env.task_id in self._tasks:
                 self._duplicates.append(env.task_id)  # a reused id is inert (D14)
@@ -427,6 +503,26 @@ class TaskLedger:
                 asks[d.ask] = _AskState(_REDIRECTED, d.redirect)
             else:  # defer, reflexed-not-applied, bare decline -> the owner's attention
                 asks[d.ask] = _AskState(_OWNER_ATTENTION, env.origin)
+                if d.decision == "decline":
+                    self._pending_failures.append(
+                        _FailureRecord(
+                            task_id=env.task_id,
+                            initiator=_notice.origin,
+                            counterparty=env.origin,
+                            reason="declined",
+                            summary=d.ask[:80],
+                        )
+                    )
+                elif d.decision == "reflexed":  # applied is False here
+                    self._pending_failures.append(
+                        _FailureRecord(
+                            task_id=env.task_id,
+                            initiator=_notice.origin,
+                            counterparty=env.origin,
+                            reason="reflex_refused",
+                            summary=d.ask[:80],
+                        )
+                    )
 
     def unresolved(self) -> list[OpenTask]:
         out: list[OpenTask] = []
@@ -490,6 +586,11 @@ class TaskLedger:
     def duplicate_notices(self) -> tuple[str, ...]:
         return tuple(self._duplicates)
 
+    def consume_failures(self) -> list[_FailureRecord]:
+        """Drain and return all accumulated failure records (empties the internal list)."""
+        out, self._pending_failures = self._pending_failures, []
+        return out
+
 
 def stall_text(task: OpenTask, owner_line: str) -> str:
     """Prose (deliberately NOT an envelope — it draws no agent replies) escalating an
@@ -527,6 +628,7 @@ class NegotiatedSpace:
     owner_line: str = "owner"
     max_persona_turns: int = 6
     domain_matches: Callable[[str, Persona], bool] | None = None
+    on_handoff_failed: Callable[[HandoffFailure], None] | None = None
     ledger: TaskLedger = field(init=False)
     _space: GroupSpace = field(init=False, repr=False)
 
@@ -579,8 +681,34 @@ class NegotiatedSpace:
                 continue
             self.transport.post(self.space_id, render_envelope(plan))
             self.ledger.mark_planned(task_id)
+        now = datetime.now(UTC)
         for task in self.ledger.unresolved():
             if self.ledger.is_stalled(task.task_id):
                 continue
             self.transport.post(self.space_id, stall_text(task, self.owner_line))
             self.ledger.mark_stalled(task.task_id)
+            if self.on_handoff_failed is not None:
+                _safe_callback(
+                    self.on_handoff_failed,
+                    HandoffFailure(
+                        task_id=task.task_id,
+                        initiator=task.origin,
+                        counterparty=None,
+                        reason="stalled",
+                        summary=(f"{len(task.missing)} ask(s) unresolved: {task.missing[0][:80]}"),
+                        occurred_at=now,
+                    ),
+                )
+        if self.on_handoff_failed is not None:
+            for rec in self.ledger.consume_failures():
+                _safe_callback(
+                    self.on_handoff_failed,
+                    HandoffFailure(
+                        task_id=rec.task_id,
+                        initiator=rec.initiator,
+                        counterparty=rec.counterparty,
+                        reason=rec.reason,
+                        summary=rec.summary,
+                        occurred_at=now,
+                    ),
+                )
