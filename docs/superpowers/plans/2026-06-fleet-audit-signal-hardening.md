@@ -99,9 +99,9 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 ## Implementation plan
 
 ### Phase 1 — public helpers + deprecation shims
-- [ ] Promote `_dedup_key` / `_urgency_from_due_at` to public names; keep underscore aliases emitting `DeprecationWarning`; pin test: public `dedup_key(...)` returns byte-identical values to current `_dedup_key` for a fixture matrix (the uuid5 recipe is frozen).
-- [ ] `build_signals` worker-default deprecation warning + test.
-- Files: `src/clonway_cockpit/signals/model.py`, `tests/test_signals_model.py` (extend existing).
+- [x] Promote `_dedup_key` / `_urgency_from_due_at` to public names; keep underscore aliases emitting `DeprecationWarning`; pin test: public `dedup_key(...)` returns byte-identical values to current `_dedup_key` for a fixture matrix (the uuid5 recipe is frozen).
+- [x] `build_signals` worker-default deprecation warning + test.
+- Files: `src/clonway_cockpit/signals/model.py`, `tests/test_signal_model.py` (extended existing file; plan's plural filename did not exist).
 
 ### Phase 2 — `SignalFactory`
 - [ ] `signals/factory.py` per Spec §1–2; golden wire test (factory vs current path, same inputs → identical `to_wire()` dicts); identity-mismatch test (`emit` with a foreign-worker Signal → `SignalIdentityError` surfaced via the build-failure path: emit returns `()`, exception logged); sealing tests (no override possible — API-shape asserted).
@@ -141,3 +141,13 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 - Run the eight-repo private-import survey before touching any underscore name; paste results in the PR description.
 - Do NOT: change `Signal.to_wire()` or the dedup recipe in any way; remove `_TITLE_KIND` (it remains layer 3 of resolution); make strict mode the default anywhere; migrate worker wrappers from this branch; add identifiers to docs (public repo — note the shared bucket name already in source is referenced via `emit._BUCKET`, never re-stated in new docs).
 - Done = acceptance criteria demonstrated, `make check` + `make template-smoke` green, changelog updated.
+
+## HANDOFF NOTES
+
+- Agent: builder-codex-20260612T022623Z.
+- Current phase: Phase 2 — `SignalFactory`.
+- Completed: rebuilt worktree from `origin/claude/plan-signal-hardening`; baseline `uv run pytest -q` passed (`758 passed in 15.10s`); baseline `pre-commit run --all-files` failed because `.pre-commit-config.yaml` is absent; Phase 1 tests were written red first, then public `dedup_key` / `urgency_from_due_at`, deprecated underscore shims, and the staged `build_signals()` default-worker warning were implemented.
+- Verification: `uv run pytest tests/test_signal_model.py -q` -> `47 passed in 0.03s`.
+- Decisions/deviations: used existing `tests/test_signal_model.py`; `tests/test_signals_model.py` named in the plan does not exist. `.claude/` was already ignored. No wire shape or dedup recipe changes were made.
+- Next concrete step: write Phase 2 failing tests in `tests/test_signal_factory.py` for golden wire parity, sealed fields/API shape, and `emit()` identity mismatch.
+- Known-failing tests: none after the Phase 1 focused run.
