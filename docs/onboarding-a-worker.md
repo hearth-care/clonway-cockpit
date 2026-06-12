@@ -177,6 +177,49 @@ operator sign-off in the worker cockpit or CLI layer.
 
 ---
 
+## Typed cockpit client context
+
+`WizardContext` is generic over the worker's live client. Unannotated workers can
+keep using `WizardContext`, but a worker with a real client can type the builder
+and handlers end-to-end:
+
+```python
+from collections.abc import Callable
+
+from clonway_cockpit.registry import WizardContext
+
+
+class WorkerClient:
+    def sync(self) -> str: ...
+
+
+WorkerHandler = Callable[[WizardContext[WorkerClient]], None]
+
+
+def build_walk_ctx(screen, read_key, *, focus: str | None = None) -> WizardContext[WorkerClient]:
+    return WizardContext(
+        state={},
+        client=WorkerClient(),
+        console=console,
+        input_fn=input_fn,
+        confirm_fn=confirm_fn,
+        present=screen.update,
+        read_key=read_key,
+        focus=focus,
+    )
+
+
+def run_worker_walk(ctx: WizardContext[WorkerClient]) -> None:
+    assert ctx.client is not None
+    ctx.client.sync()
+```
+
+The framework spine still treats `ctx.client` as opaque. The type parameter is for
+worker code: mypy will now catch a handler that expects one client type being wired
+to a builder that supplies another.
+
+---
+
 ## 2. `signals/build.py` — the pure signal builder
 
 Write `build_<worker>_signals(*, today, now) -> tuple[Signal, ...]` returning
@@ -247,7 +290,7 @@ Examples from the fleet:
 
 ---
 
-## 3. `signals/emit.py` — a thin wrapper
+## 4. `signals/emit.py` — a thin wrapper
 
 Don't reimplement the GCS flush. Delegate to the shared helper:
 
@@ -312,7 +355,7 @@ hit and `google-cloud-storage` isn't needed in clonway-cockpit's own test env.
 
 ---
 
-## 4. The CLI command — `<worker> signals scan`
+## 5. The CLI command — `<worker> signals scan`
 
 Register a `signals` Typer sub-app with a `scan` command (xhr's
 `src/xhr/cli/signals.py` is the template). It prints `disabled` when the flag is
@@ -334,7 +377,7 @@ Verify locally before scheduling: `uv run <worker> signals scan` (off →
 
 ---
 
-## 5. The flag (default OFF) + go-live
+## 6. The flag (default OFF) + go-live
 
 `<WORKER>_EMIT_SIGNALS` defaults OFF — the command and any scheduled call are a
 no-op until an operator flips it. Going live is a flag flip + a scheduler entry.
@@ -391,7 +434,7 @@ No Cloud Run; a launchd plist runs the command on a schedule with the flag set
 
 ---
 
-## 6. Register the codename with the bridge
+## 7. Register the codename with the bridge
 
 The Fleet Cockpit bridge reads `signals/<worker>/latest.jsonl` **per codename**
 from its roster — it doesn't auto-discover arbitrary prefixes. Confirm your

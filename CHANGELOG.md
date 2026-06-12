@@ -18,6 +18,9 @@ pre-1.0 rules documented in docs/release-policy.md.
 - **`Gateway.validate()`** — no-network startup checks for configured roles,
   required env vars, LiteLLM availability, and pricing/model mismatches.
 
+- `WizardContext` is generic over the worker client type, with
+  `AnyWizardContext` as the Python 3.12-compatible alias for loose call sites.
+
 - **`clonway_cockpit.config`** — pydantic-backed worker config loader with YAML
   file loading, double-underscore env overlay, aggregated provenance errors, and
   the `SecretEnvName` convention. Optional dependency extra:

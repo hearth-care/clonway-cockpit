@@ -107,7 +107,7 @@ Ordered phases; each lands with `make check` green and is independently mergeabl
 - [x] **Phase 1 (C4):** autouse fixture + `clonway_cockpit/testing.py` plugin + a regression test that deliberately registers without cleanup and asserts the next test sees a clean registry. Files: `tests/conftest.py`, `src/clonway_cockpit/testing.py`, `tests/test_registry_isolation.py`.
 - [x] **Phase 2 (C18):** `Gateway.validate` + `from_dict` tightening + tests (missing env var named, typo'd role, bad pricing entry now raising, litellm-extra check with import shim). Files: `src/clonway_cockpit/gateway/{gateway,config}.py`, `tests/test_gateway_validate.py`. Changelog: pricing tightening is a behaviour change — call it out.
 - [x] **Phase 3 (C3):** mechanical split per spec; parity-contract discovery extended; facade pin test. Files: four render modules, `src/clonway_cockpit/contract.py` (discovery scan), `tests/test_render_facade.py`. **Zero diff** in any other test file is the proof of mechanical-ness.
-- [ ] **Phase 4 (C5):** generic `WizardContext`; mypy-strict clean; a typed-worker example in `docs/onboarding-a-worker.md`; verify worker-template still generates type-clean code. Files: `src/clonway_cockpit/registry.py`, docs, template if needed.
+- [x] **Phase 4 (C5):** generic `WizardContext`; mypy-strict clean; a typed-worker example in `docs/onboarding-a-worker.md`; verify worker-template still generates type-clean code. Files: `src/clonway_cockpit/registry.py`, docs, template if needed.
 - [ ] **Phase 5 (C20):** pdoc dev-dep, `make docs`, CI job, Pages publish. Files: `pyproject.toml`, `Makefile`, `.github/workflows/ci.yml` (+ pages workflow).
 - [ ] **Phase 6 (C16):** table restructure + test extension. Files: `docs/persona-platform-architecture.md`, `tests/test_docs_delivery_truth.py`.
 - [ ] Changelog entries per phase under `[Unreleased]`.
@@ -140,8 +140,8 @@ Ordered phases; each lands with `make check` green and is independently mergeabl
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 3 (C3) implemented; preparing commit/push after full `make check`.
-- Next concrete step: start Phase 4 (C5) by confirming mypy support for PEP 696 default type parameters, then add a typed `WizardContext` regression before changing `registry.py`.
-- Decisions taken: `.claude/` was already gitignored; no `.gitignore` change required. No existing changelog file was present, so `CHANGELOG.md` was created with an `[Unreleased]` section. Gateway unknown top-level config keys are stored as `GatewayConfig.warnings` and reported by `Gateway.validate()`. Render split kept a static facade import list so mypy can see `clonway_cockpit.render` attributes.
+- Current phase: Phase 4 (C5) implemented; preparing full `make check` before commit/push.
+- Next concrete step: start Phase 5 (C20) by adding a failing docs-build/Makefile or CI assertion for `make docs`, then add pdoc dev dependency and workflow wiring.
+- Decisions taken: `.claude/` was already gitignored; no `.gitignore` change required. No existing changelog file was present, so `CHANGELOG.md` was created with an `[Unreleased]` section. Gateway unknown top-level config keys are stored as `GatewayConfig.warnings` and reported by `Gateway.validate()`. Render split kept a static facade import list so mypy can see `clonway_cockpit.render` attributes. PEP 696 default type parameters were rejected by mypy under `--python-version 3.12`, so Phase 4 used Python 3.12 generic syntax without a default (`WizardContext[ClientT]`) and exported `AnyWizardContext = WizardContext[object]` for loose call sites.
 - Worker import survey: `grep -R "from clonway_cockpit.render import" -n /Users/olliepage/Developer/*/src` found only facade imports in Auto-Admissions (`render_note`), Auto-Bookkeeper (star/explicit primitive re-export and `render_needs_you`), and Auto-HR (`render_note`); no worker imports from the new implementation modules are required.
-- Known-failing tests: none known after full `make check` passed with 770 pytest tests.
+- Known-failing tests: none known after `uv run pytest -q tests/test_wizard_context_typing.py`, `uv run pytest -q tests/test_worker_template.py`, and `uv run mypy src` passed.
