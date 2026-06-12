@@ -52,6 +52,23 @@ uv run pytest -q && uv run ruff check .              # green out of the box
    add a daily `signals scan` scheduler entry (see clonway-cockpit's
    `docs/onboarding-a-worker.md` §5–6 for the per-shape recipe).
 
+## Acceptance evidence
+
+Before any PR that adds a bespoke screen, shelf, or write walk is reviewed, paste the
+five evidence items from
+[`docs/generated-worker-acceptance.md`](https://github.com/hearth-care/clonway-cockpit/blob/main/docs/generated-worker-acceptance.md)
+in the PR body:
+
+1. **Home frame renders** — first JSON line showing `kind: home` + `schema_version`.
+2. **Capability walk** — `kinds` list covering at least one screen beyond home.
+3. **No `unstructured`** — `pytest -q tests/test_cockpit_contract.py` output (pass).
+4. **Dry-run decline** — `walk.gate{declined,dry_run}` frame from a write-path drive.
+5. **Guarded apply / mock** — apply test output; mock assertion proving no live system.
+
+Also: extend `tests/test_cockpit_contract.py` in the **same change** that adds any
+shelf or screen — the scaffold's `["q"]` drive is a placeholder to outgrow.
+See the acceptance doc's "Growing the gate" section for the per-screen rule.
+
 ## Pull template improvements
 
 ```bash
