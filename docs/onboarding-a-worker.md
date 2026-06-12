@@ -533,6 +533,11 @@ through the dry-run + guarded-apply gate. Full protocol + the wiring recipe (inc
 `_AGENT_MODE` variant for a worker that rebuilds its host) live in
 [`docs/agent-screen-model.md`](agent-screen-model.md).
 
+**Retrofitting an existing worker** (one that predates the template and has no `--agent-stdio`
+yet): follow [`docs/adopting-the-agent-channel.md`](adopting-the-agent-channel.md) — it is the
+step-by-step recipe, including the agent-mode-on-host-rebuild trap, the first-frame latency
+rule, the two contract tests to add, and the subprocess smoke test.
+
 ## Optional home-screen extension hooks
 
 Generated workers also include `src/<worker>/cli/home_hooks.py`, wired into the
