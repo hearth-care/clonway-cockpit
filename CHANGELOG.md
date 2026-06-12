@@ -10,6 +10,11 @@ pre-1.0 rules documented in docs/release-policy.md.
 
 ### Added
 
+- **`clonway_cockpit.testing`** — pytest plugin that snapshots/restores the
+  capability registry around each test. The framework suite now uses it
+  autouse, and worker suites can opt in with
+  `pytest_plugins = ["clonway_cockpit.testing"]`.
+
 - **`clonway_cockpit.config`** — pydantic-backed worker config loader with YAML
   file loading, double-underscore env overlay, aggregated provenance errors, and
   the `SecretEnvName` convention. Optional dependency extra:
