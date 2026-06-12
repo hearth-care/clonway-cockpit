@@ -317,6 +317,15 @@ def test_template_host_wires_generic_home_hooks(tmp_path: Path) -> None:
         assert host.extra_selectables(state) == []
 
 
+def test_template_host_wires_framework_audit_sink(tmp_path: Path) -> None:
+    source = (
+        _REPO_ROOT / "worker-template/src/{{ package_name }}/cli/cockpit.py.jinja"
+    ).read_text()
+    assert "from clonway_cockpit.audit_log import make_audit_sink" in source
+    assert 'audit_sink=make_audit_sink("{{ worker_id }}")' in source
+    assert 'audit_worker="{{ worker_id }}"' in source
+
+
 # --- AC-C6-2 — emits the C0 wire shape, flag-guarded -----------------------
 
 

@@ -114,9 +114,9 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 - Files: `audit_log.py` or `render_panels`-adjacent placement consistent with the render-split plan if it has merged (check at build time), tests.
 
 ### Phase 4 — template, docs, changelog
-- [ ] Worker-template: host construction gains `audit_sink=make_audit_sink("{{ worker_id }}")` (on by default for local; GCS mirror behind the same env-flag discipline as signals).
-- [ ] `docs/audit-log.md`: contract, PII posture (with the structural-whitelist explanation), wiring recipe, what-this-is-not.
-- [ ] Changelog `[Unreleased]`; delivery-table row if applicable.
+- [x] Worker-template: host construction gains `audit_sink=make_audit_sink("{{ worker_id }}")` (on by default for local; GCS mirror behind the same env-flag discipline as signals).
+- [x] `docs/audit-log.md`: contract, PII posture (with the structural-whitelist explanation), wiring recipe, what-this-is-not.
+- [x] Changelog `[Unreleased]`; delivery-table row if applicable.
 
 ## Acceptance criteria
 
@@ -146,9 +146,11 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 4 — template, docs, changelog.
-- Completed: Phase 1 added `clonway_cockpit.audit_log` with schema-pinned `AuditEvent`, local JSONL sink, best-effort GCS mirror, `read_events`, and focused tests. Phase 2 added `WizardContext.audit`, `Host.audit_sink`, launch/gate/reflex/approval audit events, and additive coverage. Phase 3 added `render_ledger`/`model_ledger`, `since` readback coverage, and contract parity discovery.
-- Verification so far: baseline `make test` before edits reported `758 passed in 20.02s`; Phase 1 `uv run pytest -q tests/test_audit_log.py` reported `5 passed in 0.02s`; Phase 2 affected set `uv run pytest -q tests/test_audit_log.py tests/test_shell.py tests/test_walk.py tests/test_reflex.py tests/test_approval_delivery.py tests/test_agent_dry_run.py` reported `155 passed in 0.27s`; Phase 3 `uv run pytest -q tests/test_audit_log.py tests/test_contract.py tests/test_contract_module.py` reported `19 passed in 0.06s`.
+- Current phase: final gates and rebase.
+- Completed: Phase 1 added `clonway_cockpit.audit_log` with schema-pinned `AuditEvent`, local JSONL sink, best-effort GCS mirror, `read_events`, and focused tests. Phase 2 added `WizardContext.audit`, `Host.audit_sink`, launch/gate/reflex/approval audit events, and additive coverage. Phase 3 added `render_ledger`/`model_ledger`, `since` readback coverage, and contract parity discovery. Phase 4 wired the worker template, added `docs/audit-log.md`, and updated the persona-platform delivery table plus README scaffold copy.
+- Verification so far: baseline `make test` before edits reported `758 passed in 20.02s`; Phase 1 `uv run pytest -q tests/test_audit_log.py` reported `5 passed in 0.02s`; Phase 2 affected set `uv run pytest -q tests/test_audit_log.py tests/test_shell.py tests/test_walk.py tests/test_reflex.py tests/test_approval_delivery.py tests/test_agent_dry_run.py` reported `155 passed in 0.27s`; Phase 3 `uv run pytest -q tests/test_audit_log.py tests/test_contract.py tests/test_contract_module.py` reported `19 passed in 0.06s`; Phase 4 `uv run pytest -q tests/test_worker_template.py` reported `13 passed in 17.91s`.
 - Decisions: GCS audit mirroring is gated by `<WORKER>_AUDIT_GCS` or `CLONWAY_AUDIT_GCS` when `gcs=None`; local JSONL remains authoritative.
+- Deviations: no `CHANGELOG.md`/`[Unreleased]` file exists in this repo, so the status update is the persona-platform delivery-table row plus README scaffold copy.
+- Privacy survey: searched `equivalent_cli=` across local Auto-Admissions, Auto-Bookkeeper, Auto-HR, Auto-Inspector, Auto-Orchestrator, Auto-Procurer, and Auto-Secretary checkouts. Values are static operator commands or command templates; noted dynamic examples are command-shaped (`payroll-clear --group {group}`, `open {worker_link(worker)}`), not arbitrary domain payload fields. `docs/audit-log.md` documents that record-specific names, amounts, message bodies, and document text must not be placed in `equivalent_cli`.
 - Known failing tests: none at this checkpoint.
-- Next concrete step: update worker-template host construction to wire `make_audit_sink("{{ worker_id }}")`, add `docs/audit-log.md`, update changelog/release docs if present, and run template smoke.
+- Next concrete step: run `make check`, `make template-smoke`, rebase onto `origin/main`, push with lease, and execute the PR finish protocol.
