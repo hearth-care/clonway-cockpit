@@ -9,6 +9,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+config = [
+    "pydantic>=2",
+    "pyyaml>=6",
+]
 # The LiteLLM gateway adapter (provider-agnostic routing to 100+ providers, with
 # Anthropic prompt-caching + native vision). Kept optional so the core stays rich-only;
 # `pip install clonway-cockpit[litellm]`.
@@ -32,7 +36,9 @@ packages = ["src/clonway_cockpit"]
 dev = [
     "copier>=9.15.1",
     "mypy>=1.20.2",
+    "pydantic>=2",
     "pytest>=9.0.3",
+    "pyyaml>=6",
     "ruff>=0.15.14",
     "typer>=0.25.1",
 ]

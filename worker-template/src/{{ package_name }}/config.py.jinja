@@ -1,0 +1,23 @@
+"""{{ worker_id }} config model and shared loader binding."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+
+from clonway_cockpit.config import SecretEnvName, load_config
+from pydantic import BaseModel, ConfigDict
+
+
+class WorkerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    worker_id: str = "{{ worker_id }}"
+    tenant_name: str = "{{ worker_title }}"
+    timezone: str = "Europe/London"
+    workspace_api_key_env: SecretEnvName | None = None
+
+
+def load(*, paths: Sequence[Path] | None = None) -> WorkerConfig:
+    """Load {{ worker_id }} config from the first config file plus env overlay."""
+    return load_config(WorkerConfig, worker_id="{{ worker_id }}", paths=paths)

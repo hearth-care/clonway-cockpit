@@ -17,16 +17,17 @@ workers (xadmit, xcqc) follow it verbatim.
 
 ## 1. Depend on clonway-cockpit
 
-Add the git dependency to your `pyproject.toml` (pin a `rev`, like the others):
+Add the git dependency to your `pyproject.toml`. Pin `rev` to the current
+release tag named in `docs/pin-sync.md`, not a raw commit SHA or `main`:
 
 ```toml
 dependencies = [
     # ...
-    "clonway-cockpit",
+    "clonway-cockpit[config]",
 ]
 
 [tool.uv.sources]
-clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "<sha>" }
+clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "v0.1.0" }
 ```
 
 If the worker talks to Google APIs, install the optional Google extra rather
@@ -101,6 +102,78 @@ RUN apt-get update \
 **Not needed** for a worker with no slim-Docker build — **xquill** runs as a
 local launchd daemon against the repo's own `.venv`, so its `uv sync` runs on a
 machine that already has git. Skip the apt line there.
+
+---
+
+## Shared config loader
+
+Use `clonway_cockpit.config.load_config` for the common YAML-plus-env path. Keep
+domain policy in the worker model; the framework only owns file discovery,
+double-underscore env overlay, validation aggregation, and secret-env-name
+warnings.
+
+```python
+from clonway_cockpit.config import SecretEnvName, load_config
+from pydantic import BaseModel, ConfigDict
+
+
+class WorkerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_name: str = "Demo Home"
+    sync_window_days: int = 7
+    api_key_env: SecretEnvName | None = None
+
+
+config = load_config(WorkerConfig, worker_id="xexample")
+```
+
+The first existing config file wins; env vars then overlay it. YAML only:
+
+```yaml
+tenant_name: Red House Demo
+sync_window_days: 10
+api_key_env: WORKSPACE_API_KEY
+```
+
+Env only:
+
+```bash
+XEXAMPLE__TENANT_NAME="Red House Demo"
+XEXAMPLE__SYNC_WINDOW_DAYS=14
+XEXAMPLE__API_KEY_ENV=WORKSPACE_API_KEY
+```
+
+YAML + env: with both present, env wins for any overlaid field: a YAML
+`sync_window_days: 10` plus `XEXAMPLE__SYNC_WINDOW_DAYS=14` loads
+`sync_window_days == 14`. Use double underscores only for nested model fields,
+for example `XEXAMPLE__NESTED__FIELD=value` when the worker model has
+`nested.field`. Values stay as strings until pydantic coerces them, so
+lists/dates/custom parsing belong in the worker model. For secrets, store the
+env var name (`api_key_env: WORKSPACE_API_KEY`), not the secret value.
+
+## Shared Sheets helper
+
+Use `clonway_cockpit.gsheets.SheetsClient` when a worker already has a Google
+Sheets v4 service. Credential acquisition stays worker-owned; the shared helper
+only shapes requests, reads records, and retries 429/5xx responses.
+
+```python
+from clonway_cockpit.gsheets import SheetsClient, extract_sheet_id
+
+
+spreadsheet_id = extract_sheet_id(config.register_sheet_url)
+service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+client = SheetsClient(service, spreadsheet_id)
+
+rows = client.get_records("register")
+client.append_rows("audit_log", [[run_id, "checked"]])
+client.update_range("register!A2:C2", [["DBS-1", "Ada", "clear"]])
+```
+
+`get_records()` pads short rows to the header width because Sheets truncates
+trailing empty cells. Writes are transport only: keep plan/confirm/apply and any
+operator sign-off in the worker cockpit or CLI layer.
 
 ---
 
