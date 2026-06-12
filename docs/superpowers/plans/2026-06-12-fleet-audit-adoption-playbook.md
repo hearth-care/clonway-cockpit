@@ -98,10 +98,10 @@ guidance matches the `contract.py` signature, and the onboarding doc links it.
 
 ## HANDOFF NOTES
 
-**Status: QA FIX VERIFIED BY `fixer-codex-20260612T145711Z-7032`; READY FOR
+**Status: QA FIX RE-VERIFIED BY `fixer-claude-20260612T153322Z-7032`; READY FOR
 QA HANDOFF** — the pushed branch contains the 2026-06-12 QA fix for the
 host-rebuild ambient `_AGENT_MODE` example and a docs regression test for the
-safety invariant.
+safety invariant. (Original fix authored by `fixer-codex-20260612T145711Z-7032`.)
 
 - Phase 1: `docs/adopting-the-agent-channel.md` written with all six recipe steps.
 - Phase 2: `unstructured` semantics section included in the same doc.
@@ -121,5 +121,11 @@ safety invariant.
 - Focused check: `uv run pytest -q tests/test_adoption_playbook_docs.py` → 1 passed.
 - Final verification after rebase onto latest `origin/main`: `uv run pytest -q`
   -> 957 passed; `uv run pre-commit run --all-files` -> all hooks passed.
+- `fixer-claude` takeover re-verification (2026-06-12, branch @ `e060b2d`, up to date
+  with `origin/main`): independently confirmed both QA findings resolved in source —
+  Step 3 Option B `_host()` reads ambient `_AGENT_MODE` with no param and `serve_agent`
+  latches it once; Step 5 smoke uses the guarded `screen_frames` filter (non-blocking nit
+  also addressed) and no `press("q")`. Gates: `uv run pytest -q` → 957 passed;
+  `uv run pre-commit run --all-files` → all hooks passed. No code changes required.
 - Next step: mark PR ready / needs QA.
 - Known-failing tests: none. No operator TODO items.
