@@ -532,6 +532,64 @@ def test_poll_download_failure_leaves_cursor_uncommitted(tmp_path: Path):  # CC-
     assert processed == {"r1"}
 
 
+def test_poll_empty_object_advances_cursor(tmp_path: Path):  # CC-SIG-SUB-POLL-6E
+    """An object that DOWNLOADS cleanly but parses to ZERO signals (here an empty
+    body) is a successful read of an empty set — poll MUST advance past it, never
+    block. This is the must-advance side of the download-vs-empty boundary whose
+    raise side is POLL-6D. Keying ``_read_signals`` on the empty *result* instead
+    of on the download *call* would turn this object into a permanent head-of-line
+    block: the later 'real' object behind it would be lost forever.
+    """
+    client = _FakeClient()
+    # Empty-body object first, a real object (lexically after it) second.
+    _write_archive(client._store, "xbook", "2026-06-01", "aaa-empty", [])  # body == ""
+    _write_archive(
+        client._store, "xbook", "2026-06-01", "bbb-real", [_make_signal(source_id="real")]
+    )
+    cs = FileCursorStore(tmp_path)
+    sub = Subscription(consumer_id="c", workers=("xbook",))
+
+    # The empty object must not block the real one queued behind it.
+    r1 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert [d.signal.source_id for d in r1] == ["real"]
+    # Cursor advanced PAST the empty object — its run_id is recorded, not stuck.
+    active_date, processed = _decode_cursor(cs.load("c", "xbook"))
+    assert active_date == "2026-06-01"
+    assert processed == {"aaa-empty", "bbb-real"}
+    # Second poll: nothing re-delivered — the empty object is not a permanent block.
+    r2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert r2 == []
+
+
+def test_poll_all_malformed_object_advances_cursor(tmp_path: Path):  # CC-SIG-SUB-POLL-6F
+    """Wire-schema-drift case: an object downloads cleanly but EVERY line is
+    unparseable (non-JSON, or valid JSON whose shape predates/postdates this
+    consumer's pinned Signal schema), so ``_read_signals`` returns ``[]``. That is
+    a successful read of zero signals — poll MUST advance, exactly as for an empty
+    body. If it instead raised on the empty result, this single object would
+    silently stall ALL of the worker's later signals (the head-of-line block this
+    PR has repeatedly failed on).
+    """
+    client = _FakeClient()
+    bad = _write_archive(client._store, "xbook", "2026-06-01", "aaa-bad", [])
+    # One non-JSON line + one valid-JSON line missing required Signal fields
+    # (schema drift across pinned cockpit tags). Both are skipped → zero signals.
+    client._store[bad] = 'not-a-json-line\n{"schema_version":99,"kind":"future.only"}\n'
+    _write_archive(
+        client._store, "xbook", "2026-06-01", "bbb-real", [_make_signal(source_id="real")]
+    )
+    cs = FileCursorStore(tmp_path)
+    sub = Subscription(consumer_id="c", workers=("xbook",))
+
+    r1 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert [d.signal.source_id for d in r1] == ["real"]  # not blocked behind the bad object
+    active_date, processed = _decode_cursor(cs.load("c", "xbook"))
+    assert active_date == "2026-06-01"
+    assert processed == {"aaa-bad", "bbb-real"}  # cursor advanced past the unparseable object
+    r2 = poll(sub, cursor_store=cs, bucket=_BUCKET, storage_client_factory=lambda: client)
+    assert r2 == []
+
+
 def test_poll_same_date_nonmonotonic_run_id_no_loss(tmp_path: Path):  # CC-SIG-SUB-POLL-14
     """Regression: a later-emitted object in the SAME date with a lexically-smaller
     run_id must still be delivered, not silently skipped.
