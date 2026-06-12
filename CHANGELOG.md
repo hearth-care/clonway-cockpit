@@ -79,6 +79,40 @@ Record them here and bump the release tag before merging.
   warn-once logging, `unknown_title_kinds=N` emit logging, and
   `CLONWAY_SIGNALS_STRICT_KINDS=1` for worker CI.
 
+- **Signal subscription API** (`clonway_cockpit.signals.subscribe`) — cursor-based
+  polling over the dated archive (`signals/<worker>/<date>/<run_id>.jsonl`).
+  Public surfaces:
+  - `Subscription` — what a consumer wants (worker filter, kind filter,
+    min-urgency filter) and who it is (namespaces the cursor).
+  - `Delivery` — one delivered `Signal` with `emitted_by_run` and `object_path`
+    provenance fields for audit and dedup.
+  - `CursorStore` (Protocol) — per-`(consumer_id, worker)` high-water mark.
+  - `FileCursorStore` — local-state-directory backed cursor store (atomic
+    write via rename; suitable for persistent workers).
+  - `GcsCursorStore` — GCS-backed cursor store with generation-match
+    precondition for stateless Cloud Run consumers.
+  - `poll(sub, *, cursor_store, ..., on_delivery=None)` — returns
+    `list[Delivery]` since the last cursor; callback consumers commit after
+    `on_delivery` returns; degrades to `[]` on creds/offline.
+  - See `docs/signal-bus.md` for the full consumption contract, Phase-B
+    push-trigger recipe, and new-worker wiring checklist.
+
+- **Handoff failure callbacks** (`clonway_cockpit.negotiation`) — programmatic
+  hook for cross-worker handoff failures, closing the C19 audit item:
+  - `HandoffFailure` dataclass — `task_id`, `initiator`, `counterparty`,
+    `reason` (closed set: `"declined" | "stalled" | "parse_failed" |
+    `"reflex_refused"`), `summary`, `occurred_at`.
+  - `NegotiatedSpace.on_handoff_failed` — optional `Callable[[HandoffFailure],
+    None]`; fires at each of the four failure paths (stall sweep, bare
+    decline, origin-mismatch parse failure, refused reflex). Default `None`
+    preserves existing behaviour exactly.
+  - `failure_to_signal` (`clonway_cockpit.signals.bridge`) — reference bridge
+    callback: emits `kind="anomaly.detected"` with `source_id=task_id` (stable
+    per-task dedup) so failures enter the fleet bus.
+
+- **Worker-template** — `signals/subscribe.py.jinja` scaffold with a commented
+  `poll_signals()` example; opt-in per worker, off by default.
+
 ### Changed
 
 - Gateway pricing config is stricter: non-mapping pricing entries now raise
