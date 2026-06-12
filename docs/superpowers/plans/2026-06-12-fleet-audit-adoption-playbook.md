@@ -40,7 +40,7 @@ exact conformance tests to add and the rules for any allowed `unstructured` outp
 
 ## Deliverables
 
-- [ ] Phase 1 — `docs/adopting-the-agent-channel.md` with the retrofit recipe, in order:
+- [x] Phase 1 — `docs/adopting-the-agent-channel.md` with the retrofit recipe, in order:
   1. Bump the cockpit pin to the supported tag per `docs/pin-sync.md`; `uv lock`.
   2. Add `--agent-stdio` / `--allow-apply` CLI flags mirroring
      `worker-template/src/{{ package_name }}/cli/__init__.py.jinja`.
@@ -58,30 +58,30 @@ exact conformance tests to add and the rules for any allowed `unstructured` outp
      (the audit's xhr finding — ~60s before a first frame makes a driving agent assume a
      hang). State the rule: defer network/credential work until after the home frame, or
      emit a structured progress note.
-- [ ] Phase 2 — "`unstructured` semantics" section in the same doc: what each gate
+- [x] Phase 2 — "`unstructured` semantics" section in the same doc: what each gate
   proves (static parity = exhaustive; drive-clean = path-specific), when
   `allow_unstructured=True` is acceptable, and the rule that every allowed
   `unstructured` path is named and justified in the worker repo (and mirrored in its
   conformance-tracker row's "known exceptions" column).
-- [ ] Phase 3 — cross-links: `docs/onboarding-a-worker.md`'s agent-channel section gains
+- [x] Phase 3 — cross-links: `docs/onboarding-a-worker.md`'s agent-channel section gains
   a "retrofitting an existing worker" pointer to the new doc; the new doc names the
   audit's adoption truth (who has the channel, who doesn't) without duplicating the
   tracker.
 
 ## Acceptance criteria
 
-- [ ] `docs/adopting-the-agent-channel.md` exists and contains all six recipe steps in
+- [x] `docs/adopting-the-agent-channel.md` exists and contains all six recipe steps in
   the order above, each with the framework symbol it touches named exactly
   (`serve_agent_stdio`, `assert_render_model_parity`, `assert_drives_clean`,
   `CockpitClient.spawn`).
-- [ ] The agent-mode-on-host-rebuild trap and the first-frame latency rule each have
+- [x] The agent-mode-on-host-rebuild trap and the first-frame latency rule each have
   their own subsection — a reader retrofitting xletter or xquill cannot miss them.
-- [ ] The `unstructured` section distinguishes static parity from drive-clean coverage
+- [x] The `unstructured` section distinguishes static parity from drive-clean coverage
   and states the name-and-justify rule for `allow_unstructured` — consistent with
   `src/clonway_cockpit/contract.py` (no claim stronger than the code).
-- [ ] The playbook requires the drive-clean key script to reach beyond home, and says
+- [x] The playbook requires the drive-clean key script to reach beyond home, and says
   why the template's default `["q"]` is vacuous for bespoke screens.
-- [ ] `docs/onboarding-a-worker.md` links the new doc; no other file is modified.
+- [x] `docs/onboarding-a-worker.md` links the new doc; no other file is modified.
 
 ## Verification
 
@@ -95,3 +95,14 @@ uv run pytest -q     # unchanged; docs-only change stays green
 
 Expected: the playbook exists naming all four framework symbols, its `unstructured`
 guidance matches the `contract.py` signature, and the onboarding doc links it.
+
+## HANDOFF NOTES
+
+**Status: COMPLETE** — all phases implemented and gates green.
+
+- Phase 1: `docs/adopting-the-agent-channel.md` written with all six recipe steps.
+- Phase 2: `unstructured` semantics section included in the same doc.
+- Phase 3: `docs/onboarding-a-worker.md` agent-channel section updated with retrofit pointer.
+- Gates: `uv run pytest -q` → 956 passed; `uv run pre-commit run --all-files` → all Passed.
+- No deviations from plan. No operator TODO items.
+- Next step: operator QA and merge.
