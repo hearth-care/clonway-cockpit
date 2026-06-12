@@ -10,6 +10,20 @@ pre-1.0 rules documented in docs/release-policy.md.
 
 ### Added
 
+- **`clonway_cockpit.testing`** — pytest plugin that snapshots/restores the
+  capability registry around each test. The framework suite now uses it
+  autouse, and worker suites can opt in with
+  `pytest_plugins = ["clonway_cockpit.testing"]`.
+
+- **`Gateway.validate()`** — no-network startup checks for configured roles,
+  required env vars, LiteLLM availability, and pricing/model mismatches.
+
+- `WizardContext` is generic over the worker client type, with
+  `AnyWizardContext` as the Python 3.12-compatible alias for loose call sites.
+
+- pdoc API reference build via `make docs`, plus a CI docs job that deploys to
+  GitHub Pages on pushes to `main`.
+
 - **`clonway_cockpit.config`** — pydantic-backed worker config loader with YAML
   file loading, double-underscore env overlay, aggregated provenance errors, and
   the `SecretEnvName` convention. Optional dependency extra:
@@ -52,6 +66,15 @@ pre-1.0 rules documented in docs/release-policy.md.
   keeping the core package importable without Google dependencies.
 
 ### Changed
+
+- Gateway pricing config is stricter: non-mapping pricing entries now raise
+  `GatewayError` instead of being silently skipped.
+
+- `clonway_cockpit.render` is now a permanent compatibility facade over split
+  chrome, panel, and model implementation modules.
+
+- Persona-platform delivery tables now use explicit delivery-rung columns, with
+  tests for vocabulary and ladder order.
 
 - **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim
   over `obs.runlog.make_runlog`) and calls `setup_logging` from `main()` — new

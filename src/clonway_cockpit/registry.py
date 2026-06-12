@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from rich.console import Console, RenderableType
 
@@ -18,13 +19,11 @@ from clonway_cockpit.prompts import ConfirmFn, InputFn
 
 
 @dataclass(frozen=True)
-class WizardContext:
+class WizardContext[ClientT]:
     state: dict
-    # Opaque to the cockpit framework spine (walk/render/registry never call methods
-    # on it — verified). Typed ``object | None`` rather than a concrete client so
-    # this context is portable across workers with no back-dep; worker capability
-    # cores narrow it to a real client where they need it.
-    client: object | None
+    # Opaque to the cockpit framework spine (walk/render/registry never call methods on it).
+    # Workers can bind this type parameter so handlers see their concrete client.
+    client: ClientT | None
     console: Console
     input_fn: InputFn
     confirm_fn: ConfirmFn
@@ -58,7 +57,8 @@ class WizardContext:
     capability_money_movement: bool = False
 
 
-Handler = Callable[[WizardContext], None]
+AnyWizardContext = WizardContext[object]
+Handler = Callable[[WizardContext[Any]], None]
 
 
 @dataclass(frozen=True)

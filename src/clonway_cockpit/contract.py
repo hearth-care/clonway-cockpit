@@ -43,14 +43,21 @@ def _calls_page(fn: Callable[..., object]) -> bool:
     return False
 
 
-def page_framing_renders(render_ns: ModuleType) -> set[str]:
+def _iter_modules(namespaces: ModuleType | Iterable[ModuleType]) -> tuple[ModuleType, ...]:
+    if isinstance(namespaces, ModuleType):
+        return (namespaces,)
+    return tuple(namespaces)
+
+
+def page_framing_renders(render_ns: ModuleType | Iterable[ModuleType]) -> set[str]:
     """Public ``render_*`` in ``render_ns`` that call ``page(...)`` — i.e. they frame a full
     screen, as opposed to a sub-component (``render_header``, ``render_pulse``) or a helper.
     Detection is AST-based (see :func:`_calls_page`), so ``page(`` appearing only in a comment
     or string does not count."""
     return {
         name
-        for name, fn in inspect.getmembers(render_ns, inspect.isfunction)
+        for ns in _iter_modules(render_ns)
+        for name, fn in inspect.getmembers(ns, inspect.isfunction)
         if name.startswith("render_") and _calls_page(fn)
     }
 
@@ -61,8 +68,8 @@ def model_twin(render_name: str) -> str:
 
 
 def assert_render_model_parity(
-    render_ns: ModuleType,
-    model_ns: ModuleType | None = None,
+    render_ns: ModuleType | Iterable[ModuleType],
+    model_ns: ModuleType | Iterable[ModuleType] | None = None,
     *,
     allow_unmodeled: Iterable[str] = (),
 ) -> None:
@@ -72,14 +79,14 @@ def assert_render_model_parity(
     ``allow_unmodeled`` is an explicit, reviewed escape hatch: a ``render_*`` deliberately
     served as ``unstructured`` (rare; document why at the call site). Empty by default, so
     forgetting a model is a hard failure."""
-    models = model_ns if model_ns is not None else render_ns
+    models = _iter_modules(model_ns) if model_ns is not None else _iter_modules(render_ns)
     allowed = set(allow_unmodeled)
     missing: list[str] = []
     for render_name in sorted(page_framing_renders(render_ns)):
         if render_name in allowed:
             continue
         twin = model_twin(render_name)
-        if not hasattr(models, twin):
+        if not any(hasattr(model_module, twin) for model_module in models):
             missing.append(f"{render_name} -> {twin}")
     assert not missing, (
         "page-framing render_* with no model_* twin (agent gets `unstructured`): "

@@ -30,6 +30,20 @@ The config is a **plain dict** — store it as YAML/JSON/TOML and parse it howev
 you like; the framework adds no config-format dependency. API keys come from the
 **named env var**, never the config file.
 
+Validate the config at worker boot or in Doctor before serving live conversations:
+
+```python
+problems = gw.validate(roles=("chat", "gate"))
+if problems:
+    raise RuntimeError("; ".join(problems))
+```
+
+`validate()` is pure inspection: it resolves roles, checks required env vars, checks
+the optional LiteLLM extra is importable when configured, and warns when pricing rows
+do not match any configured model. It does not build adapters, send requests, spend
+tokens, or ping providers. Cockpits should render non-empty results as Doctor probes.
+Servers should fail fast before accepting traffic.
+
 ## Call
 
 ```python

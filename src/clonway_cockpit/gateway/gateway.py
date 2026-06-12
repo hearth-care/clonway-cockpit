@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Protocol
 
@@ -46,6 +46,31 @@ class Gateway:
         # An explicit factory overrides provider dispatch (used by tests to inject a fake);
         # otherwise the adapter is chosen per the role's provider.
         self._adapter_factory = adapter_factory
+
+    def validate(self, *, roles: Iterable[str] | None = None, check_env: bool = True) -> list[str]:
+        """Inspect startup viability without building adapters or sending requests."""
+
+        problems: list[str] = [*self._config.warnings]
+        selected_roles = tuple(roles) if roles is not None else tuple(self._config.roles)
+        configured_models = {role_cfg.model for role_cfg in self._config.roles.values()}
+
+        for model in self._config.pricing:
+            if model not in configured_models:
+                problems.append(f"pricing model {model!r} does not match any configured role model")
+
+        for role in selected_roles:
+            try:
+                role_cfg = self._config.resolve(role)
+            except GatewayError as exc:
+                problems.append(str(exc))
+                continue
+
+            if check_env and role_cfg.api_key_env and not os.environ.get(role_cfg.api_key_env):
+                problems.append(f"role {role!r}: env var {role_cfg.api_key_env!r} is unset")
+            if role_cfg.provider == "litellm" and not _can_import_litellm():
+                problems.append(f"role {role!r}: install clonway-cockpit[litellm]")
+
+        return problems
 
     def _build_adapter(self, role_cfg: RoleConfig, key: str | None) -> _Adapter:
         if self._adapter_factory is not None:
@@ -171,3 +196,11 @@ def _validate_required(obj: object, schema: dict) -> dict:
         if key not in obj:
             raise GatewayError(f"structured output missing required key: {key!r}")
     return obj
+
+
+def _can_import_litellm() -> bool:
+    try:
+        __import__("litellm")
+    except ImportError:
+        return False
+    return True

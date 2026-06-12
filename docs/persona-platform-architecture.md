@@ -318,31 +318,31 @@ PRs and planning link *here*, not to scattered PR descriptions. So: every slice 
 advances to *deployed* / *watched-working* in the PR or note that records the observed run — never on
 optimism. Audit the table against the merged PRs before locking the next slice.
 
-| # | Slice | Status |
-|---|---|---|
-| 1 | **Architecture design doc** (this document) | **DONE** (#48) |
-| 2 | **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | **DONE** — Auto-Orchestrator #170 merged; any infrastructure cleanup script remains operator-run cleanup |
-| 3 | **Model gateway** — the config-driven, cost-capped port + adapters | **DONE** (#49 port+telemetry, #52 fleet fan-in, #53 multimodal+caching, #54 LiteLLM adapter, #55 tool-use `complete_tools`) |
-| 4 | **Shared-memory format + read** | **DONE** (#50 — `shared_memory.py`: handbook format + read/recall API) |
-| 5 | **Milo reads shared memory** | **DONE** — the read/recall API (#50) + Milo's `recall_shared_memory` tool wired in xbook (#664) |
-| 6 | **Governed write** (the owner-only trust boundary) | **DONE** (#51 — `GovernedWriter` refuses non-owner provenance and validates fact writes before touching disk) |
+| Slice | Designed | Coded | Deployed | Watched-working | Refs | Notes |
+|---|---|---|---|---|---|---|
+| 1. **Architecture design doc** (this document) | yes | yes | no | no | #48 | Design record coded as docs; no runtime deploy claim. |
+| 2. **Retire xops-chat** — the dead fleet-router service + its IAM + the `xops.converse` chat code | yes | yes | no | no | Auto-Orchestrator #170 | Infrastructure cleanup script remains operator-run cleanup. |
+| 3. **Model gateway** — the config-driven, cost-capped port + adapters | yes | yes | no | no | #49, #52, #53, #54, #55 | Port, telemetry, fan-in, multimodal/caching, LiteLLM, and tool-use are merged framework-side. |
+| 4. **Shared-memory format + read** | yes | yes | no | no | #50 | `shared_memory.py`: handbook format + read/recall API. |
+| 5. **Milo reads shared memory** | yes | yes | no | no | #50, xbook #664 | Framework read/recall plus Milo's `recall_shared_memory` tool wired in xbook. |
+| 6. **Governed write** (the owner-only trust boundary) | yes | yes | no | no | #51 | `GovernedWriter` refuses non-owner provenance and validates fact writes before touching disk. |
 
 **Built beyond the original locked horizon** (each its own PR + docs, FBA-hardened):
 
-| Slice | Status |
-|---|---|
-| **Persona identity** (name / handle / domain / email / avatar / voice) — `persona.py` | **DONE** (#56) |
-| **Soul + shared constitution** (the two-layer system prompt) — `persona_soul.py` | **DONE** (#59) |
-| **Group-chat space** (distributed self-selection + orchestration + `GroupSpace`) — `group_chat.py` | **DONE** (#57, #58) |
-| **Receptionist** (the front door that points, never does) — `receptionist.py` | **DONE** (#60) |
-| **Seam-hardening** (the audit's cheap correctness/safety cluster: matcher, constitution check, mentions) | **DONE** (#61) |
-| **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona → soul → gateway) — `colleague.py` | **DONE** (#62) |
-| **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | **DONE** (#77) |
-| **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | **DONE** (#78 — framework core; the live deploy is the remaining operator step) |
-| **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | **DONE** (#79 — coded + merged, the deferred half of #74; not watched-working until the live transport carries it) |
-| **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | **DONE** (PR A of the negotiation slice family — see `docs/cross-worker-handoffs.md`) |
-| **Safe-direction reflex** (blocking-only auto-approval as an `ApprovalPolicy` at the existing gate: structural direction checks + provenance requirement + restart-surviving idempotency) — `reflex.py` | **DONE** (PR B of the negotiation slice family) |
-| **Cross-worker negotiation** (envelope-aware responder, per-ask decisions reconciled in code, task ledger, unified plan + stall escalation — `docs/cross-worker-handoffs.md`) — `negotiation.py` | **DONE** (PRs C+D of the negotiation slice family) |
+| Slice | Designed | Coded | Deployed | Watched-working | Refs | Notes |
+|---|---|---|---|---|---|---|
+| **Persona identity** (name / handle / domain / email / avatar / voice) — `persona.py` | yes | yes | no | no | #56 | Framework identity model is merged. |
+| **Soul + shared constitution** (the two-layer system prompt) — `persona_soul.py` | yes | yes | no | no | #59 | Constitution validation and soul composition are merged. |
+| **Group-chat space** (distributed self-selection + orchestration + `GroupSpace`) — `group_chat.py` | yes | yes | no | no | #57, #58 | Framework room/orchestration core is merged. |
+| **Receptionist** (the front door that points, never does) — `receptionist.py` | yes | yes | no | no | #60 | Front-door pointer is merged; no live surface claim. |
+| **Seam-hardening** (the audit's cheap correctness/safety cluster: matcher, constitution check, mentions) | yes | yes | no | no | #61 | Safety/correctness hardening is merged. |
+| **The colleague wire** (`gateway_responder` + `load_colleagues` — a *fleet* converses persona to soul to gateway) — `colleague.py` | yes | yes | no | no | #62 | Framework wire is merged; worker-edge adoption remains separate. |
+| **Private per-persona memory** (the two-tier memory's private half: isolated working + per-thread/space session memory) — `private_memory.py` | yes | yes | no | no | #77 | Private memory core is merged. |
+| **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | yes | yes | no | no | #78 | Framework core is merged; live deploy is the remaining operator step. |
+| **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | yes | yes | no | no | #79 | Coded and merged; not watched-working until live transport carries it. |
+| **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | yes | yes | no | no | PR A negotiation slice | See `docs/cross-worker-handoffs.md`. |
+| **Safe-direction reflex** (blocking-only auto-approval as an `ApprovalPolicy` at the existing gate: structural direction checks + provenance requirement + restart-surviving idempotency) — `reflex.py` | yes | yes | no | no | PR B negotiation slice | Direction checks are merged framework-side. |
+| **Cross-worker negotiation** (envelope-aware responder, per-ask decisions reconciled in code, task ledger, unified plan + stall escalation — `docs/cross-worker-handoffs.md`) — `negotiation.py` | yes | yes | no | no | PRs C+D negotiation slice | Negotiation core is merged; live worker-edge wiring remains separate. |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core **and** the
 per-thread memory wiring are now both merged (#78, #79) — but the production surface is not

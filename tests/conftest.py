@@ -17,6 +17,7 @@ from clonway_cockpit import render, shell, usage
 from clonway_cockpit.doctor import fixes_for
 from clonway_cockpit.registry import CapabilitySpec
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
+from clonway_cockpit.testing import capability_registry_guard as capability_registry_guard
 
 _DOCTOR = CapabilitySpec(
     key="doctor",
