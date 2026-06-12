@@ -44,11 +44,7 @@ def test_changelog_keeps_unreleased_section() -> None:
 def test_changelog_unreleased_section_has_unique_subheadings() -> None:
     text = _changelog()
     unreleased = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
-    subheadings = [
-        line.strip()
-        for line in unreleased.splitlines()
-        if line.startswith("### ")
-    ]
+    subheadings = [line.strip() for line in unreleased.splitlines() if line.startswith("### ")]
 
     assert len(subheadings) == len(set(subheadings))
 

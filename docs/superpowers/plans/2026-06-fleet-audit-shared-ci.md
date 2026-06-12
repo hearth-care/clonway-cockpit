@@ -150,7 +150,7 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 ## HANDOFF NOTES
 
 **Current phase:** REBASE FIX — rebased onto `origin/main` at `cede7fd`; manual conflict
-resolved in `CHANGELOG.md`; full gates pending in current fixer pass.
+resolved in `CHANGELOG.md`; full gates in progress in current fixer pass.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -212,3 +212,5 @@ resolved in `CHANGELOG.md`; full gates pending in current fixer pass.
 and `make template-smoke` all green locally (fixer-claude-20260611T192423Z-42347 2026-06-11).
 Current fixer focused regression: `uv run pytest tests/test_release_policy.py::test_changelog_unreleased_section_has_unique_subheadings -q`
 failed before the changelog fix and passed after. Full local gates are next.
+Current fixer gate progress: `make test` passed (937 passed in 25.87s). First
+`uv run pre-commit run --all-files` reformatted `tests/test_release_policy.py`; rerun pending.
