@@ -161,55 +161,73 @@ Mocks or fakes only. If the real client makes network calls or writes to a live
 service, inject a fake/stub that records calls but does nothing real. The PR
 description must name the mock/stub and confirm no live credential is in scope.
 
-**Test snippet** (using `unittest.mock.patch` or a test-double):
+**Test snippet** (in-process driver with an injected fake client):
 
 ```python
-from unittest.mock import MagicMock, patch
+from dataclasses import replace
+from unittest.mock import MagicMock
 
-from clonway_cockpit.agent import CockpitClient
+from clonway_cockpit.agent import CockpitDriver
+from <package>.cli import cockpit
 
 
 def test_guarded_apply_hits_mock_only() -> None:
-    # Patch the worker's external client so no live call is made.
-    with patch("<package>.integrations.client.ExternalClient.post") as mock_post:
-        argv = ["uv", "run", "<worker>", "--allow-apply", "--agent-stdio"]
-        with CockpitClient.spawn(argv) as c:
-            home = c.read_home()
-            assert home["kind"] == "home"
+    fake_client = MagicMock()
 
-            # Navigate to the write gate.
-            c.press("c")      # open shelf with the write-bearing capability
-            c.press("enter")  # drive through preflight
+    host = cockpit._host(agent_mode=True)
 
-            # Collect frames until we reach awaiting_apply.
-            frames = c.drain()
-            gate = next(f for f in frames if f.get("kind") == "walk.gate"
-                        and f.get("meta", {}).get("gate") == "awaiting_apply")
-            token = gate["meta"]["token"]
+    # Wrap build_walk_ctx to inject the fake client in-process.
+    # unittest.mock.patch cannot intercept calls inside a spawned subprocess, so the
+    # fake must be wired here — at the WizardContext construction point — where it
+    # runs in the same interpreter as the assert.
+    _orig_build = host.build_walk_ctx
 
-            # Send a token-matched apply. approve() returns True — simulating a sign-off.
-            c.apply(token, approve=lambda _: True)
+    def _build_with_fake(screen, read_key, *, focus=None):
+        ctx = _orig_build(screen, read_key, focus=focus)
+        return replace(ctx, client=fake_client)
 
-            result_frames = c.drain()
-            applied = next(
-                (f for f in result_frames if f.get("kind") == "walk.gate"
-                 and f.get("meta", {}).get("status") == "applied"),
-                None,
-            )
-            assert applied is not None, "expected walk.gate{applied} after token-matched apply"
+    # Wire an always-approve gate authorizer: simulates a human sign-off in-process.
+    # serve_stdio wires this via a stdin handshake; CockpitDriver bypasses stdio,
+    # so inject authorize_apply directly on the host instead.
+    host = replace(
+        host,
+        build_walk_ctx=_build_with_fake,
+        authorize_apply=lambda _proposal: True,
+    )
 
-        # Confirm the real external call hit only the mock.
-        assert mock_post.called, "expected the mock to be called (walk did not apply)"
-        assert mock_post.call_count == 1
+    # Drive to the write gate — replace these keys with the real walk's path.
+    stream = CockpitDriver(host, keys=["c", "enter", "enter"]).run()
+
+    gate_frames = [s for s in stream if s.kind == "walk.gate"]
+    applied = next(
+        (g for g in gate_frames if g.to_dict().get("meta", {}).get("status") == "applied"),
+        None,
+    )
+    assert applied is not None, "expected walk.gate{applied} after authorize"
+
+    # The fake_client assertion is the evidence no live system was touched.
+    assert fake_client.post.called, "expected fake_client.post to be called"
+    assert fake_client.post.call_count == 1
 ```
 
-**Expected output**: `pytest -q` on this test passes. Paste the output including
-the mock assertion line — that line is the evidence no live system was touched.
+**Why in-process, not subprocess**: `unittest.mock.patch` rebinds a name in the
+*parent* process's import namespace. `CockpitClient.spawn` is `subprocess.Popen` —
+a separate Python interpreter that imports its own un-patched copy of the client.
+`mock_post.called` in the parent is therefore structurally always `False`, and the
+walk executes the real `post` in the child — exactly what this item forbids.
+`CockpitDriver` runs the walk in the same interpreter, so the injected
+`fake_client` genuinely intercepts every call.
 
-For workers where `CockpitClient.spawn` is impractical in CI (e.g. a launchd-only
-worker with no subprocess entry point), the in-process `CockpitDriver` with
-`serve_agent_stdio` wired to a `BytesIO` transport is an acceptable substitute.
-The substitute must be noted in the PR.
+**Expected output**: `pytest -q` on this test passes. Paste the output including
+the `fake_client.post.called` assertion line — that line is the evidence no live
+system was touched.
+
+For an integration test that drives the worker as a real subprocess (e.g. to verify
+the `--allow-apply` CLI flag end-to-end), point the worker at a fake endpoint via
+an environment variable or config file that the child process loads at startup.
+Do not use `unittest.mock.patch` across a `subprocess.Popen` boundary — it cannot
+work. Integration-style subprocess tests must be noted in the PR and are not a
+substitute for the in-process item above.
 
 ---
 
