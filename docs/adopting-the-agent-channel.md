@@ -93,23 +93,28 @@ is sufficient. This is the common case; confirm by grepping for `_host(` in call
 functions.
 
 **Option B — ambient flag.** If `_host()` is re-invoked inside callbacks, read an
-ambient module-level flag rather than the parameter:
+ambient module-level flag instead of accepting a per-call `agent_mode` parameter. Latch
+the flag once before serving the agent channel:
 
 ```python
 _AGENT_MODE: bool = False
 
-def _host(*, agent_mode: bool = False) -> shell.Host:
-    global _AGENT_MODE
-    _AGENT_MODE = agent_mode
+def _host() -> shell.Host:
     return shell.Host(..., agent_mode=_AGENT_MODE, ...)
+
+def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:
+    global _AGENT_MODE
+    _AGENT_MODE = True
+    serve_agent_stdio(_host(), stdin=stdin, stdout=stdout, allow_apply=allow_apply)
 ```
 
-The callback that rebuilds a host reads `_AGENT_MODE` instead of a local variable, so the
-flag survives the rebuild:
+The callback that rebuilds a host calls `_host()` with no arguments. Because `_host()`
+reads `_AGENT_MODE`, any pre-existing bare rebuild site preserves agent-mode/dry-run
+instead of resetting it to the default:
 
 ```python
 def activate_pill(pill, screen, read_key) -> None:
-    host = _host(agent_mode=_AGENT_MODE)   # preserves the flag on rebuild
+    host = _host()   # reads the latched _AGENT_MODE flag on rebuild
     ...
 ```
 
@@ -200,9 +205,11 @@ def test_agent_stdio_subprocess_smoke() -> None:
     # context manager calls quit() → sends {"cmd":"quit"} and waits for clean process exit
 
     frames = [home, *extra]
+    screen_frames = [frame for frame in frames if "kind" in frame]
     assert home["kind"] == "home"
     assert home.get("schema_version") == "1.0"
-    assert not any(frame["kind"] == "unstructured" for frame in frames)
+    assert screen_frames, frames
+    assert not any(frame["kind"] == "unstructured" for frame in screen_frames)
 ```
 
 This test is the end-to-end companion: it proves the full loop (spawn → first frame →

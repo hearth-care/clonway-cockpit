@@ -98,11 +98,18 @@ guidance matches the `contract.py` signature, and the onboarding doc links it.
 
 ## HANDOFF NOTES
 
-**Status: COMPLETE** — all phases implemented and gates green.
+**Status: QA FIX IMPLEMENTED; FULL GATES PENDING** — addressed the 2026-06-12 QA
+finding against the host-rebuild ambient `_AGENT_MODE` example.
 
 - Phase 1: `docs/adopting-the-agent-channel.md` written with all six recipe steps.
 - Phase 2: `unstructured` semantics section included in the same doc.
 - Phase 3: `docs/onboarding-a-worker.md` agent-channel section updated with retrofit pointer.
-- Gates: `uv run pytest -q` → 956 passed; `uv run pre-commit run --all-files` → all Passed.
-- No deviations from plan. No operator TODO items.
-- Next step: operator QA and merge.
+- QA fix: Step 3 Option B now matches the canonical ambient-flag pattern: `_host()` reads
+  `_AGENT_MODE`, `serve_agent()` sets `_AGENT_MODE = True` once before
+  `serve_agent_stdio(_host(), ...)`, and bare `_host()` rebuilds cannot reset dry-run.
+- QA hardening deviation: added `tests/test_adoption_playbook_docs.py` to pin the
+  host-rebuild docs invariant; the original docs-only acceptance criterion is therefore
+  intentionally exceeded.
+- Focused check: `uv run pytest -q tests/test_adoption_playbook_docs.py` → 1 passed.
+- Next step: run full `uv run pytest -q` and `uv run pre-commit run --all-files`.
+- Known-failing tests: none. No operator TODO items.
