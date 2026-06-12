@@ -98,9 +98,10 @@ guidance matches the `contract.py` signature, and the onboarding doc links it.
 
 ## HANDOFF NOTES
 
-**Status: QA FIX COMPLETE; FINAL PUSH PENDING** — addressed the 2026-06-12 QA
-finding against the host-rebuild ambient `_AGENT_MODE` example and added a docs
-regression test for the safety invariant.
+**Status: QA FIX VERIFIED BY `fixer-codex-20260612T145711Z-7032`; FINISH
+PROTOCOL PENDING** — the pushed branch already contains the 2026-06-12 QA fix
+for the host-rebuild ambient `_AGENT_MODE` example and a docs regression test
+for the safety invariant.
 
 - Phase 1: `docs/adopting-the-agent-channel.md` written with all six recipe steps.
 - Phase 2: `unstructured` semantics section included in the same doc.
@@ -111,9 +112,13 @@ regression test for the safety invariant.
 - QA hardening deviation: added `tests/test_adoption_playbook_docs.py` to pin the
   host-rebuild docs invariant; the original docs-only acceptance criterion is therefore
   intentionally exceeded.
-- Gates run in this session: `uv run pytest -q` and `uv run pre-commit run --all-files`
-  both passed; see the PR completion comment for the final command tails.
+- Takeover verification: latest PR claim is
+  `CLAIM-TAKEOVER fixer-codex-20260612T145711Z-7032`; latest QA fail is the
+  host-rebuild ambient `_AGENT_MODE` finding; durable branch commits above
+  `origin/main` include `9952a12` and `ca043ea` for that fix and regression test.
+- Gates run in this takeover session before rebase: `uv run pytest -q` -> 957
+  passed; `uv run pre-commit run --all-files` -> all hooks passed.
 - Focused check: `uv run pytest -q tests/test_adoption_playbook_docs.py` → 1 passed.
-- Next step: commit this handoff update, rebase onto latest `origin/main`, force-push
-  with lease, then mark PR ready / needs QA.
+- Next step: rebase onto latest `origin/main`, rerun full gates, force-push with
+  lease, then mark PR ready / needs QA.
 - Known-failing tests: none. No operator TODO items.
