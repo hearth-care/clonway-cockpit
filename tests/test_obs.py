@@ -319,6 +319,95 @@ def test_run_session_run_id_from_env(monkeypatch):  # CC-OBS-RUN-4
     assert any(k.endswith("/fpo-77.jsonl") for k in client._store)
 
 
+# ---- run_session: runtime flush gate -----------------------------------------
+
+
+def test_run_session_no_flush_when_runtime_unset(monkeypatch, caplog):  # CC-OBS-GATE-1
+    # The 2026-06 telemetry-pollution fix: a worker that declares a runtime_env
+    # must NOT upload to the fleet bucket from a test/dev/agent invocation —
+    # the storage client is never even constructed — and the lifecycle events
+    # say source=local, not cloud_run.
+    monkeypatch.delenv("XLETTER_RUNTIME", raising=False)
+    monkeypatch.delenv("CLONWAY_OBS_FORCE_FLUSH", raising=False)
+    factory_calls: list[int] = []
+
+    def factory() -> _FakeClient:
+        factory_calls.append(1)
+        return _FakeClient()
+
+    event, run_session = make_obs(
+        worker_id="xletter",
+        runtime_env="XLETTER_RUNTIME",
+        storage_client_factory=factory,
+    )
+    with caplog.at_level(logging.DEBUG, logger="xletter.obs"):  # noqa: SIM117
+        with run_session(trigger="manual", run_id="r-local"):
+            event("stage.ok")
+    assert factory_calls == []  # nothing uploaded, client never built
+    started = next(r for r in caplog.records if r.msg == "run.started")
+    finished = next(r for r in caplog.records if r.msg == "run.finished")
+    assert started.source == "local"  # type: ignore[attr-defined]
+    assert finished.source == "local"  # type: ignore[attr-defined]
+    # The gate announces itself at debug so a missing prod flush is diagnosable.
+    assert any("obs flush gated" in r.getMessage() for r in caplog.records)
+
+
+def test_run_session_flushes_on_cloud_run_with_cloud_run_source(monkeypatch):  # CC-OBS-GATE-2
+    # In real cloud_run the wire is byte-identical to the pre-gate emitter:
+    # flush happens, lifecycle source stays "cloud_run".
+    monkeypatch.setenv("XLETTER_RUNTIME", "cloud_run")
+    monkeypatch.delenv("CLONWAY_OBS_FORCE_FLUSH", raising=False)
+    monkeypatch.delenv("CLOUD_RUN_EXECUTION", raising=False)
+    client = _FakeClient()
+    event, run_session = make_obs(
+        worker_id="xletter",
+        runtime_env="XLETTER_RUNTIME",
+        storage_client_factory=lambda: client,
+    )
+    with run_session(trigger="scheduler", run_id="r-cr"):
+        event("stage.ok")
+    body = client._store["logs/xletter/" + _date_of(client) + "/r-cr.jsonl"]
+    lines = _data_lines(body)
+    assert [e["event"] for e in lines] == ["run.started", "stage.ok", "run.finished"]
+    assert lines[0]["payload"]["source"] == "cloud_run"
+    assert lines[-1]["payload"]["source"] == "cloud_run"
+
+
+def test_run_session_force_flush_opt_in(monkeypatch):  # CC-OBS-GATE-3
+    # CLONWAY_OBS_FORCE_FLUSH=1 is the explicit operator override: the flush
+    # happens off-cloud_run, but source stays truthful ("local").
+    monkeypatch.delenv("XLETTER_RUNTIME", raising=False)
+    monkeypatch.setenv("CLONWAY_OBS_FORCE_FLUSH", "1")
+    monkeypatch.delenv("CLOUD_RUN_EXECUTION", raising=False)
+    client = _FakeClient()
+    event, run_session = make_obs(
+        worker_id="xletter",
+        runtime_env="XLETTER_RUNTIME",
+        storage_client_factory=lambda: client,
+    )
+    with run_session(trigger="manual", run_id="r-forced"):
+        event("stage.ok")
+    body = client._store["logs/xletter/" + _date_of(client) + "/r-forced.jsonl"]
+    lines = _data_lines(body)
+    assert lines[0]["payload"]["source"] == "local"
+    assert lines[-1]["payload"]["source"] == "local"
+
+
+def test_run_session_legacy_flush_when_no_runtime_env(monkeypatch):  # CC-OBS-GATE-4
+    # runtime_env=None (xquill — production runtime IS local launchd) keeps the
+    # legacy behaviour byte-identical: always flush, source="cloud_run".
+    monkeypatch.delenv("CLONWAY_OBS_FORCE_FLUSH", raising=False)
+    monkeypatch.delenv("CLOUD_RUN_EXECUTION", raising=False)
+    client = _FakeClient()
+    event, run_session = make_obs(worker_id="xsecretary", storage_client_factory=lambda: client)
+    with run_session(trigger="cron", run_id="r-legacy"):
+        event("stage.ok")
+    body = client._store["logs/xsecretary/" + _date_of(client) + "/r-legacy.jsonl"]
+    lines = _data_lines(body)
+    assert lines[0]["payload"]["source"] == "cloud_run"
+    assert lines[-1]["payload"]["source"] == "cloud_run"
+
+
 # ---- run_session: best-effort degrade --------------------------------------
 
 
