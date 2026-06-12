@@ -98,10 +98,10 @@ guidance matches the `contract.py` signature, and the onboarding doc links it.
 
 ## HANDOFF NOTES
 
-**Status: QA FIX VERIFIED BY `fixer-codex-20260612T145711Z-7032`; FINISH
-PROTOCOL PENDING** — the pushed branch already contains the 2026-06-12 QA fix
-for the host-rebuild ambient `_AGENT_MODE` example and a docs regression test
-for the safety invariant.
+**Status: QA FIX VERIFIED BY `fixer-codex-20260612T145711Z-7032`; READY FOR
+QA HANDOFF** — the pushed branch contains the 2026-06-12 QA fix for the
+host-rebuild ambient `_AGENT_MODE` example and a docs regression test for the
+safety invariant.
 
 - Phase 1: `docs/adopting-the-agent-channel.md` written with all six recipe steps.
 - Phase 2: `unstructured` semantics section included in the same doc.
@@ -119,6 +119,7 @@ for the safety invariant.
 - Gates run in this takeover session before rebase: `uv run pytest -q` -> 957
   passed; `uv run pre-commit run --all-files` -> all hooks passed.
 - Focused check: `uv run pytest -q tests/test_adoption_playbook_docs.py` → 1 passed.
-- Next step: rebase onto latest `origin/main`, rerun full gates, force-push with
-  lease, then mark PR ready / needs QA.
+- Final verification after rebase onto latest `origin/main`: `uv run pytest -q`
+  -> 957 passed; `uv run pre-commit run --all-files` -> all hooks passed.
+- Next step: mark PR ready / needs QA.
 - Known-failing tests: none. No operator TODO items.
