@@ -117,11 +117,11 @@ The acceptance demo for the whole design is one wired chain in a sandbox: worker
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; final verification/PR finish protocol in progress.
-- Next concrete step: run `make check`, `pre-commit run --all-files`, rebase onto `origin/main`, push with `--force-with-lease`, mark ready, relabel to `agent:needs-qa`, and post DONE with real gate tails.
+- Current phase: implementation complete; rebased onto `origin/main`; local gates passed.
+- Next concrete step: push with `--force-with-lease`, mark ready, relabel to `agent:needs-qa`, and post DONE with real gate tails.
 - Decisions taken: stayed on branch `claude/plan-signal-bus` per dispatcher override; ignored the older "Next-agent pickup" instruction to start `claude/signal-bus`. Signal-hardening sealed factory was not present in this branch/main shape, so `failure_to_signal` uses the planned fallback (`worker_id`/`flag_env` plus `emit_signals`).
 - Deviation recorded: `poll()` keeps the list-return API from the spec and adds optional `on_delivery` for action consumers. The callback form is the documented at-least-once path: cursor commit happens only after the consumer callback returns; a callback exception leaves the object uncommitted for re-delivery.
-- Known failing tests: none at this checkpoint. Latest targeted proof: `uv run pytest -q tests/test_signals_subscribe.py -k 'callback_commits or callback_exception'` -> `2 passed, 35 deselected`.
+- Known failing tests: none at this checkpoint. Latest full proof: `make check` -> `1021 passed, 7 warnings`; `pre-commit run --all-files` -> all hooks passed.
 
 ## Acceptance criteria
 

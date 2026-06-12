@@ -175,7 +175,6 @@ def test_gcs_cursor_save_raises_on_precondition_failed():  # CC-SIG-SUB-GCS-8
     key = f"subscriptions/{_CONSUMER}/cursor.json"
     client._store[key] = ('{"stale": "data"}', 99)
 
-    cs = GcsCursorStore(_CONSUMER, bucket=_BUCKET, storage_client_factory=lambda: client)
     # The GcsCursorStore reads generation=99, tries to write with if_generation_match=99.
     # But our fake client's store returns gen=99, so the write should succeed.
     # To trigger a precondition failure, we need two writers racing.

@@ -126,7 +126,6 @@ def _needs(title: str, source_id: str) -> tuple[NeedsItem, ...]:
 def test_e2e_three_run_history_exactly_once(tmp_path: Path, monkeypatch) -> None:  # CC-SIG-E2E-1
     """Three runs emitted; poll processes each exactly once in chronological order."""
     gcs = _FakeGcs()
-    base = datetime(2026, 6, 1, 9, 0, tzinfo=UTC)
     dates = [
         datetime(2026, 6, 1, 9, tzinfo=UTC),
         datetime(2026, 6, 2, 9, tzinfo=UTC),
