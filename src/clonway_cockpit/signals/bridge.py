@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from clonway_cockpit.signals.emit import _BUCKET, emit_signals
-from clonway_cockpit.signals.model import Signal, _dedup_key
+from clonway_cockpit.signals.model import Signal, dedup_key
 
 if TYPE_CHECKING:
     from clonway_cockpit.negotiation import HandoffFailure
@@ -73,7 +73,7 @@ def failure_to_signal(
             urgency="due",
             capability_key=None,
             focus=None,
-            dedup_key=_dedup_key(worker_id, "Handoff failed", None, None, failure.task_id),
+            dedup_key=dedup_key(worker_id, "Handoff failed", None, None, failure.task_id),
             emitted_at=now,
             source_id=failure.task_id,
         )
