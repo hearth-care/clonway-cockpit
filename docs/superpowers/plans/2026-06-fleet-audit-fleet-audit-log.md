@@ -101,7 +101,7 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 ## Implementation plan
 
 ### Phase 1 — record + sink
-- [ ] `src/clonway_cockpit/audit_log.py`: `AuditEvent` (+wire round-trip + schema pin test), `EVENTS`, `make_audit_sink` with fake-GCS tests (flush cadence, exit flush, silent degrade, local-append always-wins), never-raise wrapper test (sink whose file write fails → logged, caller unaffected).
+- [x] `src/clonway_cockpit/audit_log.py`: `AuditEvent` (+wire round-trip + schema pin test), `EVENTS`, `make_audit_sink` with fake-GCS tests (flush cadence, exit flush, silent degrade, local-append always-wins), never-raise wrapper test (sink whose file write fails → logged, caller unaffected).
 - Files: `audit_log.py`, `tests/test_audit_log.py`.
 
 ### Phase 2 — chokepoint wiring
@@ -143,3 +143,12 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 - Run the worker `equivalent_cli` survey (grep `equivalent_cli=` across the eight worker repos) before freezing the field whitelist — the privacy decision in Risks must be made on evidence.
 - Do NOT: add any free-text/payload field to `AuditEvent` (the structural whitelist IS the feature); let a sink exception reach a caller; change the existing gate ScreenModel frames; build the orchestrator's ledger view from this branch; name projects/accounts/people in fixtures or docs (public repo — fixtures use placeholder worker ids).
 - Done = acceptance criteria demonstrated, `make check` + `make template-smoke` green, privacy survey recorded in the PR, changelog updated.
+
+## HANDOFF NOTES
+
+- Current phase: Phase 2 — chokepoint wiring.
+- Completed: Phase 1 added `clonway_cockpit.audit_log` with schema-pinned `AuditEvent`, local JSONL sink, best-effort GCS mirror, `read_events`, and focused tests.
+- Verification so far: baseline `make test` before edits reported `758 passed in 20.02s`; Phase 1 `uv run pytest -q tests/test_audit_log.py` reported `5 passed in 0.02s`.
+- Decisions: GCS audit mirroring is gated by `<WORKER>_AUDIT_GCS` or `CLONWAY_AUDIT_GCS` when `gcs=None`; local JSONL remains authoritative.
+- Known failing tests: none at this checkpoint.
+- Next concrete step: write failing Phase 2 tests for `WizardContext.audit`, `Host.audit_sink` capability launch events, and `confirm_apply` gate offered/applied/declined events before adding wiring.
