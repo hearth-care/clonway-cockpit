@@ -109,28 +109,57 @@ def test_dedup_key_stable_across_detail_distinct_across_identity():  # T5
 
 
 @pytest.mark.parametrize(
-    "worker,title,capability_key,focus,source_id",
+    "worker,title,capability_key,focus,source_id,expected_uuid",
     [
-        ("xbook", "Bills due this week", "schedule-bills", "overdue", None),
-        ("xhr", "DBS expiring", "staff-records", "employee:42", "dbs:42"),
-        ("xletter", "Campaign send window", None, None, "campaign:summer"),
-        ("xquill", "Promise due", "commitments", "thread:abc", "promise:abc:1"),
+        # Pinned literals — changing the namespace or join-string will fail these.
+        (
+            "xbook",
+            "Bills due this week",
+            "schedule-bills",
+            "overdue",
+            None,
+            "8c71df8f-92ca-5718-9d8c-788c998c0183",
+        ),
+        (
+            "xhr",
+            "DBS expiring",
+            "staff-records",
+            "employee:42",
+            "dbs:42",
+            "ffab3ac2-02cf-57e4-a26e-9950dc4114e8",
+        ),
+        (
+            "xletter",
+            "Campaign send window",
+            None,
+            None,
+            "campaign:summer",
+            "1968a274-103b-5c1c-afe5-e033ee646b07",
+        ),
+        (
+            "xquill",
+            "Promise due",
+            "commitments",
+            "thread:abc",
+            "promise:abc:1",
+            "58975d49-97c0-5a1d-a068-57f496385cd9",
+        ),
     ],
 )
-def test_public_dedup_key_matches_existing_recipe(
-    worker, title, capability_key, focus, source_id
+def test_public_dedup_key_golden(
+    worker, title, capability_key, focus, source_id, expected_uuid
 ):  # C12
+    assert signal_model.dedup_key(worker, title, capability_key, focus, source_id) == expected_uuid
     with pytest.warns(DeprecationWarning, match="dedup_key"):
-        existing_value = _dedup_key(worker, title, capability_key, focus, source_id)
-    assert signal_model.dedup_key(worker, title, capability_key, focus, source_id) == existing_value
+        assert _dedup_key(worker, title, capability_key, focus, source_id) == expected_uuid
 
 
 def test_private_dedup_key_alias_warns_but_keeps_value():  # C12
+    _PINNED = "80b0e4f8-277a-535e-8c7a-998c9d766a3b"  # xhr|DBS expiring|staff-records|None|dbs:42
     with pytest.warns(DeprecationWarning, match="dedup_key"):
         alias_value = _dedup_key("xhr", "DBS expiring", "staff-records", None, "dbs:42")
-    assert alias_value == signal_model.dedup_key(
-        "xhr", "DBS expiring", "staff-records", None, "dbs:42"
-    )
+    assert alias_value == _PINNED
+    assert signal_model.dedup_key("xhr", "DBS expiring", "staff-records", None, "dbs:42") == _PINNED
 
 
 def test_to_wire_is_json_serialisable_with_null_due_at():  # T6

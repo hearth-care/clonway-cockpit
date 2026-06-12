@@ -143,10 +143,10 @@ class SignalFactory:
             now=now or datetime.now(UTC),
             **kw,
         )
+        # Count signals that went through the fallback path (title unknown → action.required).
+        # Signals with explicit kind= never add to _UNKNOWN_TITLES_SEEN, so they are excluded.
         unknown_title_kinds = sum(
-            1
-            for signal in signals
-            if signal.kind == "action.required" and not self._title_is_known(signal.title)
+            1 for signal in signals if (self.worker_id, signal.title) in _UNKNOWN_TITLES_SEEN
         )
         logging.getLogger(f"{self.worker_id}.signals").info(
             "signal emit complete unknown_title_kinds=%d", unknown_title_kinds

@@ -78,9 +78,16 @@ def test_factory_from_needs_is_wire_identical_to_explicit_build_signals() -> Non
     )
     factory = SignalFactory(worker_id="xhr", flag_env="XHR_EMIT_SIGNALS")
 
-    assert [s.to_wire() for s in factory.from_needs(needs, now=_NOW, source_ref="runbook")] == [
+    factory_wires = [s.to_wire() for s in factory.from_needs(needs, now=_NOW, source_ref="runbook")]
+    build_wires = [
         s.to_wire() for s in build_signals(needs, now=_NOW, worker="xhr", source_ref="runbook")
     ]
+    assert factory_wires == build_wires
+
+    # Pinned dedup_key literals — catches uuid namespace or join-string regressions that
+    # would otherwise pass because both sides share the same dedup_key implementation.
+    assert factory_wires[0]["dedup_key"] == "aa0bbdb7-c298-51db-ab4b-e41c24e397f0"
+    assert factory_wires[1]["dedup_key"] == "d29700de-e91f-54ff-a463-51ce822f7064"
 
 
 def test_factory_make_seals_worker_emitted_at_and_dedup_key() -> None:
@@ -225,3 +232,31 @@ def test_factory_emit_logs_unknown_title_count(monkeypatch, caplog) -> None:
 
     assert len(out) == 2
     assert any("unknown_title_kinds=1" in record.getMessage() for record in caplog.records)
+
+
+def test_factory_emit_explicit_kind_not_counted_as_unknown(monkeypatch, caplog) -> None:
+    """Explicitly-classified signals (kind= provided) must not increment unknown_title_kinds."""
+    from clonway_cockpit.signals.factory import SignalFactory
+
+    monkeypatch.setenv("XHR_EMIT_SIGNALS", "1")
+    caplog.set_level(logging.INFO, logger="xhr.signals")
+    factory = SignalFactory(worker_id="xhr", flag_env="XHR_EMIT_SIGNALS")
+    client = _FakeClient()
+
+    out = factory.emit(
+        build=lambda **_: (
+            factory.make(
+                title="Custom explicit action",
+                kind="action.required",
+                detail="explicit classification",
+                level="warn",
+                now=_NOW,
+            ),
+        ),
+        now=_NOW,
+        today=_TODAY,
+        storage_client_factory=lambda: client,
+    )
+
+    assert len(out) == 1
+    assert any("unknown_title_kinds=0" in record.getMessage() for record in caplog.records)
