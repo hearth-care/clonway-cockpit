@@ -69,6 +69,16 @@ Also: extend `tests/test_cockpit_contract.py` in the **same change** that adds a
 shelf or screen — the scaffold's `["q"]` drive is a placeholder to outgrow.
 See the acceptance doc's "Growing the gate" section for the per-screen rule.
 
+## Safe-command matrix
+
+Every worker MUST publish `docs/safe-command-matrix.md` in its own repo — one
+row per CLI subcommand/flag combination, all eight columns populated. Start from
+the worked example in clonway-cockpit's
+[`docs/safe-command-matrix.md`](https://github.com/hearth-care/clonway-cockpit/blob/main/docs/safe-command-matrix.md)
+(which already covers `{{ worker_id }}` bare, `--agent-stdio`, `--allow-apply`,
+and `signals scan`) and extend it with each new command you add. Any PR that adds, renames, or removes a subcommand must
+update the matrix in the same change.
+
 ## Pull template improvements
 
 ```bash
