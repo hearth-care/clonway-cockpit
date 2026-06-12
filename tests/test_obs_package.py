@@ -8,6 +8,7 @@ Pins the re-export list so that any future removal of a public symbol from
 from __future__ import annotations
 
 _EXPECTED_EXPORTS = {
+    "FORCE_FLUSH_ENV",
     "RESERVED_LOGRECORD_KEYS",
     "SEVERITY_TO_LEVEL",
     "CloudLoggingSink",

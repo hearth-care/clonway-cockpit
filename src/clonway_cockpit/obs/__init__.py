@@ -15,6 +15,7 @@ Sub-modules available after explicit import:
 from __future__ import annotations
 
 from clonway_cockpit.obs._telemetry import (
+    FORCE_FLUSH_ENV,
     RESERVED_LOGRECORD_KEYS,
     SEVERITY_TO_LEVEL,
     CloudLoggingSink,
@@ -26,6 +27,7 @@ from clonway_cockpit.obs._telemetry import (
 )
 
 __all__ = [
+    "FORCE_FLUSH_ENV",
     "RESERVED_LOGRECORD_KEYS",
     "SEVERITY_TO_LEVEL",
     "CloudLoggingSink",

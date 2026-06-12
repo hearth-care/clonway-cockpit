@@ -24,6 +24,17 @@ The wire contract (do NOT change without coordinating with the xops dashboard):
   straddles midnight UTC stays in one file) and ``run_id`` resolves to
   ``CLOUD_RUN_EXECUTION`` or a fresh uuid. Body is compact NDJSON with a
   trailing newline, ``content_type="application/x-ndjson"``.
+* The flush is **runtime-gated** for workers that declare a ``runtime_env``:
+  it only uploads when ``os.environ[runtime_env] == "cloud_run"`` (the same
+  check that gates the Cloud Logging mirror) or when the operator opts in via
+  ``CLONWAY_OBS_FORCE_FLUSH=1``. A test/dev/agent invocation with live ADC
+  therefore canNOT pollute fleet telemetry (the 2026-06 incident: xletter's
+  test suite uploaded 80 deliberately-failing runs that the xops digest counted
+  as prod errors). The lifecycle events' ``source`` field tells the truth for
+  these workers too: ``cloud_run`` only when actually in cloud_run, ``local``
+  otherwise. Workers with ``runtime_env=None`` (xquill's launchd daemon, whose
+  production runtime IS local) keep the legacy behaviour byte-identical:
+  always flush, ``source="cloud_run"``.
 * Best-effort: a creds-less / offline / quota-throttled environment degrades
   silently, never crashing a worker run. An auth/forbidden failure (expected in
   local/dev) logs at debug; anything else logs at exception.
@@ -55,6 +66,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 _BUCKET = "clonway-orchestrator-eu-west2"  # shared fleet bucket
+
+# Opt-in override for the runtime flush gate: set to "1" to flush a
+# run_session's buffer to GCS even when the worker's ``runtime_env`` says this
+# is not cloud_run (deliberate local telemetry checks / one-off backfills).
+# No effect on workers with ``runtime_env=None``, which always flush. The
+# lifecycle ``source`` stays truthful (``local``) under the override.
+FORCE_FLUSH_ENV = "CLONWAY_OBS_FORCE_FLUSH"
 
 # Canonical severity names → stdlib logging levels. ``WARN`` is the contract
 # §4.3 alias for ``WARNING``; both map to the same level.
@@ -209,8 +227,13 @@ def make_obs(
     * ``project`` — passed to ``storage.Client(project=…)`` for xquill's
       launchd daemon; ``None`` (bare ``Client()``) for the Cloud Run workers.
     * ``runtime_env`` — env var (e.g. ``XBOOK_RUNTIME``) checked for the value
-      ``cloud_run`` to enable the Cloud Logging mirror. ``None`` (xquill) ⇒ no
-      cloud-logging mirror, ever.
+      ``cloud_run``. Gates BOTH side-channels: the Cloud Logging mirror and the
+      ``run_session`` GCS flush (the flush can also be forced locally via
+      ``CLONWAY_OBS_FORCE_FLUSH=1``). It also drives the lifecycle events'
+      ``source`` field: ``cloud_run`` when the env matches, ``local`` otherwise.
+      ``None`` (xquill, whose production runtime is a local launchd daemon) ⇒
+      no cloud-logging mirror ever, and the legacy flush behaviour is kept
+      byte-identical: always flush, ``source="cloud_run"``.
     * ``cloud_logging_sink`` — worker-supplied ``(name, severity, fields) ->
       None`` that mirrors to Cloud Logging. The worker owns the google import.
     * ``reserved_prefix`` — prefix for renamed reserved LogRecord fields:
@@ -222,6 +245,27 @@ def make_obs(
     """
     log_name = logger_name or f"{worker_id}.obs"
     get_log: LoggerFactory = logger_factory or logging.getLogger
+
+    def _in_cloud_run() -> bool:
+        """True when the worker's declared runtime env says we're in cloud_run.
+
+        Checked at call time (not bind time) — same as the Cloud Logging gate —
+        so tests and entrypoints that set the env after import are honoured.
+        """
+        return runtime_env is not None and os.environ.get(runtime_env) == "cloud_run"
+
+    def _flush_allowed() -> bool:
+        """Whether run_session may upload its buffer to the fleet bucket.
+
+        Workers with no ``runtime_env`` keep the legacy always-flush behaviour
+        (their production runtime is local — xquill's launchd daemon). Workers
+        WITH one only flush in cloud_run, or under the explicit
+        ``CLONWAY_OBS_FORCE_FLUSH=1`` operator override — never from a bare
+        test/dev/agent invocation that happens to hold live ADC.
+        """
+        if runtime_env is None:
+            return True
+        return _in_cloud_run() or os.environ.get(FORCE_FLUSH_ENV) == "1"
 
     def event(name: str, *, severity: str = "INFO", **fields: Any) -> None:
         """Emit one structured event.
@@ -283,13 +327,18 @@ def make_obs(
         new_buffers[worker_id] = buffer
         token = _RUN_BUFFERS.set(new_buffers)
 
+        # Resolved once per session so run.started and run.finished agree.
+        # Legacy ``cloud_run`` for runtime_env=None workers (xquill — wire
+        # unchanged); truthful for workers that declared a runtime env.
+        source = "cloud_run" if (runtime_env is None or _in_cloud_run()) else "local"
+
         event(
             "run.started",
             trigger=trigger,
             args=args or {},
             run_id=rid,
             contract_version="v0.1",
-            source="cloud_run",
+            source=source,
         )
         status, summary = "ok", ""
         try:
@@ -305,17 +354,25 @@ def make_obs(
                 status=status,
                 duration_ms=duration_ms,
                 summary=summary,
-                source="cloud_run",
+                source=source,
             )
             _RUN_BUFFERS.reset(token)
-            flush_buffer(
-                buffer,
-                worker_id=worker_id,
-                run_id=rid,
-                bucket=bucket,
-                project=project,
-                storage_client_factory=storage_client_factory,
-                log=get_log(log_name),
-            )
+            if _flush_allowed():
+                flush_buffer(
+                    buffer,
+                    worker_id=worker_id,
+                    run_id=rid,
+                    bucket=bucket,
+                    project=project,
+                    storage_client_factory=storage_client_factory,
+                    log=get_log(log_name),
+                )
+            else:
+                get_log(log_name).debug(
+                    "obs flush gated (%s != 'cloud_run', %s unset); %d events not uploaded",
+                    runtime_env,
+                    FORCE_FLUSH_ENV,
+                    len(buffer),
+                )
 
     return event, run_session
