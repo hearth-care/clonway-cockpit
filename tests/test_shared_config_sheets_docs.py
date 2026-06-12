@@ -16,6 +16,11 @@ def test_onboarding_docs_include_config_and_sheets_examples():
     assert "## Shared config loader" in text
     assert "class WorkerConfig(BaseModel):" in text
     assert "load_config(WorkerConfig" in text
+    assert "XEXAMPLE__SYNC__WINDOW_DAYS" not in text
+    assert "XEXAMPLE__SYNC_WINDOW_DAYS=14" in text
+    assert "YAML only" in text
+    assert "Env only" in text
+    assert "YAML + env" in text
     assert "## Shared Sheets helper" in text
     assert "SheetsClient(service, spreadsheet_id" in text
 

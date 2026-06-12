@@ -128,11 +128,29 @@ class WorkerConfig(BaseModel):
 config = load_config(WorkerConfig, worker_id="xexample")
 ```
 
-The first existing config file wins; env vars then overlay it. For nested fields
-use double underscores, e.g. `XEXAMPLE__SYNC__WINDOW_DAYS=14`. Values stay as
-strings until pydantic coerces them, so lists/dates/custom parsing belong in the
-worker model. For secrets, store the env var name (`api_key_env:
-WORKSPACE_API_KEY`), not the secret value.
+The first existing config file wins; env vars then overlay it. YAML only:
+
+```yaml
+tenant_name: Red House Demo
+sync_window_days: 10
+api_key_env: WORKSPACE_API_KEY
+```
+
+Env only:
+
+```bash
+XEXAMPLE__TENANT_NAME="Red House Demo"
+XEXAMPLE__SYNC_WINDOW_DAYS=14
+XEXAMPLE__API_KEY_ENV=WORKSPACE_API_KEY
+```
+
+YAML + env: with both present, env wins for any overlaid field: a YAML
+`sync_window_days: 10` plus `XEXAMPLE__SYNC_WINDOW_DAYS=14` loads
+`sync_window_days == 14`. Use double underscores only for nested model fields,
+for example `XEXAMPLE__NESTED__FIELD=value` when the worker model has
+`nested.field`. Values stay as strings until pydantic coerces them, so
+lists/dates/custom parsing belong in the worker model. For secrets, store the
+env var name (`api_key_env: WORKSPACE_API_KEY`), not the secret value.
 
 ## Shared Sheets helper
 
