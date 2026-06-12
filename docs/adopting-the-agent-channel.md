@@ -196,18 +196,22 @@ from clonway_cockpit.agent import CockpitClient
 def test_agent_stdio_subprocess_smoke() -> None:
     with CockpitClient.spawn(["uv", "run", "<worker>", "--agent-stdio"], timeout=10) as c:
         home = c.read_home()
-        c.press("q")
+        extra = c.drain()
+    # context manager calls quit() → sends {"cmd":"quit"} and waits for clean process exit
 
+    frames = [home, *extra]
     assert home["kind"] == "home"
     assert home.get("schema_version") == "1.0"
-    assert home["kind"] != "unstructured"
+    assert not any(frame["kind"] == "unstructured" for frame in frames)
 ```
 
 This test is the end-to-end companion: it proves the full loop (spawn → first frame →
-command → clean exit) runs correctly, including CLI flag wiring, host construction, and the
-stdio pump — things that are invisible to in-process tests. See
-`tests/test_worker_template.py` for a fuller example (including preflight/result/drain
-assertions).
+clean exit) runs correctly, including CLI flag wiring, host construction, and the stdio
+pump — things that are invisible to in-process tests. Never call `press("q")` for
+shutdown: `press()` blocks waiting for the next screen frame, but a quit keypress emits
+none, so it times out and raises `CockpitClosed`. Use the context manager (`__exit__`
+calls `quit()`) or an explicit `c.quit()` instead. See `tests/test_worker_template.py`
+for a fuller example (including preflight/result/drain assertions).
 
 ---
 
