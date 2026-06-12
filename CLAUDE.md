@@ -1,16 +1,21 @@
 # CLAUDE.md — clonway-cockpit
 
-The shared interactive-cockpit framework that sits beneath every Clonway autoworker. Workers
-depend on this package (pinned by git rev) and supply their own domain capabilities + screens.
-The global + Clonway-family CLAUDE.md rules layer on top.
+The shared interactive-cockpit framework that Clonway autoworkers build on. Workers depend on
+this package (pinned to a release tag) and supply their own domain capabilities + screens.
+A worker that has pinned the supported tag, wired `--agent-stdio`, and run the two contract
+asserts in CI is agent-navigable; a worker that hasn't done those three things isn't yet —
+the framework cannot enforce that from inside this repo. The global + Clonway-family CLAUDE.md
+rules layer on top.
 
 ## Agent-navigability is the framework's whole point
 
-This framework exists so every autoworker is **simultaneously a human TUI and an
-agent-drivable surface** — same binary, same code path, no second implementation. "One screen
+This framework is designed so that workers built on it can be **simultaneously a human TUI and
+an agent-drivable surface** — same binary, same code path, no second implementation. "One screen
 description, two projections": the human Rich render and the agent `ScreenModel` JSON are both
 projections of one screen. There is no distinction between a human operating and an agent
-operating a cockpit. This is enforced here, not left to discipline:
+operating a cockpit. This property is enforced here for the framework's own screens and for
+every template-generated worker; existing consumers earn it by pinning + wiring (see the
+consumer obligations in README's "Agent-navigable by construction" section):
 
 - **Every page-framing `render_*` ships a `model_*` twin.** The framework's own
   `tests/test_contract.py` dogfoods `clonway_cockpit.contract.assert_render_model_parity`. A

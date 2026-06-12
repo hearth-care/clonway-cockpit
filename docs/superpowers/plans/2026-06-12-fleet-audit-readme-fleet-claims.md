@@ -38,7 +38,7 @@ top-of-README status banner separating built-and-tested from live.
 
 ## Deliverables
 
-- [ ] Phase 1 — rewrite the "Agent-navigable by construction" framing: replace
+- [x] Phase 1 — rewrite the "Agent-navigable by construction" framing: replace
   "enforced in CI, inherited by every worker" with the three-part truth —
   (a) the framework ships the gate (`contract.py`) and the channel (`agent.py`);
   (b) every template-generated worker is born conformant;
@@ -48,32 +48,32 @@ top-of-README status banner separating built-and-tested from live.
   Link the conformance tracker for who currently meets (c). If the tracker doc has not
   landed yet when this is implemented, link `docs/pin-sync.md` and the getting-started
   adoption matrix instead and leave a TODO naming the tracker path.
-- [ ] Phase 2 — soften the absolute `unstructured` claim in "How it's enforced": "a
+- [x] Phase 2 — soften the absolute `unstructured` claim in "How it's enforced": "a
   screen with no model fails the build" describes static parity; add the one-line
   nuance that drive-clean covers driven paths and `allow_unstructured` exists for
   named, justified exceptions (consistent with `docs/agent-screen-model.md`
   "Coverage: what the gate actually proves").
-- [ ] Phase 3 — add a status banner near the top of README (before or just after the
+- [x] Phase 3 — add a status banner near the top of README (before or just after the
   opening paragraphs) with one line per layer: framework spine (built, tested, in use);
   worker template (generates conformant workers); persona platform (tested libraries +
   local demos, no live Chat transport); fleet adoption (uneven — see tracker). Link
   `docs/persona-platform-getting-started.md` as the detailed status page.
-- [ ] Phase 4 — sweep `CLAUDE.md` for the same fleet-universal wording ("beneath every
+- [x] Phase 4 — sweep `CLAUDE.md` for the same fleet-universal wording ("beneath every
   Clonway autoworker", "so every autoworker is …") and align it with the same
   guarantee-vs-adoption distinction, keeping its enforcement guidance intact.
 
 ## Acceptance criteria
 
-- [ ] README no longer asserts that every fleet worker is agent-navigable today; every
+- [x] README no longer asserts that every fleet worker is agent-navigable today; every
   fleet-wide statement is conditioned on pin + conformance, or scoped to
   template-generated workers.
-- [ ] README states the consumer obligations (pin supported tag, wire `--agent-stdio`,
+- [x] README states the consumer obligations (pin supported tag, wire `--agent-stdio`,
   run the two contract asserts in CI) in one findable place.
-- [ ] The status banner exists, distinguishes the four layers above, and links the
+- [x] The status banner exists, distinguishes the four layers above, and links the
   getting-started status doc; no README claim contradicts that doc.
-- [ ] The `unstructured` sentence in README matches the semantics documented in
+- [x] The `unstructured` sentence in README matches the semantics documented in
   `docs/agent-screen-model.md` (path-specific drive-clean, named exceptions).
-- [ ] No technical capability that IS guaranteed (parity gate, guarded apply, dry-run
+- [x] No technical capability that IS guaranteed (parity gate, guarded apply, dry-run
   default, schema versioning) gets hedged — the edit narrows scope claims only.
 
 ## Verification
@@ -89,3 +89,21 @@ uv run pytest -q                                       # unchanged; docs-only ch
 
 Expected: the absolute fleet-wide claim is gone, consumer obligations and the status
 banner are present, and the suite is untouched.
+
+## HANDOFF NOTES
+
+**Status:** COMPLETE — all four phases implemented and verified.
+
+**Phase:** Done. All checkboxes ticked.
+
+**What was done:**
+- Phase 1: Rewrote "Agent-navigable by construction" opening — replaced "enforced in CI, inherited by every worker" with the (a)/(b)/(c) three-part truth. Linked `docs/pin-sync.md` and the getting-started adoption matrix; left a TODO for `docs/fleet-conformance.md` once it lands.
+- Phase 2: Expanded "How it's enforced" to distinguish static parity (`assert_render_model_parity`) from dynamic drive-clean (`assert_drives_clean`), and noted `allow_unstructured=True` for named exceptions.
+- Phase 3: Added "## Framework status" table before "## Agent-navigable by construction" with four rows (spine / template / persona platform / fleet adoption) and a link to `docs/persona-platform-getting-started.md`.
+- Phase 4: Rewrote CLAUDE.md opening — removed "beneath every Clonway autoworker" and "so every autoworker is …"; added a sentence explaining that consumers earn the property by pinning + wiring.
+
+**Decisions taken:**
+- `docs/fleet-conformance.md` not yet landed; linked pin-sync + getting-started adoption matrix per the plan's fallback instruction, with a TODO comment.
+- No structural changes to README beyond the affected sections; no changes to `docs/agent-screen-model.md` or the template (per non-goals).
+
+**Known-failing tests:** None — 956 passed, all pre-commit hooks green.
