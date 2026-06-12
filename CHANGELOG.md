@@ -118,8 +118,6 @@ Record them here and bump the release tag before merging.
 - **`docs/ci-adoption.md`** — per-worker adoption checklist: divergence table for
   all 8 workers, caller shapes, gotchas, and mechanical steps.
 
-### Changed
-
 - **`ci.yml`** — this repo's CI converted to a thin `workflow_call` caller
   (`uses: ./.github/workflows/reusable-ci.yml`). The `prod-import-package:
   clonway_cockpit` input enables the import-smoke job. The `concurrency` stanza

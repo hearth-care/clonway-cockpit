@@ -41,6 +41,18 @@ def test_changelog_keeps_unreleased_section() -> None:
     assert "## [Unreleased]" in text
 
 
+def test_changelog_unreleased_section_has_unique_subheadings() -> None:
+    text = _changelog()
+    unreleased = text.split("## [Unreleased]", 1)[1].split("\n## [", 1)[0]
+    subheadings = [
+        line.strip()
+        for line in unreleased.splitlines()
+        if line.startswith("### ")
+    ]
+
+    assert len(subheadings) == len(set(subheadings))
+
+
 def test_release_workflow_tags_version_from_changelog() -> None:
     text = _release_workflow()
 

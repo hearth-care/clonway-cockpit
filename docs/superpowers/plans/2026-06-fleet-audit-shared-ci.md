@@ -149,7 +149,8 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** COMPLETE — all 4 phases + 3 rounds of QA FAIL findings fixed, all gates green.
+**Current phase:** REBASE FIX — rebased onto `origin/main` at `cede7fd`; manual conflict
+resolved in `CHANGELOG.md`; full gates pending in current fixer pass.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -180,6 +181,14 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 3. Dead link in `docs/ci-adoption.md` (`../memory-not-applicable/ci-504.md`) — removed;
    replaced with inline note about `UV_PYTHON_DOWNLOADS=never`.
 
+**CONFLICT addressed (fixer-codex-20260612T064457Z-7032):**
+1. Rebasing onto latest `origin/main` required manual resolution in `CHANGELOG.md`. Preserved
+   main's `build_signals(..., worker=...)` deprecation note and this PR's reusable-CI /
+   pre-commit public contract entries.
+2. Added `test_changelog_unreleased_section_has_unique_subheadings` after the conflict left a
+   duplicated `### Changed` heading; verified red (`1 failed`) before removing the duplicate
+   heading, then green (`1 passed`).
+
 **Deviations from plan:**
 - Same-repo caller uses `./.github/workflows/reusable-ci.yml` (relative path) instead of
   a SHA/tag — correct approach for same-repo `workflow_call`; worker repos use the full path.
@@ -201,3 +210,5 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 **Known-failing:** none — `uv run pytest -q` (782 passed), `pre-commit run --all-files` (8 hooks passed),
 and `make template-smoke` all green locally (fixer-claude-20260611T192423Z-42347 2026-06-11).
+Current fixer focused regression: `uv run pytest tests/test_release_policy.py::test_changelog_unreleased_section_has_unique_subheadings -q`
+failed before the changelog fix and passed after. Full local gates are next.
