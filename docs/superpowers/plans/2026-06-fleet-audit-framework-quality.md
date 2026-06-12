@@ -105,7 +105,7 @@ class Gateway:
 Ordered phases; each lands with `make check` green and is independently mergeable (one PR with phase commits, or split C3 out if review size demands).
 
 - [x] **Phase 1 (C4):** autouse fixture + `clonway_cockpit/testing.py` plugin + a regression test that deliberately registers without cleanup and asserts the next test sees a clean registry. Files: `tests/conftest.py`, `src/clonway_cockpit/testing.py`, `tests/test_registry_isolation.py`.
-- [ ] **Phase 2 (C18):** `Gateway.validate` + `from_dict` tightening + tests (missing env var named, typo'd role, bad pricing entry now raising, litellm-extra check with import shim). Files: `src/clonway_cockpit/gateway/{gateway,config}.py`, `tests/test_gateway_validate.py`. Changelog: pricing tightening is a behaviour change — call it out.
+- [x] **Phase 2 (C18):** `Gateway.validate` + `from_dict` tightening + tests (missing env var named, typo'd role, bad pricing entry now raising, litellm-extra check with import shim). Files: `src/clonway_cockpit/gateway/{gateway,config}.py`, `tests/test_gateway_validate.py`. Changelog: pricing tightening is a behaviour change — call it out.
 - [ ] **Phase 3 (C3):** mechanical split per spec; parity-contract discovery extended; facade pin test. Files: four render modules, `src/clonway_cockpit/contract.py` (discovery scan), `tests/test_render_facade.py`. **Zero diff** in any other test file is the proof of mechanical-ness.
 - [ ] **Phase 4 (C5):** generic `WizardContext`; mypy-strict clean; a typed-worker example in `docs/onboarding-a-worker.md`; verify worker-template still generates type-clean code. Files: `src/clonway_cockpit/registry.py`, docs, template if needed.
 - [ ] **Phase 5 (C20):** pdoc dev-dep, `make docs`, CI job, Pages publish. Files: `pyproject.toml`, `Makefile`, `.github/workflows/ci.yml` (+ pages workflow).
@@ -140,7 +140,7 @@ Ordered phases; each lands with `make check` green and is independently mergeabl
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 1 (C4) implemented; preparing full `make check` before commit/push.
-- Next concrete step: start Phase 2 (C18) with failing tests in `tests/test_gateway_validate.py`.
-- Decisions taken: `.claude/` was already gitignored; no `.gitignore` change required. No existing changelog file was present, so `CHANGELOG.md` was created with an `[Unreleased]` section.
-- Known-failing tests: none known after `uv run pytest -q tests/test_registry_isolation.py` passed.
+- Current phase: Phase 2 (C18) implemented; preparing full `make check` before commit/push.
+- Next concrete step: start Phase 3 (C3) with the worker render-import survey, facade symbol pin test, and parity discovery test before the mechanical split.
+- Decisions taken: `.claude/` was already gitignored; no `.gitignore` change required. No existing changelog file was present, so `CHANGELOG.md` was created with an `[Unreleased]` section. Gateway unknown top-level config keys are stored as `GatewayConfig.warnings` and reported by `Gateway.validate()`.
+- Known-failing tests: none known after `uv run pytest -q tests/test_gateway_validate.py` and `uv run pytest -q tests/test_gateway_*.py` passed.

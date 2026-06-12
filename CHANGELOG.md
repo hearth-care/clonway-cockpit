@@ -15,6 +15,9 @@ pre-1.0 rules documented in docs/release-policy.md.
   autouse, and worker suites can opt in with
   `pytest_plugins = ["clonway_cockpit.testing"]`.
 
+- **`Gateway.validate()`** — no-network startup checks for configured roles,
+  required env vars, LiteLLM availability, and pricing/model mismatches.
+
 - **`clonway_cockpit.config`** — pydantic-backed worker config loader with YAML
   file loading, double-underscore env overlay, aggregated provenance errors, and
   the `SecretEnvName` convention. Optional dependency extra:
@@ -57,6 +60,9 @@ pre-1.0 rules documented in docs/release-policy.md.
   keeping the core package importable without Google dependencies.
 
 ### Changed
+
+- Gateway pricing config is stricter: non-mapping pricing entries now raise
+  `GatewayError` instead of being silently skipped.
 
 - **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim
   over `obs.runlog.make_runlog`) and calls `setup_logging` from `main()` — new

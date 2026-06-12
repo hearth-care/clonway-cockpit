@@ -33,11 +33,16 @@ class GatewayConfig:
 
     roles: dict[str, RoleConfig]
     pricing: dict[str, dict[str, float]]
+    warnings: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> GatewayConfig:
         if not isinstance(data, Mapping):
             raise GatewayError("gateway config must be a mapping")
+        known_keys = {"roles", "pricing"}
+        warnings = tuple(
+            f"unknown gateway config key: {key!r}" for key in data if key not in known_keys
+        )
         roles_in = data.get("roles")
         if not isinstance(roles_in, Mapping) or not roles_in:
             raise GatewayError("gateway config needs a non-empty 'roles' mapping")
@@ -73,12 +78,12 @@ class GatewayConfig:
         pricing: dict[str, dict[str, float]] = {}
         for model, rate in pricing_in.items():
             if not isinstance(rate, Mapping):
-                continue
+                raise GatewayError(f"pricing for {model!r} must be a mapping")
             try:
                 pricing[str(model)] = {str(k): float(v) for k, v in rate.items()}
             except (TypeError, ValueError):
                 raise GatewayError(f"pricing for {model!r} has a non-numeric rate") from None
-        return cls(roles=roles, pricing=pricing)
+        return cls(roles=roles, pricing=pricing, warnings=warnings)
 
     def resolve(self, role: str) -> RoleConfig:
         try:
