@@ -1,6 +1,6 @@
 # [Plan] Signal subscriptions (fleet bus) + handoff failure callbacks
 
-**Status:** draft plan — not implemented
+**Status:** implemented on PR #95
 **Source:** fleet audit 2026-06-11, items C15, C19
 **Wave:** 3
 
@@ -96,24 +96,32 @@ The acceptance demo for the whole design is one wired chain in a sandbox: worker
 ## Implementation plan
 
 ### Phase 1 — subscription read API
-- [ ] `signals/subscribe.py`: `Subscription`, `Delivery`, `CursorStore` protocol, `FileCursorStore`, `poll()` per Spec §1; fake-GCS client fixture mirroring `tests`' existing emit fakes.
-- [ ] Tests: ordering across multiple archive objects; filters (workers/kinds/urgency ladder); cursor commit-after-callback (consumer raises → re-delivery next poll); creds-less degrade to `[]`; at-least-once duplicate surfaced when cursor write is interposed-crashed.
+- [x] `signals/subscribe.py`: `Subscription`, `Delivery`, `CursorStore` protocol, `FileCursorStore`, `poll()` per Spec §1; fake-GCS client fixture mirroring `tests`' existing emit fakes.
+- [x] Tests: ordering across multiple archive objects; filters (workers/kinds/urgency ladder); cursor commit-after-callback (consumer raises → re-delivery next poll); creds-less degrade to `[]`; at-least-once duplicate surfaced when cursor write is interposed-crashed.
 - Files: `src/clonway_cockpit/signals/subscribe.py`, `tests/test_signals_subscribe.py`.
 
 ### Phase 2 — GcsCursorStore + contract doc
-- [ ] `GcsCursorStore` (read-modify-write with generation-match precondition to avoid two replicas clobbering; document the single-writer-per-consumer assumption).
-- [ ] `docs/signal-bus.md`: the consumption contract (§1 semantics verbatim), the Phase-B doorbell design (§2), the dedup obligations, and the don't-do list (never consume `latest.jsonl` for state; never couple emitters to consumers).
+- [x] `GcsCursorStore` (read-modify-write with generation-match precondition to avoid two replicas clobbering; document the single-writer-per-consumer assumption).
+- [x] `docs/signal-bus.md`: the consumption contract (§1 semantics verbatim), the Phase-B doorbell design (§2), the dedup obligations, and the don't-do list (never consume `latest.jsonl` for state; never couple emitters to consumers).
 - Files: subscribe.py, docs, `tests/test_signals_subscribe_gcs.py`.
 
 ### Phase 3 — handoff failure callback
-- [ ] `HandoffFailure` + `on_handoff_failed` field + the four invocation points in `negotiation.py`; default-None behavioural-parity tests (existing negotiation suite untouched and green = parity proof); callback-error-swallowed test; one test per failure reason.
-- [ ] `failure_to_signal` bridge (guarded import of the factory; if the signal-hardening plan hasn't merged, take `worker_id`/`flag_env` directly and build via `build_signals` — adapt at build time).
+- [x] `HandoffFailure` + `on_handoff_failed` field + the four invocation points in `negotiation.py`; default-None behavioural-parity tests (existing negotiation suite untouched and green = parity proof); callback-error-swallowed test; one test per failure reason.
+- [x] `failure_to_signal` bridge (guarded import of the factory; if the signal-hardening plan hasn't merged, take `worker_id`/`flag_env` directly and build via `build_signals` — adapt at build time).
 - Files: `src/clonway_cockpit/negotiation.py`, `src/clonway_cockpit/signals/bridge.py`, tests.
 
 ### Phase 4 — template + changelog + chain demo
-- [ ] Worker-template: commented subscription example in the generated worker (off by default — consuming is opt-in per worker).
-- [ ] End-to-end test: emit (via existing `emit_signals` with fake GCS) → `poll` → `Delivery` round-trips the wire; restart-resume across a fresh `poll` with persisted cursor.
-- [ ] Changelog `[Unreleased]` (two new public surfaces); delivery-table row if the persona docs track this slice.
+- [x] Worker-template: commented subscription example in the generated worker (off by default — consuming is opt-in per worker).
+- [x] End-to-end test: emit (via existing `emit_signals` with fake GCS) → `poll` → `Delivery` round-trips the wire; restart-resume across a fresh `poll` with persisted cursor.
+- [x] Changelog `[Unreleased]` (two new public surfaces); delivery-table row if the persona docs track this slice.
+
+## HANDOFF NOTES
+
+- Current phase: implementation complete; final verification/PR finish protocol in progress.
+- Next concrete step: run `make check`, `pre-commit run --all-files`, rebase onto `origin/main`, push with `--force-with-lease`, mark ready, relabel to `agent:needs-qa`, and post DONE with real gate tails.
+- Decisions taken: stayed on branch `claude/plan-signal-bus` per dispatcher override; ignored the older "Next-agent pickup" instruction to start `claude/signal-bus`. Signal-hardening sealed factory was not present in this branch/main shape, so `failure_to_signal` uses the planned fallback (`worker_id`/`flag_env` plus `emit_signals`).
+- Deviation recorded: `poll()` keeps the list-return API from the spec and adds optional `on_delivery` for action consumers. The callback form is the documented at-least-once path: cursor commit happens only after the consumer callback returns; a callback exception leaves the object uncommitted for re-delivery.
+- Known failing tests: none at this checkpoint. Latest targeted proof: `uv run pytest -q tests/test_signals_subscribe.py -k 'callback_commits or callback_exception'` -> `2 passed, 35 deselected`.
 
 ## Acceptance criteria
 

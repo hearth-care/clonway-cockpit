@@ -39,9 +39,11 @@ sub = Subscription(
 )
 cs = FileCursorStore("/path/to/state/.xbook")   # or GcsCursorStore for Cloud Run
 
-deliveries: list[Delivery] = poll(sub, cursor_store=cs)
-for d in deliveries:
-    print(d.signal, d.emitted_by_run, d.object_path)
+def handle_delivery(d: Delivery) -> None:
+    # Dedup before acting: (d.signal.dedup_key, d.signal.emitted_at)
+    handle_signal(d.signal)
+
+deliveries: list[Delivery] = poll(sub, cursor_store=cs, on_delivery=handle_delivery)
 ```
 
 ### `Delivery` fields
@@ -95,9 +97,16 @@ assumption** in §6.
 ### At-least-once
 
 `poll()` delivers at least once. The cursor advances **per-object** inside
-`poll()`, after all signals in that object are added to the result list. If
-`cursor_store.save()` raises (disk full, GCS quota), that object is
-re-delivered on the next call.
+`poll()`. For consumers that act during polling, pass `on_delivery=...`; the
+callback is called for every matching `Delivery`, and the object cursor advances
+only after those callbacks return. If a callback raises, or if
+`cursor_store.save()` raises (disk full, GCS quota), that object is re-delivered
+on the next call.
+
+Calling `poll()` without `on_delivery` remains useful for read-only inspection
+and compatibility with older callers; in that form, the cursor advances when
+the list has been built. For write/action consumers, prefer the callback form so
+a crash before processing does not lose a signal.
 
 **You MUST dedup by `(signal.dedup_key, signal.emitted_at)`.** The
 `dedup_key` is stable across cycles for the same logical signal instance
@@ -202,9 +211,8 @@ The emitted signal carries `source_id=task_id` for stable per-task dedup and
    deliveries = poll(
        Subscription(consumer_id=WORKER_ID, kinds=("action.required",)),
        cursor_store=FileCursorStore(STATE_DIR),
+       on_delivery=lambda d: handle_signal(d.signal),
    )
-   for d in deliveries:
-       handle_signal(d.signal)
    ```
 2. **Dedup** on `(d.signal.dedup_key, d.signal.emitted_at)` before acting.
 3. **Never touch `latest.jsonl`** for cursor state.

@@ -13,14 +13,16 @@ Two :class:`CursorStore` implementations are provided:
   ``subscriptions/<consumer_id>/cursor.json``, for stateless Cloud Run consumers.
 
 **At-least-once delivery.** The cursor is committed per-object after all signals
-in that object are added to the delivery list. A crash *between* object read and
-cursor commit yields re-delivery on the next :func:`poll`. Consumers MUST dedup
-by ``(signal.dedup_key, signal.emitted_at)``.
+in that object are processed. Pass ``on_delivery=...`` to have :func:`poll`
+invoke your consumer callback before committing the object cursor; a callback
+exception yields re-delivery on the next :func:`poll`. Consumers MUST dedup by
+``(signal.dedup_key, signal.emitted_at)``.
 
 **Fail-open.** On creds/offline errors :func:`poll` returns ``[]`` and logs at
 debug (same ``_QUIET_ERROR_NAMES`` idiom as ``emit.py``). A cursor write failure
-is also logged and leaves that object to be re-delivered — the delivery list
-returned by the call still contains those signals.
+or ``on_delivery`` exception is also logged and leaves that object to be
+re-delivered — the delivery list returned by the call still contains those
+signals for audit/debug.
 
 **Single-writer assumption.** Two replicas using the same ``consumer_id`` will
 double-process. The :class:`GcsCursorStore` generation-precondition narrows but
@@ -323,6 +325,7 @@ def poll(
     cursor_store: CursorStore,
     bucket: str = _BUCKET,
     storage_client_factory: Callable[[], Any] | None = None,
+    on_delivery: Callable[[Delivery], None] | None = None,
     now: datetime | None = None,
 ) -> list[Delivery]:
     """Return new :class:`Delivery` items since the last cursor, or ``[]`` on error.
@@ -332,9 +335,12 @@ def poll(
     ``sub.workers`` (or discovery order when ``workers=None``).
 
     **Cursor discipline.** The cursor advances per-object, inside :func:`poll`,
-    after all signals in that object are added to the result list. If
-    ``cursor_store.save`` raises, that object will be re-delivered on the next
-    call — handle duplicates by deduping on ``(signal.dedup_key, signal.emitted_at)``.
+    after all matching signals in that object are collected or processed. If
+    ``on_delivery`` is provided, it is called for each matching delivery before
+    the cursor advances; a callback exception leaves that object uncommitted for
+    re-delivery on the next call. If ``cursor_store.save`` raises, that object
+    will also be re-delivered — handle duplicates by deduping on
+    ``(signal.dedup_key, signal.emitted_at)``.
 
     **Fail-open.** Returns ``[]`` (never raises) on GCS creds/offline errors or
     when worker discovery fails.
@@ -379,15 +385,27 @@ def poll(
         for obj_name in obj_names:
             signals = _read_signals(bkt, obj_name)
             run_id = _run_id_from_path(obj_name)
+            callback_failed = False
             for s in signals:
                 if _matches(s, sub):
-                    deliveries.append(
-                        Delivery(
-                            signal=s,
-                            emitted_by_run=run_id,
-                            object_path=f"gs://{bucket}/{obj_name}",
-                        )
+                    delivery = Delivery(
+                        signal=s,
+                        emitted_by_run=run_id,
+                        object_path=f"gs://{bucket}/{obj_name}",
                     )
+                    deliveries.append(delivery)
+                    if on_delivery is not None:
+                        try:
+                            on_delivery(delivery)
+                        except Exception:  # noqa: BLE001
+                            _log.exception(
+                                "signal poll: consumer callback failed for %s",
+                                obj_name,
+                            )
+                            callback_failed = True
+                            break
+            if callback_failed:
+                break
             # Advance cursor per-object. Failure here means re-delivery of this
             # object on the next poll — at-least-once guarantee.
             try:

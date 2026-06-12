@@ -8,8 +8,7 @@ Usage — add to your scheduled entry-point::
     from {{ package_name }}.signals.subscribe import poll_signals
 
     def run_scheduled():
-        for delivery in poll_signals():
-            handle_signal(delivery.signal)
+        poll_signals(handle_signal)
 
 Dedup: always check ``(signal.dedup_key, signal.emitted_at)`` before acting —
 the bus delivers at-least-once, so the same signal may arrive on two successive
@@ -41,6 +40,10 @@ from __future__ import annotations
 # )
 #
 #
-# def poll_signals() -> list[Delivery]:
-#     """Return new Deliveries since the last cursor. Returns [] on GCS error."""
-#     return poll(_SUBSCRIPTION, cursor_store=FileCursorStore(_STATE_DIR))
+# def poll_signals(handle_signal) -> list[Delivery]:
+#     """Process new Deliveries, committing each object cursor after handling."""
+#     return poll(
+#         _SUBSCRIPTION,
+#         cursor_store=FileCursorStore(_STATE_DIR),
+#         on_delivery=lambda delivery: handle_signal(delivery.signal),
+#     )

@@ -401,6 +401,69 @@ def test_poll_at_least_once_on_cursor_write_failure(tmp_path: Path):  # CC-SIG-S
     assert len(r2) == 1
 
 
+def test_poll_with_callback_commits_after_callback_returns(tmp_path: Path):  # CC-SIG-SUB-POLL-6B
+    """Callback consumers commit only after processing the object's deliveries."""
+    client = _FakeClient()
+    _write_archive(client._store, "xbook", "2026-06-01", "r1", [_make_signal(source_id="a")])
+
+    events: list[str] = []
+
+    class _SpyCursorStore(FileCursorStore):
+        def save(self, consumer_id: str, worker: str, cursor: str) -> None:
+            events.append(f"save:{cursor}")
+            super().save(consumer_id, worker, cursor)
+
+    def _process(delivery):
+        events.append(f"process:{delivery.signal.source_id}")
+
+    cs = _SpyCursorStore(tmp_path)
+    sub = Subscription(consumer_id="xbook", workers=("xbook",))
+    r1 = poll(
+        sub,
+        cursor_store=cs,
+        bucket=_BUCKET,
+        storage_client_factory=lambda: client,
+        on_delivery=_process,
+    )
+    assert [d.signal.source_id for d in r1] == ["a"]
+    assert events == ["process:a", "save:signals/xbook/2026-06-01/r1.jsonl"]
+
+
+def test_poll_with_callback_exception_leaves_cursor_uncommitted(
+    tmp_path: Path,
+):  # CC-SIG-SUB-POLL-6C
+    """Consumer exception leaves the object cursor uncommitted for re-delivery."""
+    client = _FakeClient()
+    _write_archive(client._store, "xbook", "2026-06-01", "r1", [_make_signal(source_id="a")])
+    cs = FileCursorStore(tmp_path)
+    sub = Subscription(consumer_id="xbook", workers=("xbook",))
+    calls: list[str] = []
+
+    def _process(delivery):
+        calls.append(delivery.signal.source_id)
+        raise RuntimeError("consumer crashed")
+
+    r1 = poll(
+        sub,
+        cursor_store=cs,
+        bucket=_BUCKET,
+        storage_client_factory=lambda: client,
+        on_delivery=_process,
+    )
+    assert [d.signal.source_id for d in r1] == ["a"]
+    assert cs.load("xbook", "xbook") is None
+
+    r2 = poll(
+        sub,
+        cursor_store=cs,
+        bucket=_BUCKET,
+        storage_client_factory=lambda: client,
+        on_delivery=lambda delivery: calls.append(delivery.signal.source_id),
+    )
+    assert [d.signal.source_id for d in r2] == ["a"]
+    assert calls == ["a", "a"]
+
+
 # ---------------------------------------------------------------------------
 # poll() — filter application
 # ---------------------------------------------------------------------------
