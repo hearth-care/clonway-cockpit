@@ -104,11 +104,11 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 - Files: `src/clonway_cockpit/signals/model.py`, `tests/test_signal_model.py` (extended existing file; plan's plural filename did not exist).
 
 ### Phase 2 — `SignalFactory`
-- [ ] `signals/factory.py` per Spec §1–2; golden wire test (factory vs current path, same inputs → identical `to_wire()` dicts); identity-mismatch test (`emit` with a foreign-worker Signal → `SignalIdentityError` surfaced via the build-failure path: emit returns `()`, exception logged); sealing tests (no override possible — API-shape asserted).
+- [x] `signals/factory.py` per Spec §1–2; golden wire test (factory vs current path, same inputs → identical `to_wire()` dicts); identity-mismatch test (`emit` with a foreign-worker Signal → `SignalIdentityError` surfaced via the build-failure path: emit returns `()`, exception logged); sealing tests (no override possible — API-shape asserted).
 - Files: `src/clonway_cockpit/signals/factory.py`, `tests/test_signal_factory.py`.
 
 ### Phase 3 — title→kind observability
-- [ ] Resolution order per Spec §3; warn-once test (two unknown emits, one log record); strict-mode raise test; emit-log counter test; `SIGNAL_KINDS` validation of explicit kinds.
+- [x] Resolution order per Spec §3; warn-once test (two unknown emits, one log record); strict-mode raise test; emit-log counter test; `SIGNAL_KINDS` validation of explicit kinds.
 - Files: `factory.py`, `model.py` (fallback hook), tests.
 
 ### Phase 4 — template + docs + changelog
@@ -145,9 +145,9 @@ The template's generated `signals/emit.py` + `signals/build.py` switch to `Signa
 ## HANDOFF NOTES
 
 - Agent: builder-codex-20260612T022623Z.
-- Current phase: Phase 2 — `SignalFactory`.
-- Completed: rebuilt worktree from `origin/claude/plan-signal-hardening`; baseline `uv run pytest -q` passed (`758 passed in 15.10s`); baseline `pre-commit run --all-files` failed because `.pre-commit-config.yaml` is absent; Phase 1 tests were written red first, then public `dedup_key` / `urgency_from_due_at`, deprecated underscore shims, and the staged `build_signals()` default-worker warning were implemented.
-- Verification: `uv run pytest tests/test_signal_model.py -q` -> `47 passed in 0.03s`.
-- Decisions/deviations: used existing `tests/test_signal_model.py`; `tests/test_signals_model.py` named in the plan does not exist. `.claude/` was already ignored. No wire shape or dedup recipe changes were made.
-- Next concrete step: write Phase 2 failing tests in `tests/test_signal_factory.py` for golden wire parity, sealed fields/API shape, and `emit()` identity mismatch.
-- Known-failing tests: none after the Phase 1 focused run.
+- Current phase: Phase 4 — template + docs + changelog.
+- Completed: rebuilt worktree from `origin/claude/plan-signal-hardening`; baseline `uv run pytest -q` passed (`758 passed in 15.10s`); baseline `pre-commit run --all-files` failed because `.pre-commit-config.yaml` is absent; Phase 1 tests were written red first, then public `dedup_key` / `urgency_from_due_at`, deprecated underscore shims, and the staged `build_signals()` default-worker warning were implemented. Phase 2 added `SignalFactory`, golden wire parity, sealed API/TypeError checks, and identity mismatch via the build-failure path. Phase 3 added factory title-kind resolution, warn-once fallback, strict mode, explicit-kind validation, and `unknown_title_kinds=N` emit logging.
+- Verification: `uv run pytest tests/test_signal_model.py tests/test_signal_factory.py -q` -> `54 passed in 0.02s`.
+- Decisions/deviations: used existing `tests/test_signal_model.py`; `tests/test_signals_model.py` named in the plan does not exist. `.claude/` was already ignored. No wire shape or dedup recipe changes were made. Unknown-title warn-once scope is `(worker_id, title)` per process.
+- Next concrete step: update `worker-template/src/{{ package_name }}/signals/*.jinja`, add template tests for factory usage/no underscore imports, then docs and changelog.
+- Known-failing tests: none after the Phase 2/3 focused run.
