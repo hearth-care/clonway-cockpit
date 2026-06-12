@@ -37,7 +37,7 @@ One PR per worker. Survey re-verified against `origin/main` of each repo on 2026
 | [auto-hr](#auto-hr) | 79 | `src tests` | `""` (bare) | `-m "not integration and not live"` | None | New file | Cleanest candidate — start here |
 | [auto-marketer](#auto-marketer) | 86 | `src tests` | `""` (bare) | `-m "not integration and not live"` | `test` (needs weasyprint apt-get) | New file | Test job stays local (system dep pre-step) |
 | [auto-admissions](#auto-admissions) | 71 | `src tests scripts` | `""` (bare) | `-m "not integration and not live"` | None | New file | |
-| [auto-orchestrator](#auto-orchestrator) | 100 | `src tests` | `src` | `-v` | `deploy` (GCP WIF) | New file | Deploy job stays; `UV_PYTHON_DOWNLOADS=never` stays in caller |
+| [auto-orchestrator](#auto-orchestrator) | 100 | `src tests` | `src` | `-v` | `deploy` (GCP WIF) | New file | Deploy job stays; pass `uv-python-downloads: "never"` |
 | [Auto-Procurer](#auto-procurer) | 70 | `.` | `src` | `-q` (default) | None | New file | All-defaults caller — simplest after auto-hr |
 
 ---
@@ -112,9 +112,9 @@ jobs:
 ### auto-orchestrator
 
 Keep the `deploy` job (GCP WIF, push-only) alongside the reusable call.
-`UV_PYTHON_DOWNLOADS=never` is needed at the job level — pass it via `env:` on the caller
-job (note: `env:` is not supported on `uses:` jobs; move env to the workflow-level `env:` key,
-or open a follow-up to add an `extra-env` input to the reusable workflow).
+`UV_PYTHON_DOWNLOADS=never` must be set inside the called workflow — caller workflow `env`
+does not propagate to reusable workflows, and `env:` is not supported on `uses:` jobs.
+Pass it through the reusable workflow's `uv-python-downloads` input.
 
 ```yaml
 jobs:
@@ -128,6 +128,7 @@ jobs:
       lint-paths: "src tests"
       mypy-args: "src"
       pytest-args: "-v"
+      uv-python-downloads: "never"
 
   deploy:
     # keep as-is — GCP WIF deploy, push to main only
@@ -192,6 +193,5 @@ would add a new gate.
 - `skip-test` / `skip-mypy` boolean inputs on `reusable-ci.yml` — unblocks auto-marketer,
   auto-bookkeeper (test), auto-secretary (mypy).
 - `pre-test-command` string input — clean alternative to `skip-test` for system dep installs.
-- `UV_PYTHON_DOWNLOADS` env propagation — needed for auto-orchestrator (set `UV_PYTHON_DOWNLOADS=never` in the caller's workflow-level `env:` block).
 - Cut the `v0.2.0` release tag — all eight worker adoption PRs should reference it, not a SHA.
 - Branch protection (O1) — required checks must be re-pointed after adoption.

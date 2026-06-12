@@ -101,10 +101,12 @@ Record them here and bump the release tag before merging.
 - **`reusable-ci.yml`** — new public contract surface: a `workflow_call` reusable CI
   workflow for the fleet. Inputs: `lint-paths` (default `.`), `mypy-args` (default
   `src`), `pytest-args` (default `-q`), `prod-import-package` (default empty),
-  `python-version` (default `3.12`), `runs-on` (default `ubuntu-latest`). Jobs:
-  `lint` (ruff + ruff-format + mypy), `test` (pytest), `prod-import` (conditional).
-  Callers pin by release tag (`@v0.2.0`) or full SHA — never `@main`.
-  See `docs/ci-adoption.md` for the per-worker adoption checklist.
+  `python-version` (default `3.12`), `runs-on` (default `ubuntu-latest`), and
+  `uv-python-downloads` (default `automatic`; use `never` for workers that must
+  use preinstalled Python). Jobs: `lint` (ruff + ruff-format + mypy), `test`
+  (pytest), `prod-import` (conditional). Callers pin by release tag (`@v0.2.0`)
+  or full SHA — never `@main`. See `docs/ci-adoption.md` for the per-worker
+  adoption checklist.
 
 - **`.pre-commit-config.yaml`** — fleet pre-commit baseline: trailing-whitespace,
   EOF fixer, check-added-large-files, check-merge-conflict, detect-private-key

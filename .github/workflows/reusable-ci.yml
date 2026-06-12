@@ -14,6 +14,9 @@
 #                     (uv sync --no-dev + python -c "import <pkg>")
 #   python-version    Python version for setup-python (default: "3.12")
 #   runs-on           runner label (default: "ubuntu-latest")
+#   uv-python-downloads  value for UV_PYTHON_DOWNLOADS inside called jobs
+#                     (default: "automatic"; set "never" for repos that
+#                     must use a preinstalled Python)
 #
 # CONCURRENCY: callers keep their own `concurrency` stanza; a called workflow
 # inherits the caller's ref-scoped cancel group automatically, so adding one
@@ -43,6 +46,9 @@ on:
       runs-on:
         type: string
         default: "ubuntu-latest"
+      uv-python-downloads:
+        type: string
+        default: "automatic"
 
 permissions:
   contents: read
@@ -51,6 +57,8 @@ jobs:
   lint:
     name: Lint (ruff + mypy)
     runs-on: ${{ inputs.runs-on }}
+    env:
+      UV_PYTHON_DOWNLOADS: ${{ inputs.uv-python-downloads }}
     steps:
       - uses: actions/checkout@v6
 
@@ -85,6 +93,8 @@ jobs:
   test:
     name: tests
     runs-on: ${{ inputs.runs-on }}
+    env:
+      UV_PYTHON_DOWNLOADS: ${{ inputs.uv-python-downloads }}
     steps:
       - uses: actions/checkout@v6
 
@@ -113,6 +123,8 @@ jobs:
     name: Prod-deps import smoke (no-dev)
     if: ${{ inputs.prod-import-package != '' }}
     runs-on: ${{ inputs.runs-on }}
+    env:
+      UV_PYTHON_DOWNLOADS: ${{ inputs.uv-python-downloads }}
     steps:
       - uses: actions/checkout@v6
 

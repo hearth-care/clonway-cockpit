@@ -149,8 +149,8 @@ A table: repo · current `ci.yml` lines · caller inputs needed (from the verifi
 
 ## HANDOFF NOTES
 
-**Current phase:** COMPLETE — rebased onto `origin/main` at `cede7fd`; manual conflict
-resolved in `CHANGELOG.md`; full local gates green in current fixer pass.
+**Current phase:** QA FAIL 2026-06-12T07:00Z addressed locally; full local gates still to run
+after final rebase check.
 
 **Branch:** `claude/plan-shared-ci` (PR #89)
 
@@ -189,6 +189,14 @@ resolved in `CHANGELOG.md`; full local gates green in current fixer pass.
    duplicated `### Changed` heading; verified red (`1 failed`) before removing the duplicate
    heading, then green (`1 passed`).
 
+**QA FAIL addressed (fixer-codex-20260612T070608Z-7032):**
+1. `docs/ci-adoption.md` incorrectly said auto-orchestrator could keep
+   `UV_PYTHON_DOWNLOADS=never` in caller-level env. Fixed by adding a reusable workflow input
+   `uv-python-downloads` (default `automatic`) and setting `UV_PYTHON_DOWNLOADS` inside each
+   called job. auto-orchestrator now passes `uv-python-downloads: "never"` in its caller shape.
+   Regression tests verified red first:
+   `tests/test_ci_shape.py::{test_reusable_has_documented_inputs,test_reusable_propagates_uv_python_downloads_inside_called_jobs,test_auto_orchestrator_adoption_uses_uv_python_downloads_input}`.
+
 **Deviations from plan:**
 - Same-repo caller uses `./.github/workflows/reusable-ci.yml` (relative path) instead of
   a SHA/tag — correct approach for same-repo `workflow_call`; worker repos use the full path.
@@ -199,6 +207,8 @@ resolved in `CHANGELOG.md`; full local gates green in current fixer pass.
 - Current CI line counts (re-verified): 136/69/219/79/86/71/100/70 (not plan's estimate).
 - Gitleaks uses CLI v8.21.2 instead of the licensed gitleaks-action (deliberate: avoids
   GITLEAKS_LICENSE requirement while preserving the same PR-diff scan policy).
+- Added `uv-python-downloads` to the reusable workflow input surface to support
+  auto-orchestrator's required `UV_PYTHON_DOWNLOADS=never` setting from inside the called jobs.
 
 **OPERATOR TODO:**
 - Apply `run-ci` label on PR #89 to trigger the reusable CI and verify all three jobs
@@ -208,11 +218,8 @@ resolved in `CHANGELOG.md`; full local gates green in current fixer pass.
 - Open adoption PRs for each worker per `docs/ci-adoption.md` (start with auto-hr).
 - Cut `v0.2.0` release tag once release-engineering plan lands.
 
-**Known-failing:** none — `uv run pytest -q` (782 passed), `pre-commit run --all-files` (8 hooks passed),
-and `make template-smoke` all green locally (fixer-claude-20260611T192423Z-42347 2026-06-11).
-Current fixer focused regression: `uv run pytest tests/test_release_policy.py::test_changelog_unreleased_section_has_unique_subheadings -q`
-failed before the changelog fix and passed after. Full local gates are next.
-Current fixer gates: `make test` passed (937 passed in 25.87s); `uv run pre-commit run --all-files`
-passed all 8 hooks after ruff-format's mechanical test formatting; `make check` passed
-(ruff, format, mypy, pytest 937 passed in 23.14s); `make template-smoke` passed for xsmoke
-(15 passed / 1 xfailed, ruff check, ruff format, mypy, CLI smoke).
+**Known-failing:** none at focused-test level. Current focused regression failed before the fix
+(`uv run pytest tests/test_ci_shape.py::test_reusable_has_documented_inputs
+tests/test_ci_shape.py::test_reusable_propagates_uv_python_downloads_inside_called_jobs
+tests/test_ci_shape.py::test_auto_orchestrator_adoption_uses_uv_python_downloads_input -q`
+→ 3 failed) and passed after (`3 passed in 0.02s`). Full local gates are next.

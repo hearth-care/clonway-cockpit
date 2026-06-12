@@ -15,6 +15,7 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _REUSABLE = _REPO_ROOT / ".github" / "workflows" / "reusable-ci.yml"
 _CALLER = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
+_ADOPTION_DOC = _REPO_ROOT / "docs" / "ci-adoption.md"
 
 
 def _on(workflow: dict) -> dict:
@@ -67,6 +68,7 @@ def test_reusable_has_documented_inputs(reusable: dict) -> None:
         "prod-import-package",
         "python-version",
         "runs-on",
+        "uv-python-downloads",
     }
     missing = expected - set(inputs)
     assert not missing, f"reusable-ci.yml missing inputs: {missing}"
@@ -80,6 +82,16 @@ def test_reusable_has_no_concurrency_block(reusable: dict) -> None:
 
 def test_reusable_permissions_contents_read(reusable: dict) -> None:
     assert reusable.get("permissions", {}).get("contents") == "read"
+
+
+def test_reusable_propagates_uv_python_downloads_inside_called_jobs(reusable: dict) -> None:
+    """Caller workflow env does not reach reusable workflows, so this must be an input."""
+    inputs = _on(reusable).get("workflow_call", {}).get("inputs") or {}
+    assert inputs.get("uv-python-downloads", {}).get("default") == "automatic"
+
+    for job_name in ("lint", "test", "prod-import"):
+        env = reusable["jobs"][job_name].get("env") or {}
+        assert env.get("UV_PYTHON_DOWNLOADS") == "${{ inputs.uv-python-downloads }}"
 
 
 # --- caller ci.yml invariants ---
@@ -135,3 +147,11 @@ def test_caller_ci_job_checks_existing_run_ci_label(caller: dict) -> None:
         "ci.yml ci-job condition must use contains(...labels.*.name...) so synchronize "
         "events on PRs that already have run-ci label also run CI"
     )
+
+
+def test_auto_orchestrator_adoption_uses_uv_python_downloads_input() -> None:
+    text = _ADOPTION_DOC.read_text()
+    section = text.split("### auto-orchestrator", 1)[1].split("\n### ", 1)[0]
+
+    assert 'uv-python-downloads: "never"' in section
+    assert "workflow-level `env:`" not in section
