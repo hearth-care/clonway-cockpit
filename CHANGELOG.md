@@ -64,6 +64,9 @@ pre-1.0 rules documented in docs/release-policy.md.
 - Gateway pricing config is stricter: non-mapping pricing entries now raise
   `GatewayError` instead of being silently skipped.
 
+- `clonway_cockpit.render` is now a permanent compatibility facade over split
+  chrome, panel, and model implementation modules.
+
 - **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim
   over `obs.runlog.make_runlog`) and calls `setup_logging` from `main()` — new
   workers are born without hand-rolled logging setup or a local runlog copy.

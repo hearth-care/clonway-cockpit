@@ -16,6 +16,14 @@ def test_every_page_framing_render_has_a_model_twin():
     contract.assert_render_model_parity(render)
 
 
+def test_split_render_modules_keep_parity_discovery():
+    from clonway_cockpit import render_chrome, render_models, render_panels
+
+    renders = contract.page_framing_renders((render_chrome, render_panels))
+    assert len(renders) == 14
+    contract.assert_render_model_parity((render_chrome, render_panels), render_models)
+
+
 def test_unstructured_is_explicitly_flagged():
     m = render.model_unstructured(render.render_note("x", "y"))
     assert m.kind == "unstructured"
