@@ -14,6 +14,7 @@ from typing import Any
 
 from rich.console import Console, RenderableType
 
+from clonway_cockpit.audit_log import AuditSink
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.prompts import ConfirmFn, InputFn
 
@@ -55,6 +56,9 @@ class WizardContext[ClientT]:
     # Defaults keep every existing WizardContext construction unchanged.
     capability_key: str | None = None
     capability_money_movement: bool = False
+    # Optional framework audit sink. None keeps existing workers byte-identical.
+    audit: AuditSink | None = None
+    audit_worker: str = "cockpit"
 
 
 AnyWizardContext = WizardContext[object]

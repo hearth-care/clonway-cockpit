@@ -8,6 +8,7 @@ from clonway_cockpit.approval_delivery import (
     apply_approval_request,
     render_approval_request,
 )
+from clonway_cockpit.audit_log import AuditEvent
 
 
 def _gate_meta() -> dict[str, object]:
@@ -128,3 +129,24 @@ def test_apply_approval_request_forwards_token_policy_and_proposal() -> None:
             "proposal": req.to_policy_proposal(),
         }
     ]
+
+
+def test_approval_delivery_audits_routed_and_resolved() -> None:
+    events: list[AuditEvent] = []
+    req = ApprovalRequest.from_gate(
+        {"kind": "walk.gate", "meta": _gate_meta()},
+        audit=events.append,
+        worker="demo",
+    )
+    client = _FakeClient()
+
+    apply_approval_request(client, req, approve=lambda proposal: False, audit=events.append)
+
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("approval.routed", "policy", "routed"),
+        ("approval.resolved", "policy", "declined"),
+    ]
+    assert {event.worker for event in events} == {"demo"}
+    assert {event.capability_key for event in events} == {"schedule-bills"}
+    assert {event.ref for event in events} == {"gate-1"}
+    assert {event.equivalent_cli for event in events} == {"xbook bills schedule"}

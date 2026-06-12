@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from clonway_cockpit.audit_log import AuditEvent, AuditSink
 
 
 class ApprovalRequestError(ValueError):
@@ -44,7 +48,13 @@ class ApprovalRequest:
     summary: str | None = None
 
     @classmethod
-    def from_gate(cls, gate: Mapping[str, object]) -> ApprovalRequest:
+    def from_gate(
+        cls,
+        gate: Mapping[str, object],
+        *,
+        audit: AuditSink | None = None,
+        worker: str | None = None,
+    ) -> ApprovalRequest:
         meta = _meta_from_gate(gate)
         if meta.get("gate") != "awaiting_apply":
             raise ApprovalRequestError("approval request requires gate='awaiting_apply'")
@@ -56,17 +66,19 @@ class ApprovalRequest:
         proposal = dict(meta)
         proposal["token"] = token
         proposal["equivalent_cli"] = equivalent_cli
-        return cls(
+        request = cls(
             token=token,
             equivalent_cli=equivalent_cli,
             proposal=proposal,
             capability_key=_optional_str(meta.get("capability_key")),
             money_movement=money,
-            worker=_optional_str(meta.get("worker")),
+            worker=worker or _optional_str(meta.get("worker")),
             intent=_optional_str(meta.get("intent")),
             title=_optional_str(meta.get("title")),
             summary=_optional_str(meta.get("summary")),
         )
+        _audit_approval(request, "approval.routed", audit=audit, outcome="routed")
+        return request
 
     def to_policy_proposal(self) -> dict[str, object]:
         proposal = dict(self.proposal)
@@ -108,9 +120,44 @@ def apply_approval_request(
     request: ApprovalRequest,
     *,
     approve: Callable[[Mapping[str, object]], bool],
+    audit: AuditSink | None = None,
 ) -> Mapping[str, object]:
-    return client.apply(
+    frame = client.apply(
         request.token,
         approve=approve,
         proposal=request.to_policy_proposal(),
     )
+    outcome = "resolved"
+    meta = frame.get("meta") if isinstance(frame, Mapping) else None
+    if isinstance(meta, Mapping) and isinstance(meta.get("status"), str):
+        outcome = meta["status"]
+    _audit_approval(request, "approval.resolved", audit=audit, outcome=outcome)
+    return frame
+
+
+def _audit_approval(
+    request: ApprovalRequest,
+    event: str,
+    *,
+    audit: AuditSink | None,
+    outcome: str,
+) -> None:
+    if audit is None:
+        return
+    with contextlib.suppress(Exception):
+        audit(
+            AuditEvent(
+                ts=datetime.now(UTC),
+                worker=request.worker or "cockpit",
+                run_id=None,
+                event=event,
+                capability_key=request.capability_key,
+                actor="policy",
+                dry_run=True,
+                money_movement=request.money_movement is True,
+                outcome=outcome,
+                equivalent_cli=request.equivalent_cli,
+                focus=request.intent,
+                ref=request.token,
+            )
+        )

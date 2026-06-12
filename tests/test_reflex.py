@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.handoff import ClaimedFact, HandoffEnvelope
 from clonway_cockpit.private_memory import PersonaMemory
 from clonway_cockpit.reflex import (
@@ -191,6 +192,41 @@ def test_fire_reflexes_refusal_is_a_non_event() -> None:
         facts=(ClaimedFact(text="RTW check failed", claimant="vera", provenance=""),)
     )
     assert fire_reflexes(no_provenance, kit) == []  # falls through to the model-decision path
+
+
+def test_fire_reflexes_audits_approved_and_refused_decisions() -> None:
+    events: list[AuditEvent] = []
+    approved = make_kit(run=lambda proposal: True)
+    approved = ReflexKit(
+        bank=approved.bank,
+        policy=approved.policy,
+        log=approved.log,
+        audit=events.append,
+        audit_worker="demo",
+    )
+
+    fire_reflexes(make_notice(), approved)
+
+    refused = make_kit()
+    refused = ReflexKit(
+        bank=refused.bank,
+        policy=refused.policy,
+        log=refused.log,
+        audit=events.append,
+        audit_worker="demo",
+    )
+    no_provenance = make_notice(
+        facts=(ClaimedFact(text="RTW check failed", claimant="vera", provenance=""),)
+    )
+    fire_reflexes(no_provenance, refused)
+
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("reflex.approved", "reflex", "approved"),
+        ("reflex.refused", "reflex", "refused"),
+    ]
+    assert {event.worker for event in events} == {"demo"}
+    assert {event.capability_key for event in events} == {"payroll.hold"}
+    assert {event.ref for event in events} == {"reflex-rtw-402-payroll-hold"}
 
 
 def test_fire_reflexes_one_firing_per_ask() -> None:

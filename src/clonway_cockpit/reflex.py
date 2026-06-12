@@ -20,10 +20,13 @@ See ``docs/cross-worker-handoffs.md`` and the design spec
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
+from .audit_log import AuditEvent, AuditSink
 from .handoff import HandoffEnvelope
 from .private_memory import PersonaMemory
 from .shared_memory import is_safe_slug
@@ -190,6 +193,41 @@ class ReflexKit:
     bank: ReflexBank
     policy: ReflexPolicy
     log: ReflexLog
+    audit: AuditSink | None = None
+    audit_worker: str = "cockpit"
+
+
+def _reflex_ref(task_id: str, capability_key: str) -> str:
+    return ReflexLog._note_name(task_id, capability_key)
+
+
+def _audit_reflex(
+    kit: ReflexKit,
+    event: str,
+    *,
+    capability_key: str,
+    outcome: str,
+    ref: str,
+) -> None:
+    if kit.audit is None:
+        return
+    with contextlib.suppress(Exception):
+        kit.audit(
+            AuditEvent(
+                ts=datetime.now(UTC),
+                worker=kit.audit_worker,
+                run_id=None,
+                event=event,
+                capability_key=capability_key,
+                actor="reflex",
+                dry_run=False,
+                money_movement=False,
+                outcome=outcome,
+                equivalent_cli=None,
+                focus=None,
+                ref=ref,
+            )
+        )
 
 
 def fire_reflexes(env: HandoffEnvelope, kit: ReflexKit) -> list[ReflexFiring]:
@@ -218,7 +256,21 @@ def fire_reflexes(env: HandoffEnvelope, kit: ReflexKit) -> list[ReflexFiring]:
             continue
         proposal = build_proposal(env, rule, ask)
         if not kit.policy(proposal):
+            _audit_reflex(
+                kit,
+                "reflex.refused",
+                capability_key=rule.capability_key,
+                outcome="refused",
+                ref=_reflex_ref(env.task_id, rule.capability_key),
+            )
             continue
+        _audit_reflex(
+            kit,
+            "reflex.approved",
+            capability_key=rule.capability_key,
+            outcome="approved",
+            ref=_reflex_ref(env.task_id, rule.capability_key),
+        )
         note = ""
         try:
             applied = bool(rule.run(proposal))

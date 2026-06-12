@@ -20,10 +20,12 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from rich.console import RenderableType
 
 from clonway_cockpit import keys, render
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 
@@ -368,6 +370,36 @@ def _emit(ctx: WizardContext, model: ScreenModel) -> None:
             ctx.on_screen(model)
 
 
+def _audit_gate(
+    ctx: WizardContext,
+    event: str,
+    *,
+    actor: str,
+    outcome: str | None,
+    equivalent_cli: str,
+    ref: str | None = None,
+) -> None:
+    if ctx.audit is None:
+        return
+    with contextlib.suppress(Exception):
+        ctx.audit(
+            AuditEvent(
+                ts=datetime.now(UTC),
+                worker=ctx.audit_worker,
+                run_id=None,
+                event=event,
+                capability_key=ctx.capability_key,
+                actor=actor,
+                dry_run=ctx.dry_run,
+                money_movement=ctx.capability_money_movement,
+                outcome=outcome,
+                equivalent_cli=equivalent_cli,
+                focus=ctx.focus,
+                ref=ref,
+            )
+        )
+
+
 def _await(ctx: WizardContext) -> None:
     """Let the operator read a terminal screen before returning (cockpit only)."""
     if ctx.read_key is not None:
@@ -483,6 +515,14 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     if ctx.dry_run:
         if ctx.authorize_apply is not None:
             token = _next_gate_token()
+            _audit_gate(
+                ctx,
+                "gate.offered",
+                actor="agent",
+                outcome=None,
+                equivalent_cli=equivalent_cli,
+                ref=token,
+            )
             _emit(
                 ctx,
                 ScreenModel(
@@ -510,10 +550,26 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
                 "money_movement": ctx.capability_money_movement,
             }
             if ctx.authorize_apply(proposal):
+                _audit_gate(
+                    ctx,
+                    "gate.applied",
+                    actor="agent",
+                    outcome="applied",
+                    equivalent_cli=equivalent_cli,
+                    ref=token,
+                )
                 _emit(
                     ctx, ScreenModel(kind="walk.gate", meta={"status": "applied", "token": token})
                 )
                 return True
+            _audit_gate(
+                ctx,
+                "gate.declined",
+                actor="agent",
+                outcome="declined",
+                equivalent_cli=equivalent_cli,
+                ref=token,
+            )
             _emit(
                 ctx,
                 ScreenModel(
@@ -524,14 +580,51 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
             return False
         # Pure dry-run: read one message for cadence (only if interactive), then decline.
         # Emit an observable so an agent can assert the gate was reached and held.
+        _audit_gate(
+            ctx,
+            "gate.offered",
+            actor="agent",
+            outcome=None,
+            equivalent_cli=equivalent_cli,
+        )
         if ctx.read_key is not None:
             ctx.read_key()
+        _audit_gate(
+            ctx,
+            "gate.declined",
+            actor="agent",
+            outcome="declined",
+            equivalent_cli=equivalent_cli,
+        )
         _emit(ctx, ScreenModel(kind="walk.gate", meta={"status": "declined", "reason": "dry_run"}))
         return False
+    _audit_gate(
+        ctx,
+        "gate.offered",
+        actor="human",
+        outcome=None,
+        equivalent_cli=equivalent_cli,
+    )
     if ctx.read_key is None:
-        return ctx.confirm_fn(prompt)
+        applied = ctx.confirm_fn(prompt)
+        _audit_gate(
+            ctx,
+            "gate.applied" if applied else "gate.declined",
+            actor="human",
+            outcome="applied" if applied else "declined",
+            equivalent_cli=equivalent_cli,
+        )
+        return applied
     k = ctx.read_key()
-    return k in (keys.ENTER, "a", "A")
+    applied = k in (keys.ENTER, "a", "A")
+    _audit_gate(
+        ctx,
+        "gate.applied" if applied else "gate.declined",
+        actor="human",
+        outcome="applied" if applied else "declined",
+        equivalent_cli=equivalent_cli,
+    )
+    return applied
 
 
 def run_walk(
