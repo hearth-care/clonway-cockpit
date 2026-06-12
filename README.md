@@ -28,13 +28,41 @@ probes, and domain screens. The only **required** runtime dependency is
 and LiteLLM is an optional extra (`clonway-cockpit[litellm]`). The package never imports
 any worker — it is the substrate they build on, not the other way round.
 
+## Framework status
+
+| Layer | Status |
+|---|---|
+| **Framework spine** (walk machine, render primitives, agent channel, write gate, contract gate) | Built, tested, in use |
+| **Worker template** (`worker-template/` + `copier.yml`) | Generates conformant workers out of the box |
+| **Persona platform** (model gateway, personas, souls, group chat, receptionist, colleague wire) | Tested libraries + local demos; no live Chat transport yet |
+| **Fleet adoption** | Uneven — consumers are conformant only after pinning + wiring; see below |
+
+Detailed persona-platform status (what's live, what's local-only, recommended next steps):
+[docs/persona-platform-getting-started.md](docs/persona-platform-getting-started.md).
+
 ## Agent-navigable by construction
 
-Every Clonway worker is **one binary serving two audiences** — a human TUI *and*
-an agent-drivable surface — over the **same render loop, same code path, same
-write gate**. There is no second implementation and no distinction between a human
-operating a worker and an agent operating it. This is a structural property of the
-framework, enforced in CI, inherited by every worker — not a per-worker add-on.
+A **conformant** worker built on this framework is **one binary serving two
+audiences** — a human TUI *and* an agent-drivable surface — over the **same
+render loop, same code path, same write gate**. There is no second implementation
+and no distinction between a human operating a conformant worker and an agent
+operating it. This is a structural property of the framework, but how much of it
+a given consumer inherits depends on where they are in the adoption chain:
+
+**(a) The framework ships the gate and the channel.** `contract.py`
+(`assert_render_model_parity` + `assert_drives_clean`) and `agent.py`
+(`serve_agent_stdio` + `CockpitClient`) live here — not in any worker — so the
+enforcement machinery is the same regardless of who adopts.
+
+**(b) Every template-generated worker is born conformant.** The `worker-template/`
++ `copier.yml` scaffold wires `--agent-stdio`, inherits the parity + drive-clean
+gate, and passes tests green out of the box.
+
+**(c) An existing consumer is conformant only after it opts in.** It must: pin a
+supported release tag (see [`docs/pin-sync.md`](docs/pin-sync.md)), wire
+`--agent-stdio`, and run `assert_render_model_parity` + `assert_drives_clean` in
+its own CI. For current fleet adoption status, see
+[`docs/fleet-conformance.md`](docs/fleet-conformance.md).
 
 **The principle: one screen, two projections.**
 A cockpit screen is described once. The human sees Rich renderables (`render_*`);
@@ -69,9 +97,14 @@ nonce defeats replay. The orchestrator routes that decision to a human approver
 
 **How it's enforced (why it stays true):** the gate (`contract.py`) ships *from*
 this framework and is *imported* by each worker's CI (not hand-copied), so a
-framework bump propagates the discipline fleet-wide via the pinned-rev model. A
-screen with no model fails the build; a model that never emits on a real path fails
-`assert_drives_clean`. New workers inherit the whole thing from the template.
+framework bump propagates the discipline to every consumer that has pinned and
+wired. `assert_render_model_parity` (static) proves exhaustively that every
+page-framing `render_*` has a `model_*` twin — no agent-blind screen can ship past
+it. `assert_drives_clean` (dynamic) covers *driven* paths — it proves that the
+screens actually reached during the key script emit on a real path rather than
+falling through to `unstructured`; named, justified exceptions can opt out via
+`allow_unstructured=True` (see `docs/agent-screen-model.md` — "Coverage: what the
+gate actually proves"). New workers inherit the whole thing from the template.
 
 **Read next:**
 - [docs/agent-screen-model.md](docs/agent-screen-model.md) — the wire protocol, the
