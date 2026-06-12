@@ -9,6 +9,7 @@ cockpit render stay untouched.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from datetime import date as Date
@@ -75,9 +76,10 @@ def _urgency_for(level: str) -> str:
 # Urgency day-thresholds — urgency sharpens once a real due_at exists.
 _URGENCY_DUE_DAYS = 1  # 0..1 days out → "due"
 _URGENCY_SOON_DAYS = 7  # 2..7 days out → "soon"; beyond → "info"
+_DEFAULT_WORKER = object()
 
 
-def _urgency_from_due_at(due_at: Date | None, level: str, now: datetime) -> str:
+def urgency_from_due_at(due_at: Date | None, level: str, now: datetime) -> str:
     """Coarse human-scale urgency. With a real ``due_at`` it's a function of
     (due_at − now): past → overdue, today/tomorrow → due, within a week → soon,
     further → info. Date-less items fall back to the ``level`` alias so
@@ -94,13 +96,33 @@ def _urgency_from_due_at(due_at: Date | None, level: str, now: datetime) -> str:
     return "info"
 
 
-def _dedup_key(
+def _urgency_from_due_at(due_at: Date | None, level: str, now: datetime) -> str:
+    warnings.warn(
+        "_urgency_from_due_at is deprecated; use urgency_from_due_at",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return urgency_from_due_at(due_at, level, now)
+
+
+def dedup_key(
     worker: str, title: str, capability_key: str | None, focus: str | None, source_id: str | None
 ) -> str:
     # ``detail`` excluded (stable as a signal escalates). ``source_id`` folded in
     # so two concurrent same-title instances (two pay cycles) get distinct keys,
     # while the same instance keeps its key across cycles/escalation.
     return str(uuid5(_SIGNAL_NS, f"{worker}|{title}|{capability_key}|{focus}|{source_id}"))
+
+
+def _dedup_key(
+    worker: str, title: str, capability_key: str | None, focus: str | None, source_id: str | None
+) -> str:
+    warnings.warn(
+        "_dedup_key is deprecated; use dedup_key",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return dedup_key(worker, title, capability_key, focus, source_id)
 
 
 @dataclass(frozen=True)
@@ -168,23 +190,31 @@ def build_signals(
     needs: tuple[NeedsItem, ...],
     *,
     now: datetime,
-    worker: str = "xbook",
+    worker: str | object = _DEFAULT_WORKER,
     source_ref: str | None = None,
 ) -> tuple[Signal, ...]:
     """Map a (severity-sorted, capped) NeedsItem tuple to Signals, 1:1, order
     preserved. Pure: no filtering, no re-sort, no dedup, no I/O — emit exactly
     the set the cockpit shows (anti-fatigue discipline inherited free)."""
+    if worker is _DEFAULT_WORKER:
+        warnings.warn(
+            "build_signals() without worker= is deprecated; pass the worker id explicitly",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        worker = "xbook"
+    worker_id = str(worker)
     return tuple(
         Signal(
-            worker=worker,
+            worker=worker_id,
             kind=_kind_for(n.title),
             title=n.title,
             detail=n.detail,
             level=n.level,
-            urgency=_urgency_from_due_at(n.due_at, n.level, now),
+            urgency=urgency_from_due_at(n.due_at, n.level, now),
             capability_key=n.capability_key,
             focus=n.focus,
-            dedup_key=_dedup_key(worker, n.title, n.capability_key, n.focus, n.source_id),
+            dedup_key=dedup_key(worker_id, n.title, n.capability_key, n.focus, n.source_id),
             emitted_at=now,
             due_at=n.due_at,
             source_ref=source_ref,

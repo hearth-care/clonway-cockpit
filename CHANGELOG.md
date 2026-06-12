@@ -65,6 +65,17 @@ pre-1.0 rules documented in docs/release-policy.md.
   locked refresh, interactive OAuth, and service-account/DWD construction while
   keeping the core package importable without Google dependencies.
 
+- **`clonway_cockpit.signals.factory.SignalFactory`** — sealed worker-bound
+  Signal construction and emission, with identity checks before flushing.
+
+- Public `dedup_key(...)` and `urgency_from_due_at(...)` helpers. The private
+  `_dedup_key(...)` and `_urgency_from_due_at(...)` aliases remain for one
+  release and emit `DeprecationWarning`.
+
+- Observable unknown-title fallback for factory-built Signals, including
+  warn-once logging, `unknown_title_kinds=N` emit logging, and
+  `CLONWAY_SIGNALS_STRICT_KINDS=1` for worker CI.
+
 ### Changed
 
 - Gateway pricing config is stricter: non-mapping pricing entries now raise
@@ -79,6 +90,10 @@ pre-1.0 rules documented in docs/release-policy.md.
 - **Worker template** now generates `src/<worker>/runlog.py` (a two-line shim
   over `obs.runlog.make_runlog`) and calls `setup_logging` from `main()` — new
   workers are born without hand-rolled logging setup or a local runlog copy.
+
+- Calling `build_signals(...)` without `worker=` is deprecated. This release
+  keeps the old `xbook` default with a `DeprecationWarning`; a future release
+  will require the worker id explicitly.
 
 ## [0.1.0] - 2026-06-11
 

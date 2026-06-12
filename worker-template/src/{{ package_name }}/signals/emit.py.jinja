@@ -1,12 +1,12 @@
 """Best-effort Signal emitter — a thin wrapper over the shared fleet helper.
 
-{{ worker_id }} supplies its ``worker_id``, flag name (``{{ emit_flag }}``), and
-a pure ``build(today=, now=)`` and delegates the GCS flush, run_id resolution,
-paths, wire shape, and degrade behaviour to
-``clonway_cockpit.signals.emit.emit_signals``. Don't reimplement the flush — the
-shared helper writes ``signals/{{ worker_id }}/latest.jsonl`` every run (incl.
-empty, so a now-quiet worker clears its old set) plus a dated archive only when
-non-empty, and degrades silently on any GCS/build failure (never crashes a run).
+{{ worker_id }} supplies its bound ``SignalFactory`` plus a pure
+``build(today=, now=)`` and delegates the GCS flush, run_id resolution, paths,
+wire shape, and degrade behaviour through ``FACTORY.emit``. Don't reimplement
+the flush — the shared helper writes ``signals/{{ worker_id }}/latest.jsonl``
+every run (incl. empty, so a now-quiet worker clears its old set) plus a dated
+archive only when non-empty, and degrades silently on any GCS/build failure
+(never crashes a run).
 
 The flag (``{{ emit_flag }}``) defaults OFF — the command and any scheduled call
 are a no-op until an operator flips it.
@@ -18,25 +18,21 @@ from collections.abc import Sequence
 from datetime import date as Date
 from datetime import datetime
 
-from clonway_cockpit.signals.emit import emit_signals, flag_enabled
+from clonway_cockpit.signals.emit import flag_enabled
 from clonway_cockpit.signals.model import Signal
 
-from {{ package_name }}.signals.build import build_{{ package_name }}_signals
-
-_WORKER_ID = "{{ worker_id }}"
-_FLAG_ENV = "{{ emit_flag }}"
-{%- if deploy_shape == "local" %}
+from {{ package_name }}.signals.build import FACTORY, build_{{ package_name }}_signals
+{% if deploy_shape == "local" %}
 # A launchd daemon's env is HOME-only, so a bare storage.Client() can't resolve
 # a GCP project. Pin it (xquill's deviation). Set to your project before go-live.
 _PROJECT: str | None = "clonway-care-bookkeeper"
-{%- else %}
+{% else %}
 # Cloud Run resolves the project from the runtime — bare Client(), no project=.
 _PROJECT: str | None = None
-{%- endif %}
-
+{% endif %}
 
 def _enabled() -> bool:
-    return flag_enabled(_FLAG_ENV)
+    return flag_enabled(FACTORY.flag_env)
 
 
 def emit(signals: tuple[Signal, ...], *, now: datetime, run_id: str | None = None) -> bool:
@@ -45,9 +41,7 @@ def emit(signals: tuple[Signal, ...], *, now: datetime, run_id: str | None = Non
     Returns ``True`` only when the flag is on (a flush was attempted); ``False``
     when off. GCS errors are swallowed by the helper.
     """
-    emitted = emit_signals(
-        worker_id=_WORKER_ID,
-        flag_env=_FLAG_ENV,
+    emitted = FACTORY.emit(
         build=lambda **_: signals,
         project=_PROJECT,
         now=now,
@@ -69,9 +63,7 @@ def scan_and_emit(
     def _build(*, today: Date, now: datetime) -> Sequence[Signal]:
         return build_{{ package_name }}_signals(today=today, now=now)
 
-    return emit_signals(
-        worker_id=_WORKER_ID,
-        flag_env=_FLAG_ENV,
+    return FACTORY.emit(
         build=_build,
         project=_PROJECT,
         now=now,
