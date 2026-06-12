@@ -181,12 +181,3 @@ specific worker extend its own matrix.
 The full column contract, safety-class vocabulary, and classification rules
 are defined in this document. Workers do not invent new safety classes or
 omit columns.
-
----
-
-## HANDOFF NOTES
-
-All four phases complete. All acceptance criteria met. Gates passed:
-- `make template-smoke` — PASSED (15 passed, 1 xfailed)
-- `uv run pytest -q` — 956 passed
-No deviations. No operator TODO items.
