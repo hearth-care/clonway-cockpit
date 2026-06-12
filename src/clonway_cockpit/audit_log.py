@@ -20,9 +20,11 @@ from datetime import date as Date
 from pathlib import Path
 from typing import Any
 
-from clonway_cockpit.obs import _BUCKET, _QUIET_ERROR_NAMES, resolve_run_id
+from clonway_cockpit.obs import resolve_run_id
 
 AUDIT_SCHEMA = "audit/1"
+_BUCKET = "clonway-orchestrator-eu-west2"
+_QUIET_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
 EVENTS = frozenset(
     {
         "capability.launched",
@@ -74,7 +76,7 @@ class AuditEvent:
         return wire
 
     @classmethod
-    def from_wire(cls, wire: dict[str, object]) -> "AuditEvent":
+    def from_wire(cls, wire: dict[str, object]) -> AuditEvent:
         if wire.get("schema") != AUDIT_SCHEMA:
             raise ValueError(f"unknown audit schema {wire.get('schema')!r}")
         fields = dict(wire)

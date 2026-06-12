@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from rich.console import Console
 
+from clonway_cockpit import contract, render
 from clonway_cockpit.audit_log import (
     AUDIT_SCHEMA,
     EVENTS,
@@ -119,6 +121,17 @@ def test_sink_appends_local_jsonl_and_read_events_round_trips(tmp_path: Path) ->
     ]
 
 
+def test_read_events_filters_by_since_date(tmp_path: Path) -> None:
+    sink = make_audit_sink("demo", base_dir=tmp_path, gcs=False)
+
+    sink(_event(ts=datetime(2026, 6, 11, 23, 30, tzinfo=UTC), ref="old"))
+    sink(_event(ts=datetime(2026, 6, 12, 9, 30, tzinfo=UTC), ref="new"))
+
+    assert [event.ref for event in read_events(tmp_path, since=datetime(2026, 6, 12).date())] == [
+        "new"
+    ]
+
+
 def test_sink_mirrors_to_gcs_every_twenty_events_and_on_flush(tmp_path: Path) -> None:
     client = _FakeClient()
     sink = make_audit_sink(
@@ -143,7 +156,9 @@ def test_sink_mirrors_to_gcs_every_twenty_events_and_on_flush(tmp_path: Path) ->
     assert len(body.splitlines()) == 21
 
 
-def test_sink_never_raises_when_local_or_gcs_fails(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_sink_never_raises_when_local_or_gcs_fails(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     blocked = tmp_path / "blocked"
     blocked.write_text("not a directory")
     sink = make_audit_sink(
@@ -158,3 +173,30 @@ def test_sink_never_raises_when_local_or_gcs_fails(tmp_path: Path, caplog: pytes
         sink.flush()  # type: ignore[attr-defined]
 
     assert "audit sink failed" in caplog.text or "audit GCS flush failed" in caplog.text
+
+
+def test_render_ledger_and_model_ledger_show_agent_readable_rows() -> None:
+    events = [
+        _event(ts=datetime(2026, 6, 12, 9, 30, tzinfo=UTC), event="gate.offered", outcome=None),
+        _event(ts=datetime(2026, 6, 12, 9, 31, tzinfo=UTC), event="gate.applied"),
+    ]
+
+    console = Console(record=True, width=120)
+    console.print(render.render_ledger(events))
+    text = console.export_text()
+
+    assert "fleet audit log" in text
+    assert "09:30" in text
+    assert "gate.offered" in text
+    assert "gate.applied" in text
+
+    model = render.model_ledger(events)
+    assert model.kind == "audit.ledger"
+    assert model.regions[0].role == "ledger"
+    assert [row.id for row in model.regions[0].rows] == ["audit:0", "audit:1"]
+    assert model.regions[0].rows[1].fields[4].value == "applied"
+
+
+def test_render_ledger_has_model_twin_discovered_by_contract() -> None:
+    assert "render_ledger" in contract.page_framing_renders(render)
+    contract.assert_render_model_parity(render)

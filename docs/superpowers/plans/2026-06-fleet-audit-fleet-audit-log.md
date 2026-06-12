@@ -110,7 +110,7 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 - [x] Behavioural-parity proof: full existing suite green with no sink wired anywhere (all-new tests are additive).
 
 ### Phase 3 — read/render
-- [ ] `read_events` + `render_ledger`/`model_ledger` (parity contract picks the pair up automatically — verify the discovery does); golden render test in the existing style.
+- [x] `read_events` + `render_ledger`/`model_ledger` (parity contract picks the pair up automatically — verify the discovery does); golden render test in the existing style.
 - Files: `audit_log.py` or `render_panels`-adjacent placement consistent with the render-split plan if it has merged (check at build time), tests.
 
 ### Phase 4 — template, docs, changelog
@@ -146,9 +146,9 @@ Not tamper-evident (no signatures — P9 hooks in later by wrapping the sink); n
 
 ## HANDOFF NOTES
 
-- Current phase: Phase 3 — read/render.
-- Completed: Phase 1 added `clonway_cockpit.audit_log` with schema-pinned `AuditEvent`, local JSONL sink, best-effort GCS mirror, `read_events`, and focused tests. Phase 2 added `WizardContext.audit`, `Host.audit_sink`, launch/gate/reflex/approval audit events, and additive coverage.
-- Verification so far: baseline `make test` before edits reported `758 passed in 20.02s`; Phase 1 `uv run pytest -q tests/test_audit_log.py` reported `5 passed in 0.02s`; Phase 2 affected set `uv run pytest -q tests/test_audit_log.py tests/test_shell.py tests/test_walk.py tests/test_reflex.py tests/test_approval_delivery.py tests/test_agent_dry_run.py` reported `155 passed in 0.27s`.
+- Current phase: Phase 4 — template, docs, changelog.
+- Completed: Phase 1 added `clonway_cockpit.audit_log` with schema-pinned `AuditEvent`, local JSONL sink, best-effort GCS mirror, `read_events`, and focused tests. Phase 2 added `WizardContext.audit`, `Host.audit_sink`, launch/gate/reflex/approval audit events, and additive coverage. Phase 3 added `render_ledger`/`model_ledger`, `since` readback coverage, and contract parity discovery.
+- Verification so far: baseline `make test` before edits reported `758 passed in 20.02s`; Phase 1 `uv run pytest -q tests/test_audit_log.py` reported `5 passed in 0.02s`; Phase 2 affected set `uv run pytest -q tests/test_audit_log.py tests/test_shell.py tests/test_walk.py tests/test_reflex.py tests/test_approval_delivery.py tests/test_agent_dry_run.py` reported `155 passed in 0.27s`; Phase 3 `uv run pytest -q tests/test_audit_log.py tests/test_contract.py tests/test_contract_module.py` reported `19 passed in 0.06s`.
 - Decisions: GCS audit mirroring is gated by `<WORKER>_AUDIT_GCS` or `CLONWAY_AUDIT_GCS` when `gcs=None`; local JSONL remains authoritative.
 - Known failing tests: none at this checkpoint.
-- Next concrete step: write failing Phase 3 tests for `render_ledger`/`model_ledger` parity and `read_events(..., since=...)` behaviour, then add the render/model helper.
+- Next concrete step: update worker-template host construction to wire `make_audit_sink("{{ worker_id }}")`, add `docs/audit-log.md`, update changelog/release docs if present, and run template smoke.

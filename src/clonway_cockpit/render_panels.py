@@ -17,6 +17,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -336,6 +337,26 @@ def render_note(title: str, detail: str) -> RenderableType:
             screen_header("▸", title, "any key to return"), Text(""), Text(f"  {detail}", style=DIM)
         )
     )
+
+
+def render_ledger(events: Sequence[AuditEvent]) -> RenderableType:
+    table = Table(show_header=True, box=None, padding=(0, 2), pad_edge=False)
+    table.add_column("time", style=DIM)
+    table.add_column("worker")
+    table.add_column("event")
+    table.add_column("capability")
+    table.add_column("actor")
+    table.add_column("outcome")
+    for event in events:
+        table.add_row(
+            event.ts.astimezone(UTC).strftime("%H:%M"),
+            event.worker,
+            event.event,
+            event.capability_key or "",
+            event.actor,
+            event.outcome or "",
+        )
+    return page(Group(screen_header("audit", "fleet audit log", "metadata only"), Text(""), table))
 
 
 # The default home help body (key, description) — shared by render_help and
