@@ -103,7 +103,7 @@ banner are present, and the suite is untouched.
 - Phase 4: Rewrote CLAUDE.md opening — removed "beneath every Clonway autoworker" and "so every autoworker is …"; added a sentence explaining that consumers earn the property by pinning + wiring.
 
 **Decisions taken:**
-- `docs/fleet-conformance.md` not yet landed; linked pin-sync + getting-started adoption matrix per the plan's fallback instruction, with a TODO comment.
+- `docs/fleet-conformance.md` had already landed on main (the plan assumed it might not be there). Linked it directly in Phase 1 rather than using the fallback (pin-sync + adoption matrix + TODO). Deviation from the plan's fallback path, in the direction the plan intended.
 - No structural changes to README beyond the affected sections; no changes to `docs/agent-screen-model.md` or the template (per non-goals).
 
 **Known-failing tests:** None — 956 passed, all pre-commit hooks green.

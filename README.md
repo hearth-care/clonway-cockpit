@@ -61,9 +61,8 @@ gate, and passes tests green out of the box.
 **(c) An existing consumer is conformant only after it opts in.** It must: pin a
 supported release tag (see [`docs/pin-sync.md`](docs/pin-sync.md)), wire
 `--agent-stdio`, and run `assert_render_model_parity` + `assert_drives_clean` in
-its own CI. For current fleet adoption status, see the [adoption matrix in the
-getting-started doc](docs/persona-platform-getting-started.md#fleet-adoption-matrix).
-<!-- TODO: link docs/fleet-conformance.md once it lands -->
+its own CI. For current fleet adoption status, see
+[`docs/fleet-conformance.md`](docs/fleet-conformance.md).
 
 **The principle: one screen, two projections.**
 A cockpit screen is described once. The human sees Rich renderables (`render_*`);
