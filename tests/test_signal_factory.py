@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from datetime import date as Date
 
@@ -12,6 +13,15 @@ from clonway_cockpit.state import NeedsItem
 
 _NOW = datetime(2026, 5, 25, 9, 0, 0, tzinfo=UTC)
 _TODAY = Date(2026, 5, 25)
+
+
+@pytest.fixture(autouse=True)
+def _clear_unknown_title_seen() -> Iterator[None]:
+    from clonway_cockpit.signals.factory import _UNKNOWN_TITLES_SEEN
+
+    _UNKNOWN_TITLES_SEEN.clear()
+    yield
+    _UNKNOWN_TITLES_SEEN.clear()
 
 
 class _FakeBlob:
