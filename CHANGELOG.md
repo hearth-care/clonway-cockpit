@@ -173,6 +173,16 @@ Record them here and bump the release tag before merging.
   `lint-paths: "src tests"`, `mypy-args: ""` (bare mypy, config-driven). Includes
   label guard (`run-ci`) and `merge_group` trigger matching the fleet's adopted shape.
 
+### Fixed
+
+- **Gateway telemetry now writes `model_usage.jsonl` atomically** (temp-sibling
+  `os.replace`) instead of an in-place `open("a")` append. In-place appends to a
+  GCSFuse-mounted file triggered 'stale file handle / generation mismatch' retry
+  storms — the root cause of the 2026-06-11 xbook `xero sync` stall (~9 min blocked
+  after the sync itself succeeded, exhausting the Cloud Run task timeout). The write
+  is lock-guarded so the read-rewrite-rename keeps the atomicity the single-syscall
+  append had under concurrent gateway calls.
+
 ## [0.1.0] - 2026-06-11
 
 Retroactive baseline for the first tagged framework release. This section covers the
