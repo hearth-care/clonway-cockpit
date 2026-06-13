@@ -1,0 +1,49 @@
+"""Signal subscription — opt-in consumer for the fleet bus.
+
+This module is OFF by default. Uncomment and configure once {{ worker_id }}
+needs to react to signals from other workers.
+
+Usage — add to your scheduled entry-point::
+
+    from {{ package_name }}.signals.subscribe import poll_signals
+
+    def run_scheduled():
+        poll_signals(handle_signal)
+
+Dedup: always check ``(signal.dedup_key, signal.emitted_at)`` before acting —
+the bus delivers at-least-once, so the same signal may arrive on two successive
+polls after a cursor-write failure.
+
+See ``docs/signal-bus.md`` in ``clonway-cockpit`` for the full contract.
+"""
+
+from __future__ import annotations
+
+# from pathlib import Path
+#
+# from clonway_cockpit.signals.subscribe import (
+#     Delivery,
+#     FileCursorStore,
+#     Subscription,
+#     poll,
+# )
+#
+# _WORKER_ID = "{{ worker_id }}"
+# _STATE_DIR = Path.home() / f".{ _WORKER_ID }"
+#
+# # Tune these to what {{ worker_id }} actually wants to consume.
+# _SUBSCRIPTION = Subscription(
+#     consumer_id=_WORKER_ID,
+#     workers=None,                # None = all emitters; or ("xbook", "xhr") to limit
+#     kinds=("action.required",),  # None = all kinds
+#     min_urgency=None,            # or "soon" / "due" to filter low-urgency noise
+# )
+#
+#
+# def poll_signals(handle_signal) -> list[Delivery]:
+#     """Process new Deliveries, committing each object cursor after handling."""
+#     return poll(
+#         _SUBSCRIPTION,
+#         cursor_store=FileCursorStore(_STATE_DIR),
+#         on_delivery=lambda delivery: handle_signal(delivery.signal),
+#     )
