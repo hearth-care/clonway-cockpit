@@ -175,6 +175,50 @@ def test_sink_never_raises_when_local_or_gcs_fails(
     assert "audit sink failed" in caplog.text or "audit GCS flush failed" in caplog.text
 
 
+def test_sink_resolves_run_id_from_env_for_local_and_gcs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Events with run_id=None resolve via CLOUD_RUN_EXECUTION for both local JSONL and GCS key."""
+    monkeypatch.setenv("CLOUD_RUN_EXECUTION", "exec-123")
+    client = _FakeClient()
+    sink = make_audit_sink(
+        "demo",
+        base_dir=tmp_path,
+        gcs=True,
+        storage_client_factory=lambda: client,
+    )
+
+    sink(_event(run_id=None))
+    sink.flush()  # type: ignore[attr-defined]
+
+    local_lines = (tmp_path / "2026-06-12.jsonl").read_text().splitlines()
+    assert json.loads(local_lines[0])["run_id"] == "exec-123"
+
+    assert "audit/demo/2026-06-12/exec-123.jsonl" in client.store
+
+
+def test_sink_multiple_none_run_id_events_share_gcs_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multiple events with run_id=None all land in the same GCS object, not separate random ones."""
+    monkeypatch.setenv("CLOUD_RUN_EXECUTION", "exec-456")
+    client = _FakeClient()
+    sink = make_audit_sink(
+        "demo",
+        base_dir=tmp_path,
+        gcs=True,
+        storage_client_factory=lambda: client,
+    )
+
+    sink(_event(run_id=None, ref="a"))
+    sink(_event(run_id=None, ref="b"))
+    sink.flush()  # type: ignore[attr-defined]
+
+    gcs_keys = [k for k in client.store if k.startswith("audit/demo/")]
+    assert gcs_keys == ["audit/demo/2026-06-12/exec-456.jsonl"]
+    assert len(client.store["audit/demo/2026-06-12/exec-456.jsonl"].splitlines()) == 2
+
+
 def test_render_ledger_and_model_ledger_show_agent_readable_rows() -> None:
     events = [
         _event(ts=datetime(2026, 6, 12, 9, 30, tzinfo=UTC), event="gate.offered", outcome=None),

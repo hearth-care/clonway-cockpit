@@ -12,7 +12,6 @@ import atexit
 import json
 import logging
 import os
-import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -135,6 +134,7 @@ class _LocalJsonlAuditSink:
     def __call__(self, event: AuditEvent) -> None:
         try:
             wire = event.to_wire()
+            wire["run_id"] = resolve_run_id(event.run_id)  # resolved once; same value local + GCS
             self._append_local(event, wire)
             if self.gcs:
                 self._remember_for_gcs(event, wire)
@@ -148,7 +148,7 @@ class _LocalJsonlAuditSink:
             fh.write(json.dumps(wire, separators=(",", ":")) + "\n")
 
     def _remember_for_gcs(self, event: AuditEvent, wire: dict[str, object]) -> None:
-        rid = resolve_run_id(event.run_id) if event.run_id else uuid.uuid4().hex
+        rid = wire["run_id"]  # already resolved in __call__
         key = f"audit/{event.worker}/{event.ts.date().isoformat()}/{rid}.jsonl"
         self._by_path.setdefault(key, []).append(wire)
         self._since_flush += 1
