@@ -1,5 +1,9 @@
+import threading
 from pathlib import Path
 
+import pytest
+
+from clonway_cockpit.gateway import telemetry
 from clonway_cockpit.gateway.telemetry import load_events, record_call
 
 
@@ -48,3 +52,48 @@ def test_record_never_crashes_on_unwritable_base(tmp_path: Path):
     bad_base = blocker / "sub"
     _record(bad_base)  # must NOT raise
     assert load_events(bad_base) == []
+
+
+def test_record_uses_atomic_temp_rename(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # The GCSFuse stale-handle root cause is in-place appends; the write must go
+    # through os.replace (temp-sibling rename), exactly once per record_call.
+    replaces = {"n": 0}
+    real_replace = telemetry.os.replace
+
+    def _spy(src: object, dst: object) -> None:
+        replaces["n"] += 1
+        real_replace(src, dst)
+
+    monkeypatch.setattr(telemetry.os, "replace", _spy)
+    _record(tmp_path)
+    assert replaces["n"] == 1
+    assert len(load_events(tmp_path)) == 1
+
+
+def test_record_leaves_no_temp_files(tmp_path: Path):
+    for _ in range(5):
+        _record(tmp_path)
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert len(load_events(tmp_path)) == 5
+
+
+def test_record_threadsafe_under_concurrency(tmp_path: Path):
+    # Read-rewrite-rename would race and lose lines without the lock; the old
+    # single-syscall append did not. Drive max contention via a barrier and assert
+    # every line survives.
+    n = 40
+    barrier = threading.Barrier(n)
+
+    def worker(i: int) -> None:
+        barrier.wait()
+        _record(tmp_path, prompt_tokens=i)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    events = load_events(tmp_path)
+    assert len(events) == n
+    assert sorted(e["prompt_tokens"] for e in events) == list(range(n))
