@@ -2,6 +2,7 @@ import pytest
 from rich.console import Console
 
 from clonway_cockpit import keys, walk
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.registry import BlastRadius, WizardContext
 from clonway_cockpit.walk import Precondition, Remedy, Step, StepResult
 
@@ -21,7 +22,7 @@ def _ctx(confirms):
     )
 
 
-def _key_ctx(presented, keys_seq):
+def _key_ctx(presented, keys_seq, *, audit=None, dry_run=False, authorize_apply=None):
     """A screen-mode context: records presented renderables; reads scripted keys."""
     kq = list(keys_seq)
 
@@ -39,6 +40,11 @@ def _key_ctx(presented, keys_seq):
         confirm_fn=lambda p: False,
         present=_present,
         read_key=_read_key,
+        audit=audit,
+        dry_run=dry_run,
+        authorize_apply=authorize_apply,
+        capability_key="schedule-bills",
+        capability_money_movement=True,
     )
 
 
@@ -88,6 +94,80 @@ def test_apply_is_never_reached_without_explicit_confirm():
         steps=[Step("propose", _propose), Step("apply", _apply)],
     )
     assert posted["n"] == 0  # the write never happened
+
+
+def test_confirm_apply_audits_human_apply_and_decline_paths():
+    events: list[AuditEvent] = []
+
+    apply_ctx = _key_ctx([], ["a"], audit=events.append)
+    assert (
+        walk.confirm_apply(
+            apply_ctx,
+            prompt="Apply now? [a]pply / [c]ancel",
+            equivalent_cli="uv run xbook apply p.json --confirm",
+        )
+        is True
+    )
+
+    decline_ctx = _key_ctx([], ["n"], audit=events.append)
+    assert (
+        walk.confirm_apply(
+            decline_ctx,
+            prompt="Apply now? [a]pply / [c]ancel",
+            equivalent_cli="uv run xbook apply p.json --confirm",
+        )
+        is False
+    )
+
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("gate.offered", "human", None),
+        ("gate.applied", "human", "applied"),
+        ("gate.offered", "human", None),
+        ("gate.declined", "human", "declined"),
+    ]
+    assert {event.capability_key for event in events} == {"schedule-bills"}
+    assert {event.equivalent_cli for event in events} == {"uv run xbook apply p.json --confirm"}
+    assert {event.money_movement for event in events} == {True}
+
+
+def test_confirm_apply_audits_agent_dry_run_decline():
+    events: list[AuditEvent] = []
+
+    ctx = _key_ctx([], ["a"], audit=events.append, dry_run=True)
+
+    assert walk.confirm_apply(ctx, equivalent_cli="uv run xbook apply p.json --confirm") is False
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("gate.offered", "agent", None),
+        ("gate.declined", "agent", "declined"),
+    ]
+
+
+def test_confirm_apply_audits_guarded_apply_ref():
+    events: list[AuditEvent] = []
+
+    ctx = _key_ctx([], ["a"], audit=events.append, dry_run=True, authorize_apply=lambda p: True)
+
+    assert walk.confirm_apply(ctx, equivalent_cli="uv run xbook apply p.json --confirm") is True
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("gate.offered", "agent", None),
+        ("gate.applied", "agent", "applied"),
+    ]
+    assert events[0].ref == events[1].ref
+    assert events[0].ref
+
+
+def test_confirm_apply_audits_guarded_apply_decline_ref():
+    events: list[AuditEvent] = []
+
+    ctx = _key_ctx([], ["a"], audit=events.append, dry_run=True, authorize_apply=lambda p: False)
+
+    assert walk.confirm_apply(ctx, equivalent_cli="uv run xbook apply p.json --confirm") is False
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("gate.offered", "agent", None),
+        ("gate.declined", "agent", "declined"),
+    ]
+    assert events[0].ref == events[1].ref
+    assert events[0].ref
 
 
 def test_equivalent_cli_is_shown():

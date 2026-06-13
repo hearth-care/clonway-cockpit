@@ -117,6 +117,11 @@ Record them here and bump the release tag before merging.
 - **Worker-template** — `signals/subscribe.py.jinja` scaffold with a commented
   `poll_signals()` example; opt-in per worker, off by default.
 
+- **`clonway_cockpit.audit_log`** — metadata-only framework audit ledger for capability
+  launches, write gates, reflex decisions, and approval delivery, with local JSONL storage,
+  best-effort GCS mirroring, readback helpers, render/model ledger projections, and worker-template
+  wiring.
+
 ### Changed
 
 - Gateway pricing config is stricter: non-mapping pricing entries now raise

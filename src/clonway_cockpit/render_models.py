@@ -17,6 +17,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -240,6 +241,30 @@ def model_note(title: str, detail: str) -> ScreenModel:
         regions=[MRegion("prose", "", text=detail)],
         actions=["any"],
         meta={"detail": detail},
+    )
+
+
+def model_ledger(events: Sequence[AuditEvent]) -> ScreenModel:
+    rows = [
+        MRow(
+            id=f"audit:{i}",
+            label=event.ts.astimezone(UTC).strftime("%H:%M"),
+            fields=[
+                MField("worker", event.worker),
+                MField("event", event.event),
+                MField("capability", event.capability_key or ""),
+                MField("actor", event.actor),
+                MField("outcome", event.outcome or "", "status"),
+            ],
+        )
+        for i, event in enumerate(events)
+    ]
+    return ScreenModel(
+        kind="audit.ledger",
+        title="fleet audit log",
+        regions=[MRegion("ledger", "events", rows=rows)],
+        actions=["any"],
+        meta={"count": len(events)},
     )
 
 

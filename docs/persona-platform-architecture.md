@@ -343,6 +343,7 @@ optimism. Audit the table against the merged PRs before locking the next slice.
 | **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | yes | yes | no | no | PR A negotiation slice | See `docs/cross-worker-handoffs.md`. |
 | **Safe-direction reflex** (blocking-only auto-approval as an `ApprovalPolicy` at the existing gate: structural direction checks + provenance requirement + restart-surviving idempotency) — `reflex.py` | yes | yes | no | no | PR B negotiation slice | Direction checks are merged framework-side. |
 | **Cross-worker negotiation** (envelope-aware responder, per-ask decisions reconciled in code, task ledger, unified plan + stall escalation — `docs/cross-worker-handoffs.md`) — `negotiation.py` | yes | yes | no | no | PRs C+D negotiation slice | Negotiation core is merged; live worker-edge wiring remains separate. |
+| **Framework audit log** (metadata-only fleet ledger at capability launch, write gate, reflex, and approval-delivery chokepoints) — `audit_log.py` + `docs/audit-log.md` | yes | yes | no | no | #96 | Framework implementation and template wiring are complete; worker pin rollout is separate. |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core **and** the
 per-thread memory wiring are now both merged (#78, #79) — but the production surface is not

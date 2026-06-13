@@ -19,6 +19,7 @@ import contextlib
 import sys
 
 from clonway_cockpit import keys, render, shell, usage
+from clonway_cockpit.audit_log import make_audit_sink
 from clonway_cockpit.doctor import Fix, Probe, fixes_for
 from clonway_cockpit.prompts import default_confirm_fn, make_clean_input_fn
 from clonway_cockpit.registry import (
@@ -211,6 +212,8 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         on_open=_on_open,
         app_label=_APP_LABEL,
         agent_mode=agent_mode,
+        audit_sink=make_audit_sink("{{ worker_id }}"),
+        audit_worker="{{ worker_id }}",
         extra_selectables=home_hooks.extra_selectables,
         extra_regions=home_hooks.extra_regions,
         handle_extra_key=home_hooks.handle_extra_key,

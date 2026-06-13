@@ -22,6 +22,7 @@ import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from rich.console import RenderableType
@@ -29,6 +30,7 @@ from rich.console import RenderableType
 from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
+from clonway_cockpit.audit_log import AuditEvent, AuditSink
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
@@ -207,6 +209,9 @@ class Host:
     # serve_stdio; None outside agent mode (the live human cockpit keeps the worker's prompts).
     agent_input_fn: Callable[[str, str], str] | None = None
     agent_confirm_fn: Callable[[str], bool] | None = None
+    # Optional framework audit sink. Worker code usually passes make_audit_sink(worker_id).
+    audit_sink: AuditSink | None = None
+    audit_worker: str = "cockpit"
 
 
 def run_with_progress[T](
@@ -260,6 +265,28 @@ def _safe_emit(host: Host, model: ScreenModel) -> None:
     # Best-effort: the agent feed must never crash the human session.
     with contextlib.suppress(Exception):
         host.on_screen(model)
+
+
+def _safe_audit_launch(host: Host, spec: CapabilitySpec, *, focus: str | None) -> None:
+    if host.audit_sink is None:
+        return
+    with contextlib.suppress(Exception):
+        host.audit_sink(
+            AuditEvent(
+                ts=datetime.now(UTC),
+                worker=host.audit_worker,
+                run_id=None,
+                event="capability.launched",
+                capability_key=spec.key,
+                actor="agent" if host.agent_mode else "human",
+                dry_run=host.agent_mode,
+                money_movement=spec.money_movement,
+                outcome=None,
+                equivalent_cli=spec.equivalent_cli,
+                focus=focus,
+                ref=None,
+            )
+        )
 
 
 def _shelf_letters(state: CockpitState) -> list[str]:
@@ -681,6 +708,7 @@ def _open_capability(
     # Doctor) — count the "open" here, best-effort, BEFORE running it. Never gates
     # the open: usage.record swallows all errors.
     host.usage.record(key, "open")
+    _safe_audit_launch(host, spec, focus=focus)
     if key == "doctor":
         _doctor(host, screen, read_key)
         return
@@ -695,6 +723,8 @@ def _open_capability(
             # policy a proposal it can decide on (key + money-movement class).
             capability_key=spec.key,
             capability_money_movement=spec.money_movement,
+            audit=host.audit_sink,
+            audit_worker=host.audit_worker,
         )
         # In agent mode, route a walk's typed-input / confirm prompts over the protocol so a capture
         # step is drivable by an agent (the driver answers each request) rather than blocking on

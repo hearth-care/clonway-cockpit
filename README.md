@@ -151,7 +151,7 @@ src/clonway_cockpit/
 - **Scaffold a brand-new worker:** `worker-template/` + `copier.yml` generate a
   worker **born agent-navigable** — a working cockpit, the `--agent-stdio` channel,
   the inherited parity + drive-clean gate, a flag-guarded Signal emit path, a
-  mandatory `@scan_horizon` stub, telemetry, CI, a `CLAUDE.md` carrying the
+  mandatory `@scan_horizon` stub, telemetry, framework audit logging, CI, a `CLAUDE.md` carrying the
   convention, and the single write-gate safety posture — out of the box (S8/C6).
 
 ```sh

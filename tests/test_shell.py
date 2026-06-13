@@ -15,6 +15,7 @@ import pytest
 from rich.console import Console
 
 from clonway_cockpit import keys, render, shell, usage
+from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.doctor import Fix, Probe, fixes_for
 from clonway_cockpit.registry import (
     CapabilitySpec,
@@ -88,6 +89,7 @@ class _FakeHost:
         usage_module=usage,
         ack=None,
         snooze=None,
+        audit_sink=None,
     ):
         self._state = state or CockpitState(tenant_name="Clonway")
         self._probes = probes or []
@@ -99,6 +101,7 @@ class _FakeHost:
         # leaves them None). Defaults None so a default _FakeHost is xbook-shaped.
         self._ack = ack
         self._snooze = snooze
+        self._audit_sink = audit_sink
         # Count capture_state calls so a test can assert the loop re-captured after
         # an ack/snooze (the acked item drops on the redraw).
         self.capture_calls = 0
@@ -123,6 +126,7 @@ class _FakeHost:
             on_open=self._on_open,
             ack=self._ack,
             snooze=self._snooze,
+            audit_sink=self._audit_sink,
         )
 
     def _build_report(self) -> object:
@@ -607,6 +611,34 @@ def test_open_capability_records_an_open(usage_to_tmp, monkeypatch):
     host = _FakeHost().as_host()
     shell._open_capability(host, "status", _Screen(), _keys([keys.ENTER]))
     assert ("status", "open") in recorded
+
+
+def test_open_capability_records_audit_launch_event(usage_to_tmp):
+    events: list[AuditEvent] = []
+    register_capability(
+        CapabilitySpec(
+            key="status",
+            shelf="A",
+            title="Status board",
+            summary="See where the books stand right now",
+            equivalent_cli="uv run worker status",
+            money_movement=True,
+        )
+    )
+    host = _FakeHost(audit_sink=events.append).as_host()
+
+    shell._open_capability(host, "status", _Screen(), _keys([keys.ENTER]), focus="today")
+
+    assert [(event.event, event.actor, event.outcome) for event in events] == [
+        ("capability.launched", "human", None)
+    ]
+    event = events[0]
+    assert event.worker == "cockpit"
+    assert event.capability_key == "status"
+    assert event.equivalent_cli == "uv run worker status"
+    assert event.focus == "today"
+    assert event.money_movement is True
+    assert event.dry_run is False
 
 
 def test_open_capability_unknown_key_records_nothing(usage_to_tmp, monkeypatch):
