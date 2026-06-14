@@ -14,6 +14,8 @@ _EXPECTED_EXPORTS = {
     "CloudLoggingSink",
     "LoggerFactory",
     "StorageClientFactory",
+    "atomic_append",
+    "atomic_write_bytes",
     "flush_buffer",
     "make_obs",
     "resolve_run_id",
@@ -55,3 +57,10 @@ def test_telemetry_submodule_importable():  # CC-OBS-PKG-5
 
     assert hasattr(_tel, "make_obs")
     assert hasattr(_tel, "_import_storage")
+
+
+def test_atomicio_exports_callable():  # CC-OBS-PKG-6
+    from clonway_cockpit.obs import atomic_append, atomic_write_bytes
+
+    assert callable(atomic_append)
+    assert callable(atomic_write_bytes)

@@ -11,14 +11,12 @@ slice has xops read it.
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
-import threading
 from collections.abc import Callable
-from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+
+from clonway_cockpit.obs.atomicio import atomic_append
 
 _DEFAULT_BASE = Path(".cockpit")
 _FILENAME = "model_usage.jsonl"
@@ -26,38 +24,6 @@ _FILENAME = "model_usage.jsonl"
 
 def _path(base: Path | None) -> Path:
     return (base or _DEFAULT_BASE) / _FILENAME
-
-
-_WRITE_LOCK = threading.Lock()
-
-
-def _append_line_atomic(path: Path, line: str) -> None:
-    """Append ``line`` by rewriting the file via a temp-sibling rename, not an
-    in-place ``open("a")`` append.
-
-    In-place appends to a GCSFuse-mounted file trigger 'stale file handle /
-    generation mismatch' retry storms — the root cause of the 2026-06-11 xbook
-    sync stall (~9 min blocked after the sync work itself had succeeded). Writing
-    the whole file to a temp sibling and ``os.replace``-ing it gives GCSFuse one
-    generation-matched object replacement per write instead of an append retry
-    loop. The lock keeps the read-modify-write sequential within a process — the
-    old single-syscall append got that atomicity for free."""
-    with _WRITE_LOCK:
-        try:
-            existing = path.read_bytes()
-        except OSError:
-            existing = b""
-        fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        try:
-            os.write(fd, existing + line.encode("utf-8"))
-            os.close(fd)
-            os.replace(tmp, path)
-        except Exception:  # noqa: BLE001 — clean up the temp, then re-raise to the caller's swallow
-            with suppress(Exception):
-                os.close(fd)
-            with suppress(Exception):
-                os.unlink(tmp)
-            raise
 
 
 def record_call(
@@ -89,7 +55,7 @@ def record_call(
         }
         path = _path(base)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _append_line_atomic(path, json.dumps(event, sort_keys=True) + "\n")
+        atomic_append(path, json.dumps(event, sort_keys=True) + "\n")
     except Exception:  # noqa: BLE001 — telemetry is best-effort; never break a call
         return
 

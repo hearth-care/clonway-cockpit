@@ -24,6 +24,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from clonway_cockpit.obs.atomicio import atomic_append
+
 
 def default_runs_dir(worker_id: str) -> Path:
     """Return the conventional run-log directory for a worker: ``.{worker_id}/runs``."""
@@ -49,8 +51,7 @@ def append(run_file: Path, **entry: Any) -> None:
     if "ts" not in entry:
         entry["ts"] = datetime.now(UTC).isoformat()
     line = json.dumps(entry, separators=(",", ":"), default=str) + "\n"
-    with run_file.open("a", encoding="utf-8") as fh:
-        fh.write(line)
+    atomic_append(run_file, line)
 
 
 def hash_request(body: dict) -> str:

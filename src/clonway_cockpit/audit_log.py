@@ -19,7 +19,7 @@ from datetime import date as Date
 from pathlib import Path
 from typing import Any
 
-from clonway_cockpit.obs import resolve_run_id
+from clonway_cockpit.obs import atomic_append, resolve_run_id
 
 AUDIT_SCHEMA = "audit/1"
 _BUCKET = "clonway-orchestrator-eu-west2"
@@ -144,8 +144,7 @@ class _LocalJsonlAuditSink:
     def _append_local(self, event: AuditEvent, wire: dict[str, object]) -> None:
         path = self.base_dir / f"{event.ts.date().isoformat()}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(wire, separators=(",", ":")) + "\n")
+        atomic_append(path, json.dumps(wire, separators=(",", ":")) + "\n")
 
     def _remember_for_gcs(self, event: AuditEvent, wire: dict[str, object]) -> None:
         rid = wire["run_id"]  # already resolved in __call__
