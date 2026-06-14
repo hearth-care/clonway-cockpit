@@ -107,7 +107,7 @@ def main() -> None:
         if pin == "NOT_FOUND":
             note = "ERROR: no cockpit pin found"
             all_ok = False
-        elif pin == tag or pin == tag_sha:
+        elif pin in (tag, tag_sha):
             note = f"OK (on {tag})"
         else:
             # Check if pin is a raw SHA or a different tag
