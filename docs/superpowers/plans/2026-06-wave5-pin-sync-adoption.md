@@ -1,6 +1,6 @@
 # [Plan] Fleet pin-sync + shared-module adoption
 
-**Status:** draft plan — not implemented
+**Status:** plan ready — per-worker PRs pending operator dispatch
 **Source:** fleet audit follow-up 2026-06-13, Wave 5 (residual item 2 — "the highest-leverage unlock")
 
 ## Why
@@ -10,22 +10,27 @@ workflow — but **no worker pins it**. Every worker still pins a raw git rev, a
 diverge across the fleet. Per the `docs/pin-sync.md` remote-pin survey (GitHub default-branch
 `pyproject.toml`, read 2026-06-11):
 
-| Worker repo | Current default-branch pin | Behind `v0.1.0` (tag-relative) |
-|---|---|---|
-| Auto-Orchestrator | `4c63daf…` | 9 commits |
-| auto-admissions | `4c63daf…` | 9 commits |
-| auto-bookkeeper | `4c63daf…` | 9 commits |
-| auto-hr | `a75f7a0…` | 70 commits |
-| auto-inspector | `4c63daf…` | 9 commits |
-| auto-marketer | `4c63daf…` | 9 commits |
-| auto-secretary | `4c63daf…` | 9 commits |
-| Auto-Procurer | `4c63daf…` | 9 commits |
+| Worker repo | Current default-branch pin | Behind `v0.1.0` (tag-relative) | Action |
+|---|---|---|---|
+| Auto-Orchestrator | `4c63daf…` | 9 commits | bump to tag |
+| auto-admissions | `4c63daf…` | 9 commits | bump to tag |
+| auto-bookkeeper | `1c86802…` | **0** (122 commits *ahead*) | switch bare SHA → tag |
+| auto-hr | `a75f7a0…` | 70 commits | bump to tag |
+| auto-inspector | `4c63daf…` | 9 commits | bump to tag |
+| auto-marketer | `4c63daf…` | 9 commits | bump to tag |
+| auto-secretary | `4c63daf…` | 9 commits | bump to tag |
+| Auto-Procurer | `4c63daf…` | 9 commits | bump to tag |
 
-(Commit distances measured `git rev-list --count <rev>..v0.1.0` in this repo. The follow-up
-report cites "up to ~192 commits behind" for the most-behind worker; that figure is the
-absolute lag against `main` HEAD at audit time, not the tag-relative number — a builder MUST
-re-survey live pins as step 0, see Risks. The *direction* is unambiguous: every worker is
-behind, none is on the tag, and one is meaningfully further behind than the rest.)
+Survey re-run 2026-06-14 via `python3 scripts/check_fleet_pins.py` — see `scripts/check_fleet_pins.py`
+for the live survey tool. **Note on auto-bookkeeper:** the 2026-06-11 survey showed `4c63daf`
+(9 behind); by 2026-06-14 it had advanced to `1c86802` (122 commits *ahead* of `v0.1.0` — on
+a later main SHA). It does NOT need a pin bump for content, but must switch from a raw SHA to
+the `v0.1.0` tag to satisfy the release-tag policy. The shared modules it needs from `v0.1.0`
+are already present in its pinned rev.
+
+(Commit distances measured `git rev-list --count <rev>..v0.1.0` in this repo. The *direction*
+is unambiguous: every worker must move from a bare SHA to the release tag. Run
+`python3 scripts/check_fleet_pins.py` at step 0 of each worker pass to get current numbers.)
 
 The consequence is the real prize. The audit's original weakness #5 — **~1,000 lines of
 duplication** across the workers (each repo carrying its own runlog, Google-auth lifecycle,
@@ -243,3 +248,30 @@ emitter phase, not first — but with money-repo scrutiny. There is no worker th
   one PR. This plan doc stays in cockpit as the shared contract all those PRs cite.
 - **Do not** bundle the branch-protection work (Wave 5 item 1) or the xbook AP consumer (item 3)
   into a pin-adoption PR — they are separate plans.
+
+## HANDOFF NOTES
+
+**Last updated:** 2026-06-14 by builder-claude-20260614T120035Z-91681
+
+**Current phase:** Plan finalized. Cockpit-side supporting tooling shipped. Per-worker PRs awaiting operator dispatch.
+
+**Cockpit-side completed:**
+- `scripts/check_fleet_pins.py` — live survey tool; run `python3 scripts/check_fleet_pins.py` to re-survey any time
+- Plan doc updated with 2026-06-14 re-survey (auto-bookkeeper deviation noted: on `1c86802`, 122 commits ahead of `v0.1.0`, needs SHA→tag switch not content bump)
+- `docs/pin-sync.md` verified correct (supported tag line, recipe, and policy all present)
+- `v0.1.0` tag confirmed at `40cb400532c59fb4eeb0296b0d0cd6842abfd01b`
+
+**Next concrete step (per-worker — each requires a separate PR on that worker's repo):**
+1. Auto-Orchestrator — 9 commits behind, bump `4c63daf` → `v0.1.0`; adopt modules; Phase A (consumer-first)
+2. auto-admissions, auto-inspector, auto-marketer, auto-secretary, Auto-Procurer — same recipe, Phase B
+3. auto-bookkeeper — switch bare SHA `1c86802` → `v0.1.0` tag; has module content already, adoption may be simpler; money-repo scrutiny
+4. auto-hr — 70 commits behind, highest drift; budget for API-drift fixes; last in Phase B
+
+**Decisions taken:**
+- auto-bookkeeper's advanced pin (past `v0.1.0`) means its adoption focuses on the SHA→tag switch + module import repointing, not on catching up content.
+- Per-worker PRs open against each worker's own repo, not cockpit — this plan doc is the shared contract they cite.
+- `scripts/check_fleet_pins.py` is the canonical survey tool; re-run at step 0 of each worker pass.
+
+**Known deviations from plan as written:**
+- auto-bookkeeper pin was `4c63daf` in the 2026-06-11 survey; by 2026-06-14 it had advanced to `1c86802` (122 ahead of tag). Plan table updated accordingly.
+- "Out of scope" note: wave5 item 1 (branch-protection) and item 3 (xbook AP consumer) remain separate.
