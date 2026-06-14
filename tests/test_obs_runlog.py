@@ -83,6 +83,28 @@ def test_append_multiple_lines(tmp_path):  # CC-RUNLOG-APP-4
     assert [e["event"] for e in lines] == ["a", "b"]
 
 
+def test_append_goes_through_atomic_replace(tmp_path, monkeypatch):  # CC-RUNLOG-APP-6
+    # runlog appends must not be in-place open("a") on a GCSFuse mount — each goes
+    # through the shared atomic temp-sibling rename. Content stays byte-identical.
+    from clonway_cockpit.obs import atomicio
+
+    replaces = {"n": 0}
+    real_replace = atomicio.os.replace
+
+    def _spy(src, dst):
+        replaces["n"] += 1
+        real_replace(src, dst)
+
+    monkeypatch.setattr(atomicio.os, "replace", _spy)
+    run_file = tmp_path / "r.jsonl"
+    append(run_file, ts="2026-01-01T00:00:00+00:00", event="a")
+    append(run_file, ts="2026-01-01T00:01:00+00:00", event="b")
+    assert replaces["n"] == 2
+    assert list(tmp_path.glob("*.tmp")) == []
+    lines = [json.loads(ln) for ln in run_file.read_text().splitlines()]
+    assert [e["event"] for e in lines] == ["a", "b"]
+
+
 def test_append_non_serialisable_uses_str(tmp_path):  # CC-RUNLOG-APP-5
     # default=str fallback — mirrors all three worker originals.
     from datetime import date

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from clonway_cockpit.gateway import telemetry
 from clonway_cockpit.gateway.telemetry import load_events, record_call
+from clonway_cockpit.obs import atomicio
 
 
 def _record(base: Path, **over: object) -> None:
@@ -56,15 +56,16 @@ def test_record_never_crashes_on_unwritable_base(tmp_path: Path):
 
 def test_record_uses_atomic_temp_rename(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # The GCSFuse stale-handle root cause is in-place appends; the write must go
-    # through os.replace (temp-sibling rename), exactly once per record_call.
+    # through os.replace (temp-sibling rename), exactly once per record_call. The
+    # rename now lives in the shared obs.atomicio helper.
     replaces = {"n": 0}
-    real_replace = telemetry.os.replace
+    real_replace = atomicio.os.replace
 
     def _spy(src: object, dst: object) -> None:
         replaces["n"] += 1
         real_replace(src, dst)
 
-    monkeypatch.setattr(telemetry.os, "replace", _spy)
+    monkeypatch.setattr(atomicio.os, "replace", _spy)
     _record(tmp_path)
     assert replaces["n"] == 1
     assert len(load_events(tmp_path)) == 1

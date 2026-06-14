@@ -121,6 +121,30 @@ def test_sink_appends_local_jsonl_and_read_events_round_trips(tmp_path: Path) ->
     ]
 
 
+def test_local_append_goes_through_atomic_replace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The local audit JSONL append must not be in-place open("a") on a GCSFuse
+    # mount — it goes through the shared atomic temp-sibling rename, one per event.
+    from clonway_cockpit.obs import atomicio
+
+    replaces = {"n": 0}
+    real_replace = atomicio.os.replace
+
+    def _spy(src: object, dst: object) -> None:
+        replaces["n"] += 1
+        real_replace(src, dst)
+
+    monkeypatch.setattr(atomicio.os, "replace", _spy)
+    sink = make_audit_sink("demo", base_dir=tmp_path, gcs=False)
+    sink(_event(event="capability.launched", outcome=None))
+    sink(_event(event="gate.offered", outcome=None))
+
+    assert replaces["n"] == 2
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert [e.event for e in read_events(tmp_path)] == ["capability.launched", "gate.offered"]
+
+
 def test_read_events_filters_by_since_date(tmp_path: Path) -> None:
     sink = make_audit_sink("demo", base_dir=tmp_path, gcs=False)
 

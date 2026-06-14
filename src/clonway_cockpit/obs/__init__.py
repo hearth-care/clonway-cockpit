@@ -10,6 +10,7 @@ continue working after the module→package conversion:
 Sub-modules available after explicit import:
     clonway_cockpit.obs.runlog   — per-worker JSONL run log
     clonway_cockpit.obs.logsetup — root-logger setup for entrypoints/servers
+    clonway_cockpit.obs.atomicio — GCSFuse-safe atomic file writes
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from clonway_cockpit.obs._telemetry import (
     make_obs,
     resolve_run_id,
 )
+from clonway_cockpit.obs.atomicio import atomic_append, atomic_write_bytes
 
 __all__ = [
     "FORCE_FLUSH_ENV",
@@ -33,6 +35,8 @@ __all__ = [
     "CloudLoggingSink",
     "LoggerFactory",
     "StorageClientFactory",
+    "atomic_append",
+    "atomic_write_bytes",
     "flush_buffer",
     "make_obs",
     "resolve_run_id",
