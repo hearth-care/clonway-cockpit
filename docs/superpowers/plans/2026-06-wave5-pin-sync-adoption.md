@@ -275,3 +275,15 @@ emitter phase, not first — but with money-repo scrutiny. There is no worker th
 **Known deviations from plan as written:**
 - auto-bookkeeper pin was `4c63daf` in the 2026-06-11 survey; by 2026-06-14 it had advanced to `1c86802` (122 ahead of tag). Plan table updated accordingly.
 - "Out of scope" note: wave5 item 1 (branch-protection) and item 3 (xbook AP consumer) remain separate.
+
+**CI FAIL (2026-06-14T13:02) — diagnosed as a false positive, no code defect:**
+The dispatcher's CI poller flagged "Gitleaks PR diff, docs" as failed. Root cause: two
+`pull_request` CI runs fired 3s apart (`27499711632` at 13:02:50 and `27499712758` at
+13:02:53); GitHub's concurrency group auto-**cancelled** the earlier run, and its cancelled
+jobs were misread as failures. The superseding run `27499712758` on the **identical SHA**
+`7fb520e` passed both `docs` and `Gitleaks PR diff`. That SHA has 7 green CI runs total. Locally
+re-verified by fixer-claude-20260614T130250Z-96205: `uv run pytest -q` → 1062 passed;
+`uv run pre-commit run --all-files` → all hooks Passed; `make docs` (the docs CI job) → exit 0
+(only pre-existing pdoc type-annotation warnings, unrelated to this PR's 3 files). No fix
+required; branch is current with origin/main (0 behind). This HANDOFF note + heartbeat commit
+re-trigger one clean uncancelled CI run for the record.
