@@ -89,6 +89,29 @@ def _commits_behind(base: str, head: str) -> int:
     return int(result.stdout.strip())
 
 
+_RELEASE_TAG_RE = re.compile(r"^v\d+\.\d+\.\d+$")
+
+
+def _is_release_tag(pin: str) -> bool:
+    return bool(_RELEASE_TAG_RE.match(pin))
+
+
+def _tag_ahead_or_equal(supported: str, pin: str) -> bool:
+    """True if release tag ``pin`` is the same as, or newer than, ``supported``.
+
+    A worker pinned to a newer cockpit release than the fleet baseline (e.g. xbook
+    on v0.2.0 while the baseline is v0.1.0) is fine — it's on a real tag, not behind,
+    not a raw SHA. Uses the GitHub compare API so no local cockpit clone is needed.
+    """
+    if pin == supported:
+        return True
+    try:
+        data = _gh(f"repos/{GH_ORG}/clonway-cockpit/compare/{supported}...{pin}")
+    except SystemExit:
+        return False
+    return data.get("status") in ("identical", "ahead")
+
+
 def main() -> None:
     tag = _supported_tag()
     print(f"Supported tag: {tag}")
@@ -109,6 +132,8 @@ def main() -> None:
             all_ok = False
         elif pin in (tag, tag_sha):
             note = f"OK (on {tag})"
+        elif _is_release_tag(pin) and _tag_ahead_or_equal(tag, pin):
+            note = f"OK (on {pin}, newer than {tag})"
         else:
             # Check if pin is a raw SHA or a different tag
             behind = _commits_behind(pin, tag_sha) if len(pin) >= 7 else -1
