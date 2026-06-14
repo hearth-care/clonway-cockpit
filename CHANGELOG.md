@@ -11,6 +11,8 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-14
+
 ### Added
 
 - **`clonway_cockpit.testing`** — pytest plugin that snapshots/restores the
