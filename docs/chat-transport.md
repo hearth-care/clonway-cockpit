@@ -8,9 +8,10 @@ Workspace add-on** event into that wire's `ChatMessage` and routes it. Platform 
 design spec:
 [`superpowers/specs/2026-06-10-chat-transport-design.md`](superpowers/specs/2026-06-10-chat-transport-design.md).
 
-**The framework owns the transport-agnostic core** (normalise → auth → bridge → route); the **worker**
-owns the edge (the HTTP route, the outbound Chat REST poster, the Cloud Run deploy). So the framework
-stays `rich`-only and every worker inherits the same envelope handling + trust boundary.
+**The framework owns the transport core and a stdlib reference edge**: normalise → auth → bridge →
+route in `chat_transport.py`, plus the WSGI app, outbound Chat REST poster, durable seen store, and
+local fake loop in `chat_addon.py`. A worker may front the WSGI callable with its own server, but the
+reference path is deployable with `python -m clonway_cockpit.chat_addon --serve`.
 
 > It is a **Workspace add-on, not a classic HTTP Chat app.** The two are materially different and
 > conflating them has burned whole sessions. This module mirrors the *proven* Auto-HR `xhr-server`
@@ -99,20 +100,51 @@ app-layer gate is the email allowlist.
 
 ## What the worker supplies
 
-This module is transport-agnostic. The worker provides: (1) the **HTTP route** (`POST /chat-events`)
-that parses the JSON body and calls `handle_event`; (2) a `ChatTransport` whose `post(space, text)`
-calls the Chat REST `spaces.messages.create` as the Chat-app service account; (3) the **deploy**
-(below). Per-space **multi-turn memory** is now available framework-side: inject `remembering_responder`
-(`chat_memory.py`), which attaches `PersonaMemory.thread(scope_for_space(message.space))` around the
-reply — the worker only chooses the responder and supplies the private-memory root.
+Workers supply persona/soul data, gateway config, operator allowlist, the runtime image, and the
+Cloud Run / Workspace add-on deployment. They do **not** need to reimplement the route or REST poster
+unless they have a worker-specific server stack.
+
+## The shipped edge
+
+`clonway_cockpit.chat_addon` is the framework-owned reference edge:
+
+- `CHAT_EVENTS_PATH = "/chat-events"` and `build_addon_app(router, *, background)` expose the WSGI
+  app. `background` is explicit: use `run_inline` for tests/local fake, `spawn_daemon_thread` for the
+  deployable reference server.
+- `FileSeenStore(path)` persists handled `message.name` values with append + flush + `fsync`, and
+  plugs into `ChatRouter(already_handled=store.__contains__, mark_handled=store.add)`.
+- `RestChatTransport(metadata_token_supplier)` posts replies to `spaces.messages.create` as
+  `{"text": ...}` using the Cloud Run metadata-server access token.
+- `build_serve_app(os.environ)` wires colleagues, gateway responder, REST poster, allowlist, and
+  durable seen store into the same WSGI app.
+- `python -m clonway_cockpit.chat_addon --fake` runs a zero-Google local loop through the same app.
+- `python -m clonway_cockpit.chat_addon --serve --port 8080` starts the reference `wsgiref` server.
+
+Environment contract for `--serve`:
+
+| Env var | Meaning |
+|---|---|
+| `CLONWAY_CHAT_PERSONAS_DIR` | Directory of persona `.toml` files. |
+| `CLONWAY_CHAT_SOULS_DIR` | Directory of matching soul `.md` files. |
+| `CLONWAY_CHAT_GATEWAY_CONFIG` | JSON gateway config parsed by `GatewayConfig.from_dict`. |
+| `CLONWAY_CHAT_ROLE` | Gateway role, default `chat`. |
+| `CLONWAY_CHAT_OPERATORS` | Comma-separated operator allowlist; unset trusts no one. |
+| `CLONWAY_CHAT_SEEN_FILE` | Durable dedup file, default `.cockpit/chat-seen.txt`. |
+| `PORT` | Cloud Run listen port; `--port` overrides locally. |
+
+Per-space **multi-turn memory** is available framework-side: inject `remembering_responder`
+(`chat_memory.py`) into the responder path, with durable dedup enabled, so redelivery does not record
+duplicate turns.
 
 ## Operator deploy runbook (the load-bearing other half)
 
 A correctly-written transport that is mis-deployed is a dead transport. Deploy it as a **Workspace
 add-on**, mirroring `xhr-server`:
 
-1. **Cloud Run service.** Deploy with `--allow-unauthenticated` (the IAM invoker grant + the email
-   allowlist are the gates, *not* an app token). Region pinned to the fleet's region.
+1. **Cloud Run service.** Deploy a service that runs
+   `python -m clonway_cockpit.chat_addon --serve` with `--allow-unauthenticated` (the IAM invoker
+   grant + the email allowlist are the gates, *not* an app token). Region pinned to the fleet's
+   region.
 2. **IAM invoker.** Grant the Workspace add-on service agent `roles/run.invoker` on the service:
    `service-<PROJECT_NUMBER>@gcp-sa-gsuiteaddons.iam.gserviceaccount.com`. Without this, the add-on
    cannot invoke the endpoint.
@@ -127,10 +159,12 @@ add-on**, mirroring `xhr-server`:
 5. **Operator allowlist.** Set `CLONWAY_CHAT_OPERATORS` to the comma-separated operator email(s). An
    empty/unset value trusts no one (fail-closed) — the transport will ack but never treat anything as
    a command.
-6. **Outbound poster identity.** The worker's `ChatTransport.post` authenticates as the Chat-app
-   service account (scope `chat.bot`); cards/messages appear "from <persona bot>".
+6. **Runtime config.** Set `CLONWAY_CHAT_PERSONAS_DIR`, `CLONWAY_CHAT_SOULS_DIR`,
+   `CLONWAY_CHAT_GATEWAY_CONFIG`, optional `CLONWAY_CHAT_ROLE`, and `CLONWAY_CHAT_SEEN_FILE`.
+7. **Outbound poster identity.** The reference `RestChatTransport.post` authenticates from Cloud Run's
+   metadata-server token (scope `chat.bot`); messages appear from the add-on identity.
 
-Until step 1–5 are done and a real DM has been **watched landing**, the slice is *built* but not
+Until steps 1–7 are done and a real DM has been **watched landing**, the slice is *built* but not
 *demonstrably working* — see the architecture's delivery ladder (exists in code → deployed → enabled →
 watched working).
 
@@ -138,6 +172,7 @@ watched working).
 
 Normalisation never raises (unknown shape → ignored). The router acts only on `MESSAGE` events in v1;
 `ADDED_TO_SPACE` / `REMOVED_FROM_SPACE` / `CARD_CLICKED` are surfaced (so a worker can handle them
-deliberately) but acked-and-ignored here. Cards/buttons, the outbound Chat REST client, the HTTP
-route, and the live deploy are out of this slice (worker-side or later); per-space multi-turn memory
-is its own merged slice (`chat_memory.py`, `docs/thread-memory.md`).
+deliberately) but acked-and-ignored here. Cards/buttons and the live deploy remain worker/operator
+work; the reference HTTP route, REST poster, local fake, and durable dedup store are shipped in
+`chat_addon.py`. Per-space multi-turn memory is its own merged slice (`chat_memory.py`,
+`docs/thread-memory.md`).

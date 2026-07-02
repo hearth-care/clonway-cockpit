@@ -11,6 +11,13 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+### Added
+
+- **`clonway_cockpit.chat_addon`** — stdlib Google Chat Workspace add-on edge for the persona
+  transport: WSGI `/chat-events` app, explicit background executors, durable `FileSeenStore` dedup,
+  Chat REST poster, Cloud Run metadata token supplier, env-wired `--serve`, and zero-Google `--fake`
+  local loop.
+
 ## [0.2.0] - 2026-06-14
 
 ### Added

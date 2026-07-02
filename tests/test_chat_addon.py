@@ -3,18 +3,19 @@ import json
 import os
 import threading
 import time
+from contextlib import suppress
 from urllib.error import URLError
 
 import pytest
 
 from clonway_cockpit.chat_addon import (
     CHAT_EVENTS_PATH,
+    MAX_BODY_BYTES,
     ChatAddonConfigError,
     FileSeenStore,
-    MAX_BODY_BYTES,
     RestChatTransport,
-    build_serve_app,
     build_addon_app,
+    build_serve_app,
     fake_dm_envelope,
     metadata_token_supplier,
     run_fake,
@@ -189,10 +190,8 @@ def test_background_failure_leaves_event_unmarked():
         raise RuntimeError("boom")
 
     def swallow(fn):
-        try:
+        with suppress(RuntimeError):
             fn()
-        except RuntimeError:
-            pass
 
     app = _make_app(
         FakeChatTransport(),
@@ -329,7 +328,7 @@ def test_rest_transport_posts_message_create():
 )
 def test_rest_transport_error_propagates(opener):
     transport = RestChatTransport(token_supplier=lambda: "tok", opener=opener)
-    with pytest.raises(Exception):
+    with pytest.raises((RuntimeError, URLError)):
         transport.post("spaces/AAA", "hi")
 
 

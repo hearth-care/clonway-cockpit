@@ -443,13 +443,13 @@ flip deployed/watched-working), `docs/persona-platform-go-live-plan.md` (Slice B
 framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 `CHANGELOG.md` (`## [Unreleased]` entry), and this plan (tick boxes, HANDOFF NOTES).
 
-- [ ] Docs above updated; delivery-table row added in the same PR (the table's update rule).
-- [ ] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
+- [x] Docs above updated; delivery-table row added in the same PR (the table's update rule).
+- [x] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
   `make lint` · `make format` · `make typecheck` · `make test`
 - [ ] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
   surface: `python -m clonway_cockpit.chat_addon --serve` env contract, `--fake` local check,
   deploy prerequisites below) and repeat it in the DONE comment (HR1).
-- [ ] **Step 5 — commit:** `docs(chat-addon): shipped-edge docs, delivery-table row, changelog`
+- [x] **Step 5 — commit:** `docs(chat-addon): shipped-edge docs, delivery-table row, changelog`
 
 ## OPERATOR TODO (not builder work; the edge is complete and testable without these)
 
@@ -490,8 +490,8 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 5 complete; Task 6 not started.
-- Next concrete step: Task 6 docs/changelog/delivery-table updates, then full gates.
+- Current phase: Task 6 docs and full local gates complete; RUNBOOK DELTA comment not yet posted.
+- Next concrete step: commit/push Task 6 docs + gate fixes, post RUNBOOK DELTA, then finish protocol.
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
@@ -503,6 +503,9 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
   `uv run pytest tests/test_chat_addon.py -q` → `25 passed`. Task 5 RED failed at the missing
   `ChatAddonConfigError` import; GREEN verification was
   `uv run pytest tests/test_chat_addon.py -q` → `28 passed`, and manual fake smoke printed
-  `spaces/LOCAL: Demo: hi`.
+  `spaces/LOCAL: Demo: hi`. Task 6 gates: `make lint` → `All checks passed!`; `make format` →
+  `162 files already formatted`; `make typecheck` → `Success: no issues found in 67 source files`;
+  `make test` → `1090 passed in 30.22s`; `uv run pre-commit run --all-files` → all hooks passed.
+  `uv.lock` now records local editable package version `0.2.0`, matching `pyproject.toml`.
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.

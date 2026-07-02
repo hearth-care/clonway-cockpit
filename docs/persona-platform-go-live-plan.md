@@ -17,13 +17,13 @@ integration slices, with one real build and one open-ended program.
 ## The keystone
 
 **The Google Chat transport (a Workspace add-on).** Nothing goes green without it — it's the
-surface that lets you DM a colleague and get a reply. It is the one piece that is a real build,
-not wiring. The architecture doc's [Chat-transport section](persona-platform-architecture.md)
-already has the recipe (modelled on Auto-HR's `xhr-server`): Cloud Run IAM auth (not an app token),
-the nested event envelope, the **message-receive trigger must be declared in the add-on
-deployment** (the #1 "deployed but dead" cause), and a ~30s reply window that forces a fast-ack +
-async-follow-up pattern. This has burned whole sessions before (classic-app vs add-on confusion),
-so treat it as the risk centre.
+surface that lets you DM a colleague and get a reply. The framework reference edge is now coded in
+`clonway_cockpit.chat_addon` (`python -m clonway_cockpit.chat_addon --serve`, plus `--fake` for local
+checks), but the worker/server wiring and operator deployment are still not watched-working. The
+architecture doc's [Chat-transport section](persona-platform-architecture.md) has the recipe
+(modelled on Auto-HR's `xhr-server`): Cloud Run IAM auth (not an app token), the nested event
+envelope, the **message-receive trigger must be declared in the add-on deployment** (the #1
+"deployed but dead" cause), and a ~30s reply window that forces a fast-ack + async-follow-up pattern.
 
 ## Two tracks — NOT the same size
 
@@ -46,12 +46,13 @@ so treat it as the risk centre.
   green.**
 
 ### Slice B — The Google Chat transport (the keystone build)
-- **Does:** build the Workspace add-on; wire its `/chat-events` endpoint → Milo's `run_turn` →
-  reply as a Card; IAM auth + operator-email allowlist; fast-ack + async follow-up for the 30s
-  window; declare the message-receive trigger; flip it on. Lands on the existing `xbook-server`.
+- **Does:** use the coded framework edge (`chat_addon.py`) to expose `/chat-events`; wire the
+  worker/xbook responder to Milo's `run_turn`; IAM auth + operator-email allowlist; fast-ack +
+  async follow-up for the 30s window; declare the message-receive trigger; flip it on. Lands on the
+  existing `xbook-server`.
 - **Greens:** you can DM Milo from Chat/your phone and he answers about the real books.
-- **Takes:** the one real build. Reference: Auto-HR `xhr-server` + the architecture transport
-  section. Highest-risk slice.
+- **Takes:** remaining worker integration plus operator deployment. Reference: Auto-HR `xhr-server`
+  + the architecture transport section. Highest-risk slice until a real DM is watched landing.
 
 ### Slice C — Per-space session memory (true multi-turn) — **in review (#79)**
 - **Does:** persist a transcript keyed by Chat space/thread, so a conversation remembers across

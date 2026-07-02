@@ -15,8 +15,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, TextIO
 from urllib import request as urlrequest
-
 from wsgiref.simple_server import make_server
+from wsgiref.types import StartResponse, WSGIApplication
 
 from .chat_transport import ChatRouter, ack_response, load_allowlist
 from .colleague import gateway_responder, load_colleagues
@@ -27,8 +27,7 @@ from .persona import Persona, PersonaRegistry
 CHAT_EVENTS_PATH = "/chat-events"
 MAX_BODY_BYTES = 1_048_576
 
-StartResponse = Callable[[str, list[tuple[str, str]]], None]
-WsgiApp = Callable[[dict[str, Any], StartResponse], Iterable[bytes]]
+WsgiApp = WSGIApplication
 Opener = Callable[..., Any]
 
 
@@ -169,7 +168,10 @@ def build_addon_app(
         except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
             return _response(start_response, "400 Bad Request", b"bad request")
 
-        background(lambda: _run_content_free(lambda: router.handle_event(event)))
+        def handle() -> None:
+            router.handle_event(event)
+
+        background(lambda: _run_content_free(handle))
         body = json.dumps(ack_response()).encode("utf-8")
         return _response(start_response, "200 OK", body, content_type="application/json")
 
@@ -220,6 +222,14 @@ def run_fake(lines: Iterable[str], *, output: TextIO | None = None) -> list[str]
     )
     app = build_addon_app(router, background=run_inline)
     replies: list[str] = []
+
+    def start_response(
+        status: str,
+        headers: list[tuple[str, str]],
+        exc_info: object = None,
+    ) -> Callable[[bytes], object]:
+        return lambda data: None
+
     for line in lines:
         text = line.strip()
         if not text:
@@ -232,7 +242,7 @@ def run_fake(lines: Iterable[str], *, output: TextIO | None = None) -> list[str]
             "CONTENT_LENGTH": str(len(body)),
             "wsgi.input": _BytesInput(body),
         }
-        app(env, lambda status, headers: None)
+        app(env, start_response)
         for space, reply in transport.posted[before:]:
             rendered = f"{space}: {reply}"
             replies.append(rendered)
