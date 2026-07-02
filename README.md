@@ -35,7 +35,7 @@ any worker — it is the substrate they build on, not the other way round.
 | **Framework spine** (walk machine, render primitives, agent channel, write gate, contract gate) | Built, tested, in use |
 | **Worker template** (`worker-template/` + `copier.yml`) | Generates conformant workers out of the box |
 | **Persona platform** (model gateway, personas, souls, group chat, receptionist, colleague wire) | Tested libraries + local demos; no live Chat transport yet |
-| **Fleet adoption** | Uneven — consumers are conformant only after pinning + wiring; see below |
+| **Fleet adoption** | All 8 fleet workers pin release tags and expose `--agent-stdio`; 7 run the full framework contract gate, xquill carries a smoke-only contract gap (see [docs/fleet-conformance.md](docs/fleet-conformance.md) — verified 2026-07-02) |
 
 Detailed persona-platform status (what's live, what's local-only, recommended next steps):
 [docs/persona-platform-getting-started.md](docs/persona-platform-getting-started.md).

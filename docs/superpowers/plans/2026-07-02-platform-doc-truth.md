@@ -167,15 +167,15 @@ sha/date where this plan shows recon values):
 
 ### Task 5 — `README.md` status claims
 
-- [ ] "Framework status" row `Fleet adoption | Uneven — consumers are conformant only after
+- [x] "Framework status" row `Fleet adoption | Uneven — consumers are conformant only after
   pinning + wiring; see below` → reflect verified state, e.g.
   `All 8 fleet workers pin release tags and expose --agent-stdio; 7 fully conformant, xadmissions
   carries a parity-gap (see docs/fleet-conformance.md — verified <date>)` (builder pins the exact
   worded truth to Task 1 results; keep the pointer).
-- [ ] Persona-platform row: leave `no live Chat transport yet` **unless** the transport-edge work
+- [x] Persona-platform row: leave `no live Chat transport yet` **unless** the transport-edge work
   has merged by build time — verify against `origin/main` before touching it (it is true as of
   `904e4ab`).
-- [ ] **Verify** doc-only diff; **Commit:** `docs(readme): fleet-adoption status matches verified tracker truth`
+- [x] **Verify** doc-only diff; **Commit:** `docs(readme): fleet-adoption status matches verified tracker truth`
 
 ### Task 6 — final verification + gates
 
@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 4 complete; ready for Task 5 (`README.md`).
-- Next concrete step: refresh the README fleet-adoption status row against the verified tracker truth.
+- Current phase: Task 5 complete; ready for Task 6 final verification and gates.
+- Next concrete step: run the drift guard, doc-only diff check, and full local gates.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none (doc-only).
 - Dependencies/operator TODOs: none.
