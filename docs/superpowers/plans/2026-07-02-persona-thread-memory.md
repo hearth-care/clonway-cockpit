@@ -731,9 +731,10 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete (all task checkboxes ticked; runbook delta posted).
-- Next concrete step: final PR protocol only — mark ready, move labels, post DONE with gate tails,
-  then remove the worktree.
+- Current phase: fixer pass for CI FAIL complete; implementation checkboxes remain complete and
+  runbook delta remains posted.
+- Next concrete step: final PR protocol only — mark ready, move labels, post DONE with fresh
+  gate tails, then remove the worktree.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
@@ -741,6 +742,10 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
   `make lint` -> `All checks passed!`; `make format` -> `162 files already formatted`;
   `make typecheck` -> `Success: no issues found in 67 source files`; `make test` ->
   `1112 passed in 30.04s`; `uv run pre-commit run --all-files` -> all hooks Passed.
+- CI FAIL 2026-07-02T16:13:16Z follow-up: reproduced the named `docs` check locally with
+  `make docs` and inspected the same GitHub docs job plus the later claim-triggered docs job.
+  Both completed successfully; only the repo's existing pdoc warning stream appeared. Branch is
+  already based on current `origin/main` (`b3e592a`), with no rebase conflict work needed.
 - Deviations recorded: Task 7 test preserves the merged #109 `run_fake` return shape
   (`"spaces/LOCAL: <reply>"`), while asserting the planned echo counts inside `<reply>`.
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
