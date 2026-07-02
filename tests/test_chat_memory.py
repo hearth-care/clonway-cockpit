@@ -7,8 +7,8 @@ scope normalizer, the transcript projection, the memory-aware responder, the pre
 ``ChatRouter``.
 """
 
-import threading
 import logging
+import threading
 
 import pytest
 
@@ -134,12 +134,17 @@ def test_overflow_compacts_oldest_turns_into_summary(tmp_path):
 
 
 def test_summary_truncates_oldest_lines_at_line_boundary(tmp_path):
-    t = ThreadTranscript(
-        tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20
-    )
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20)
     for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
         t.record(USER if i % 2 == 0 else PERSONA, text)
     assert t.summary() == "persona: t1\nuser: t2"  # 29 chars > 20 -> oldest whole line dropped
+
+
+def test_summary_single_overlong_line_hard_truncates(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20)
+    for i, text in enumerate(["a" * 50, "b" * 50, "c" * 50, "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == f"user: {'c' * 14}"
 
 
 def test_crash_window_folded_turns_are_not_double_replayed(tmp_path):
@@ -345,7 +350,13 @@ def test_responder_splices_summary_after_soul(tmp_path):
     msg = ChatMessage.from_text("and now?", author="owner", is_owner=True, space="spaces/AAA")
     respond(Persona("milo", "Milo", "milo domain"), msg)
     roles = [m["role"] for m in comp.calls[0]]
-    assert roles == ["system", "system", "assistant", "user", "user"]  # soul, summary, t3, t4, current
+    assert roles == [
+        "system",
+        "system",
+        "assistant",
+        "user",
+        "user",
+    ]  # soul, summary, t3, t4, current
     assert comp.calls[0][1]["content"].startswith("Earlier in this conversation")
 
 

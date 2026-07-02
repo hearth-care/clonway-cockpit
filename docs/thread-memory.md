@@ -57,16 +57,48 @@ joined to the first 16 hex of `sha256` of the **original** id. The hash makes th
 different scopes, so one space's memory can never leak into another. Deterministic and total (any
 input, including `""`, yields a valid slug).
 
-### `ThreadTranscript(base, handle, scope)`
+### `ThreadTranscript(base, handle, scope, *, max_turns=200, keep_turns=100, summary_max_chars=4000)`
 
 A turn-by-turn transcript **projected onto** the #77 store — it reuses that store, it does not change
 it. Turns are ordinary `Fact` files (`turn-NNNNNN`) under the persona's `thread(scope)` directory.
 
 - `record(role, text)` — append one turn (`role` is `USER` or `PERSONA`). Zero-padded, monotonic
-  index so the store's name-sorted reads come back in chronological order. **Blank text records
-  nothing.**
+  index so reads come back in chronological order. **Blank text records nothing.** Writes are
+  serialized inside one process, then compact the thread when unfolded turns exceed `max_turns`.
 - `recent(limit=12)` — the last `limit` turns in chronological order as gateway `Message`s
   (`PERSONA` → `assistant`, otherwise `user`). A missing/empty thread yields `[]` (never raises).
+- `summary()` — the compacted rolling summary body, or `None`.
+- `context(limit=12)` — a summary `system` message, when one exists, followed by `recent(limit)`.
+  The summary header is:
+  `Earlier in this conversation (compacted summary):`
+- `forget_thread()` — deletes the whole `(persona, thread)` directory, including turns, summary, and
+  corrupt strays. It returns `True` only when the directory existed.
+
+Compaction is deterministic and extractive: folded turns contribute `"{kind}: {summary}"` lines to
+the reserved `thread-summary` Fact. That Fact's `source` field carries `folded-through: NNNNNN`,
+which is the authority on which turn indices have already been folded. If a crash leaves folded turn
+files behind, replay excludes them and the next `record()` sweeps them. The next index is
+`max(folded-through, on-disk turn indices) + 1`, so a thread never reuses an index hidden by the
+summary.
+
+Bounds are module constants in `chat_memory.py`:
+
+| Constant | Default | Meaning |
+|---|---:|---|
+| `DEFAULT_TURNS` | 12 | Replayed turn window, about six exchanges. |
+| `MAX_TURNS_ON_DISK` | 200 | Compaction trigger for unfolded turns. |
+| `KEEP_TURNS` | 100 | Newest unfolded turns kept after compaction. |
+| `SUMMARY_MAX_CHARS` | 4000 | Rolling summary body cap; oldest whole lines drop first. |
+
+The operator deletion command derives the same scope as the responder and prints only
+`forgotten` or `nothing to forget`:
+
+```bash
+python -m clonway_cockpit.chat_memory forget \
+  --memory-base /configured/private-root \
+  --handle milo \
+  --space spaces/AAA
+```
 
 ### `remembering_responder(colleagues, completer, *, role, memory_base, history_turns=12, quiet_on_error=True)`
 
@@ -74,7 +106,7 @@ Same `(Persona, ChatMessage) -> str | None` contract as `gateway_responder`, plu
 
 1. derives the scope from `message.space` (an **empty** space → stateless, identical to
    `gateway_responder` — no bogus shared bucket);
-2. builds `[system(soul)] + recent(history_turns) + [user(message.text)]` and completes it;
+2. builds `[system(soul)] + context(history_turns) + [user(message.text)]` and completes it;
 3. **on a non-empty reply only**, records the engaged turn pair (`user`: the inbound message, then
    `persona`: the reply). An empty reply or a `GatewayError` (under `quiet_on_error`) returns `None`
    and records nothing.
@@ -95,11 +127,11 @@ quiet in a group round stores nothing for that turn (a v1 boundary; see below).
 
 ## Data at rest
 
-Conversation turns are persisted as **plaintext markdown** under `<memory_base>/<handle>/threads/<scope>/`
-— a new disclosure surface the stateless `gateway_responder` did not have (it kept nothing). Turns may
-contain PII. Keep `memory_base` **cockpit-owned and gitignored**, never a repo path; encryption-at-rest
-and a retention sweep are the consumer's directory discipline / a later slice (same posture as the
-shared handbook — see [`private-memory.md`](private-memory.md)).
+Conversation turns and summaries are persisted as **plaintext markdown** under
+`<memory_base>/<handle>/threads/<scope>/` — a disclosure surface the stateless `gateway_responder`
+does not have. Turns may contain PII. Keep `memory_base` **cockpit-owned and gitignored**, never a
+repo path; encryption-at-rest and age-based retention sweeps are the consumer's directory discipline
+/ a later slice (same posture as the shared handbook — see [`private-memory.md`](private-memory.md)).
 
 ## Deploy prerequisites (must be true before the live transport carries this)
 
@@ -111,14 +143,11 @@ but they are **required** when it does:
   redelivered message records the turn pair twice and the duplicate evicts real history from the
   `recent(limit)` window. (Memory raises the stakes of a gap the stateless responder merely showed as
   a duplicate *reply*.)
-- **Single writer per (persona, space).** `record` reads the current max turn index and writes the
-  next; v1 assumes one writer at a time per thread (the reference `xhr-server` fast-acks then posts
-  from a single background task). Genuinely concurrent writers on the *same* thread (≥2 Cloud Run
-  instances handling one space at once) can collide on an index. Coordinated/atomic appends land with
-  the live-deploy slice.
-- **Append cost is O(turns-in-thread) per message** (a turn is recorded by scanning the thread's
-  existing turns). It is dwarfed by the per-turn model completion at realistic conversation lengths;
-  unbounded growth is the retention/compaction slice's job.
+- **Single writer per (persona, space) across processes.** Same-process concurrency is serialized by
+  `ThreadTranscript.record`, but two Cloud Run instances can still race on the same mounted
+  directory. Keep the live deployment to one writer per thread, matching the cursor-store discipline.
+- **Append cost is bounded by compaction.** Recording scans the thread directory, but compaction keeps
+  the unfolded turn set under `MAX_TURNS_ON_DISK` and caps summary prompt overhead.
 
 ## Scope & limits (v1)
 
@@ -130,9 +159,8 @@ but they are **required** when it does:
   DM transcript and a group-space transcript, each isolated; there is no cross-space recall. *"Like we
   discussed in our DM"* said from the group room gets a blank stare. To carry a fact across surfaces,
   promote it to **shared** memory via `GovernedWriter` (owner-gated).
-- **`history_turns` (default 12 ≈ 6 exchanges)** bounds the replayed window. Raise it (e.g. 20–30) for
-  a long single task — mind the token cost — or, better, promote recurring facts to
-  `PersonaMemory.working` so they persist regardless of window. Every turn is still kept on disk; only
-  the *replayed* window is bounded.
-- No memory *reflector/summariser* (compacting an old transcript into durable notes) and no
-  semantic/embedding recall — the store's keyword `recall` already exists for the latter.
+- **`history_turns` (default 12 ≈ 6 exchanges)** bounds replayed turns. Older turns fold into the
+  deterministic summary, which is also bounded by `SUMMARY_MAX_CHARS`.
+- No model-quality memory reflector and no semantic/embedding recall — the store's keyword `recall`
+  already exists for the latter. The shipped summary Fact is the contract a future model summariser
+  can write behind.

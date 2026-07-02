@@ -177,35 +177,35 @@ the authority; sweep-on-next-record is the recovery; `forget_thread` is idempote
 
 ## Full state set (HR5 — each an acceptance checkbox with its named test)
 
-- [ ] new thread (no scope dir): context `[]`, first exchange recorded — existing
+- [x] new thread (no scope dir): context `[]`, first exchange recorded — existing
   `test_responder_first_call_has_no_history_then_injects_prior_turns` (regression)
-- [ ] continuing thread under the window: prior turns replayed chronologically — existing
+- [x] continuing thread under the window: prior turns replayed chronologically — existing
   `test_end_to_end_router_dm_remembers_across_turns` (regression)
-- [ ] window overflow → compaction + summary (worked example below) —
+- [x] window overflow → compaction + summary (worked example below) —
   `test_overflow_compacts_oldest_turns_into_summary`
-- [ ] repeated overflow → summary truncates whole oldest lines to fit `summary_max_chars` —
+- [x] repeated overflow → summary truncates whole oldest lines to fit `summary_max_chars` —
   `test_summary_truncates_oldest_lines_at_line_boundary`; single overlong line hard-truncates to
   `line[:summary_max_chars]` — `test_summary_single_overlong_line_hard_truncates`
-- [ ] corrupt turn file → degrade + one content-free warning — invariant row 6
-- [ ] corrupt summary → degrade to no summary — invariant row 7
-- [ ] missing store → empty reads, `record` creates — invariant row 8
-- [ ] crash-window / folded-index reuse — invariant rows 11–12
-- [ ] cross-persona isolation (turns + summaries) — invariant rows 1–2
-- [ ] DM ↔ ROOM isolation, both directions — invariant row 3
-- [ ] empty `message.space` → stateless (no bogus bucket) — existing
+- [x] corrupt turn file → degrade + one content-free warning — invariant row 6
+- [x] corrupt summary → degrade to no summary — invariant row 7
+- [x] missing store → empty reads, `record` creates — invariant row 8
+- [x] crash-window / folded-index reuse — invariant rows 11–12
+- [x] cross-persona isolation (turns + summaries) — invariant rows 1–2
+- [x] DM ↔ ROOM isolation, both directions — invariant row 3
+- [x] empty `message.space` → stateless (no bogus bucket) — existing
   `test_responder_empty_space_is_stateless` (regression)
-- [ ] redelivered message with dedup hooks wired → one turn pair — existing
+- [x] redelivered message with dedup hooks wired → one turn pair — existing
   `test_end_to_end_redelivery_with_dedup_hooks_records_once` (regression)
-- [ ] deletion honoured: library `forget_thread` + operator CLI — invariant row 9,
+- [x] deletion honoured: library `forget_thread` + operator CLI — invariant row 9,
   `test_forget_cli_deletes_the_thread`, `test_forget_cli_nothing_to_forget`
-- [ ] summary reaches the model after the soul — `test_responder_splices_summary_after_soul`
-- [ ] *(post-#109)* owner DM through the real edge remembers across POSTs (real envelopes) —
+- [x] summary reaches the model after the soul — `test_responder_splices_summary_after_soul`
+- [x] *(post-#109)* owner DM through the real edge remembers across POSTs (real envelopes) —
   `test_edge_dm_remembers_across_posts_with_memory_wired`
-- [ ] *(post-#109)* non-operator DM through the edge records nothing — invariant row 13
-- [ ] *(post-#109)* `build_responder` selects memory vs stateless by `memory_dir` —
+- [x] *(post-#109)* non-operator DM through the edge records nothing — invariant row 13
+- [x] *(post-#109)* `build_responder` selects memory vs stateless by `memory_dir` —
   `test_build_responder_memory_dir_selects_memory`; `build_serve_app` plumbs the env var —
   `test_build_serve_app_passes_memory_dir_env`
-- [ ] *(post-#109)* `--fake` REPL multi-turn with `--memory-dir` —
+- [x] *(post-#109)* `--fake` REPL multi-turn with `--memory-dir` —
   `test_run_fake_with_memory_dir_carries_history`
 
 ## Real-contract grounding (HR12)
@@ -585,7 +585,7 @@ def test_conversation_and_compaction_never_write_shared_memory(tmp_path):
   `context(history_turns)` change in `remembering_responder`; nothing else.
 - [x] **Step 4 — verify:** `uv run pytest tests/test_chat_memory.py -q` — every pre-existing #79
   responder/e2e test still green (signature and stateless/rollback semantics unchanged).
-- [ ] **Step 5 — commit:** `feat(chat-memory): responder context = summary + window`
+- [x] **Step 5 — commit:** `feat(chat-memory): responder context = summary + window`
 
 ### Task 6 — [gated on #109] the transport seam: `build_responder` + `CLONWAY_CHAT_MEMORY_DIR`
 
@@ -679,8 +679,8 @@ per the table's own update rule; do NOT flip deployed/watched-working),
 `docs/persona-platform-go-live-plan.md` (Slice C: bounded memory + wiring coded; remaining =
 live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HANDOFF NOTES).
 
-- [ ] Docs + changelog updated as listed.
-- [ ] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
+- [x] Docs + changelog updated as listed.
+- [x] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
   `make lint` · `make format` · `make typecheck` · `make test`
 - [ ] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
   surface: `CLONWAY_CHAT_MEMORY_DIR` deploy knob — must point at a durable mount, never Cloud
@@ -731,15 +731,17 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 7 complete (`EchoCompleter`, memory-backed fake wiring, and `--memory-dir`
-  implemented; focused tests and manual smoke green).
-- Next concrete step: commit/push Task 7, then start Task 8 docs/changelog/gates/runbook delta.
+- Current phase: Task 8 in progress (docs/changelog updated; full gates and pre-commit green;
+  runbook delta and final PR protocol remain).
+- Next concrete step: commit/push Task 8 docs/checklist, post RUNBOOK DELTA, mark PR ready, move
+  labels, and post DONE with gate tails.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in `uv run pytest tests/test_chat_addon.py -q` after Task 7
-  implementation (`33 passed` before commit); manual fake smoke printed `[4 msgs]` on second
-  reply.
+- Known failing tests: none. Gate evidence before final protocol:
+  `make lint` -> `All checks passed!`; `make format` -> `162 files already formatted`;
+  `make typecheck` -> `Success: no issues found in 67 source files`; `make test` ->
+  `1112 passed in 30.04s`; `uv run pre-commit run --all-files` -> all hooks Passed.
 - Deviations recorded: Task 7 test preserves the merged #109 `run_fake` return shape
   (`"spaces/LOCAL: <reply>"`), while asserting the planned echo counts inside `<reply>`.
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR

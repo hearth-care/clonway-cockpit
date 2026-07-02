@@ -18,8 +18,8 @@ from urllib import request as urlrequest
 from wsgiref.simple_server import make_server
 from wsgiref.types import StartResponse, WSGIApplication
 
-from .chat_transport import ChatRouter, ack_response, load_allowlist
 from .chat_memory import remembering_responder
+from .chat_transport import ChatRouter, ack_response, load_allowlist
 from .colleague import Colleague, ColleagueRegistry, Completer, gateway_responder, load_colleagues
 from .gateway import Gateway, GatewayConfig
 from .gateway.types import Message
@@ -215,7 +215,9 @@ def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     problems = gateway.validate(roles=[role])
     if problems:
         raise ChatAddonConfigError("; ".join(problems))
-    memory_dir = Path(environ[CLONWAY_CHAT_MEMORY_DIR]) if environ.get(CLONWAY_CHAT_MEMORY_DIR) else None
+    memory_dir = (
+        Path(environ[CLONWAY_CHAT_MEMORY_DIR]) if environ.get(CLONWAY_CHAT_MEMORY_DIR) else None
+    )
     seen = FileSeenStore(Path(environ.get("CLONWAY_CHAT_SEEN_FILE", ".cockpit/chat-seen.txt")))
     router = ChatRouter(
         registry=colleagues.registry,
@@ -237,6 +239,7 @@ def run_fake(
     def echo(persona: Persona, message) -> str:
         return f"{persona.name}: {message.text}"
 
+    responder: Callable[[Persona, Any], str | None]
     if memory_dir is None:
         registry = PersonaRegistry.from_personas([persona])
         responder = echo
