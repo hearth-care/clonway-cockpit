@@ -682,11 +682,11 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 - [x] Docs + changelog updated as listed.
 - [x] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
   `make lint` · `make format` · `make typecheck` · `make test`
-- [ ] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
+- [x] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
   surface: `CLONWAY_CHAT_MEMORY_DIR` deploy knob — must point at a durable mount, never Cloud
   Run `/tmp`; `--fake --memory-dir` local check; `python -m clonway_cockpit.chat_memory forget`
   deletion command) and repeat it in the DONE comment (HR1).
-- [ ] **Commit:** `docs(thread-memory): bounded-memory contract, forget CLI, env wiring, changelog`
+- [x] **Commit:** `docs(thread-memory): bounded-memory contract, forget CLI, env wiring, changelog`
 
 ## OPERATOR TODO (not builder work)
 
@@ -731,10 +731,9 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 8 in progress (docs/changelog updated; full gates and pre-commit green;
-  runbook delta and final PR protocol remain).
-- Next concrete step: commit/push Task 8 docs/checklist, post RUNBOOK DELTA, mark PR ready, move
-  labels, and post DONE with gate tails.
+- Current phase: implementation complete (all task checkboxes ticked; runbook delta posted).
+- Next concrete step: final PR protocol only — mark ready, move labels, post DONE with gate tails,
+  then remove the worktree.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
