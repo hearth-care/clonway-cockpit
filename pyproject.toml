@@ -1,6 +1,6 @@
 [project]
 name = "clonway-cockpit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Shared interactive-cockpit framework spine extracted from xbook (C1) — walk machine + write gate, capability registry, render primitives, Signal model."
 requires-python = ">=3.12"
 readme = "README.md"

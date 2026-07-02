@@ -11,6 +11,8 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-02
+
 ### Added
 
 - **`clonway_cockpit.chat_addon`** — stdlib Google Chat Workspace add-on edge for the persona
