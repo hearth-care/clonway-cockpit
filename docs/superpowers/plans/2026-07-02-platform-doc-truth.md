@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 5 complete; ready for Task 6 final verification and gates.
-- Next concrete step: run the drift guard, doc-only diff check, and full local gates.
+- Current phase: Task 6 gates in progress.
+- Next concrete step: rerun the full local gates after the pin-sync row spelling fix.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
-- Known failing tests: none (doc-only).
+- Known failing tests: none; targeted rerun passed after restoring the `Auto-Orchestrator` spelling required by `tests/test_release_policy.py`.
 - Dependencies/operator TODOs: none.

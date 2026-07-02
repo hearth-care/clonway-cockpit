@@ -35,7 +35,7 @@ the survey's newer-tag rule from PR #108.
 
 | Worker repo | Pin as of 2026-07-02 | Status |
 |---|---|---|
-| auto-orchestrator | `v0.1.0` | OK (on supported baseline) |
+| Auto-Orchestrator | `v0.1.0` | OK (on supported baseline) |
 | auto-admissions | `v0.1.0` | OK (on supported baseline) |
 | auto-bookkeeper | `v0.2.0` | OK (newer release tag than `v0.1.0`) |
 | auto-hr | `v0.1.0` | OK (on supported baseline) |
