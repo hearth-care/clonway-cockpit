@@ -209,7 +209,7 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; builder-codex-20260702T201346Z-60518-17 verified the
+- Current phase: implementation complete; builder-codex-20260702T205108Z-60518-22 verified the
   implementation branch after claim handoff and confirmed it is up to date with `origin/main`.
 - Next concrete step: run finish protocol GitHub writes (`ready`, label swap, DONE), then remove
   the worktree.
@@ -217,14 +217,14 @@ sha/date where this plan shows recon values):
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
   `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
-  contract-gate calls on live `main` too.
-- Known failing tests: none. Gate results refreshed 2026-07-02T20:18:23Z in the mandated PR
+  contract-gate calls on live `main` too. Fresh 2026-07-02T21:00Z evidence found auto-bookkeeper
+  advanced to `91a980c` on `main` while still pinning `v0.2.0` and carrying both contract gates, so
+  the xbook tracker stamp was refreshed.
+- Known failing tests: none. Gate results refreshed 2026-07-02T21:00Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0 with the same 7 baseline workers plus
-  auto-bookkeeper on accepted newer `v0.2.0`; `make lint` passed (`All checks passed!`);
-  `make format` passed (`162 files already formatted`); `make typecheck` passed
-  (`Success: no issues found in 67 source files`); `make test` passed
-  (`1114 passed in 30.43s`); `pre-commit run --all-files` passed. Read-only final QA passed with
+  auto-bookkeeper on accepted newer `v0.2.0`; full local gates still need one final rerun after
+  the refreshed tracker stamp. Read-only final QA previously passed with
   no blocking findings; non-blocking note: `scripts/check_fleet_pins.py` still prints
   `All workers on v0.1.0.` even while the table correctly accepts auto-bookkeeper on `v0.2.0`, which remains
   outside this doc-only PR.
