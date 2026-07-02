@@ -209,7 +209,7 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; builder-codex-20260702T185706Z-60518-2 verified the
+- Current phase: implementation complete; builder-codex-20260702T195101Z-60518-11 verified the
   implementation branch after the xquill live-truth refresh and confirmed it is up to date with
   `origin/main`.
 - Next concrete step: move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove
@@ -219,10 +219,13 @@ sha/date where this plan shows recon values):
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
   `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
   contract-gate calls on live `main` too.
-- Known failing tests: none. Gate results refreshed 2026-07-02T19:00:17Z in the mandated PR
+- Known failing tests: none. Gate results refreshed 2026-07-02T19:54:42Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0; `make lint` passed (`All checks passed!`);
   `make format` passed (`162 files already formatted`); `make typecheck` passed
   (`Success: no issues found in 67 source files`); `make test` passed
-  (`1114 passed in 32.16s`); `pre-commit run --all-files` passed.
+  (`1114 passed in 32.09s`); `pre-commit run --all-files` passed. Read-only final QA passed with
+  no blocking findings; non-blocking note: `scripts/check_fleet_pins.py` still prints
+  `All workers on v0.1.0.` even while the table correctly accepts auto-bookkeeper on `v0.2.0`, which remains
+  outside this doc-only PR.
 - Dependencies/operator TODOs: none.
