@@ -446,7 +446,7 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 - [x] Docs above updated; delivery-table row added in the same PR (the table's update rule).
 - [x] Full gates, run verbatim from repo root, paste output tails in the DONE comment (HR2):
   `make lint` · `make format` · `make typecheck` · `make test`
-- [ ] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
+- [x] Post the `RUNBOOK DELTA` comment on `hearth-care/auto-orchestrator#196` (new operator
   surface: `python -m clonway_cockpit.chat_addon --serve` env contract, `--fake` local check,
   deploy prerequisites below) and repeat it in the DONE comment (HR1).
 - [x] **Step 5 — commit:** `docs(chat-addon): shipped-edge docs, delivery-table row, changelog`
@@ -490,8 +490,9 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 6 docs and full local gates complete; RUNBOOK DELTA comment not yet posted.
-- Next concrete step: commit/push Task 6 docs + gate fixes, post RUNBOOK DELTA, then finish protocol.
+- Current phase: implementation complete; finish protocol pending.
+- Next concrete step: rebase onto latest `origin/main`, push with lease, mark PR ready, relabel for QA,
+  post DONE comment, and remove this worktree.
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
@@ -507,5 +508,7 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
   `162 files already formatted`; `make typecheck` → `Success: no issues found in 67 source files`;
   `make test` → `1090 passed in 30.22s`; `uv run pre-commit run --all-files` → all hooks passed.
   `uv.lock` now records local editable package version `0.2.0`, matching `pyproject.toml`.
+  RUNBOOK DELTA posted to `hearth-care/auto-orchestrator#196`:
+  https://github.com/hearth-care/auto-orchestrator/pull/196#issuecomment-4867355126
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.
