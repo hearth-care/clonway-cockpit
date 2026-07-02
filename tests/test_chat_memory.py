@@ -333,6 +333,22 @@ def test_responder_first_call_has_no_history_then_injects_prior_turns(tmp_path):
     assert [m["content"] for m in comp.calls[1][1:]] == ["first", "answer", "second"]
 
 
+def test_responder_splices_summary_after_soul(tmp_path):
+    reg = _registry("milo")
+    comp = RecordingCompleter("ok")
+    respond = remembering_responder(reg, comp, role="chat", memory_base=tmp_path)
+    pre = ThreadTranscript(
+        tmp_path, "milo", scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2
+    )
+    for i in range(5):
+        pre.record(USER if i % 2 == 0 else PERSONA, f"t{i}")  # summary now on disk
+    msg = ChatMessage.from_text("and now?", author="owner", is_owner=True, space="spaces/AAA")
+    respond(Persona("milo", "Milo", "milo domain"), msg)
+    roles = [m["role"] for m in comp.calls[0]]
+    assert roles == ["system", "system", "assistant", "user", "user"]  # soul, summary, t3, t4, current
+    assert comp.calls[0][1]["content"].startswith("Earlier in this conversation")
+
+
 def test_responder_isolates_transcripts_per_persona(tmp_path):
     reg = _registry("milo", "vera")
     respond = remembering_responder(
@@ -354,6 +370,26 @@ def test_responder_isolates_transcripts_per_persona(tmp_path):
     assert [m["content"] for m in vera] == ["for vera", "ok"]
 
 
+def test_summary_isolation_per_persona(tmp_path):
+    for handle in ("milo", "iris"):
+        pre = ThreadTranscript(
+            tmp_path, handle, scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2
+        )
+        for i in range(5):
+            pre.record(USER if i % 2 == 0 else PERSONA, f"{handle}-t{i}")
+    milo_ctx = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA")).context(12)
+    assert all("iris" not in m["content"] for m in milo_ctx)
+
+
+def test_dm_and_room_contexts_never_cross(tmp_path):
+    dm = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/DM111"))
+    room = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/ROOM22"))
+    dm.record(USER, "dm-only fact")
+    room.record(USER, "room-only fact")
+    assert [m["content"] for m in dm.context(12)] == ["dm-only fact"]
+    assert [m["content"] for m in room.context(12)] == ["room-only fact"]
+
+
 def test_responder_never_writes_to_shared_memory(tmp_path):
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
@@ -373,6 +409,21 @@ def test_responder_never_writes_to_shared_memory(tmp_path):
     assert (
         SharedMemory(mem_base).all() == []
     )  # turns live in subdirs, not at the handbook top level
+
+
+def test_conversation_and_compaction_never_write_shared_memory(tmp_path):
+    reg = _registry("milo")
+    comp = RecordingCompleter("noted")
+    respond = remembering_responder(reg, comp, role="chat", memory_base=tmp_path)
+    for i in range(3):
+        msg = ChatMessage.from_text(f"m{i}", author="owner", is_owner=True, space="spaces/AAA")
+        respond(Persona("milo", "Milo", "milo domain"), msg)  # 3 exchanges = 6 turns on disk
+    # force a compaction through the SAME store the responder writes to (low test bounds)
+    t = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2)
+    t.record(USER, "one more")  # 7 turns > 4 -> folds oldest 5; summary Fact written
+    assert t.summary() is not None
+    # the shared tier reads the base directory — turns AND the summary stay in the private tree
+    assert SharedMemory(tmp_path).all() == []
 
 
 def test_responder_empty_space_is_stateless(tmp_path):

@@ -529,7 +529,7 @@ def test_forget_cli_nothing_to_forget(tmp_path, capsys):
 **Production call site (HR9):** `remembering_responder` — the exact callable #109's seam
 receives in Task 6.
 
-- [ ] **Step 1 — failing tests.** Embed verbatim (reuses the file's existing `RecordingCompleter`
+- [x] **Step 1 — failing tests.** Embed verbatim (reuses the file's existing `RecordingCompleter`
   / `_registry` helpers and `Persona` / `ChatMessage` / `SharedMemory` imports):
 
 ```python
@@ -580,10 +580,10 @@ def test_conversation_and_compaction_never_write_shared_memory(tmp_path):
     assert SharedMemory(tmp_path).all() == []
 ```
 
-- [ ] **Step 2 — RED** (`test_responder_splices_summary_after_soul` fails: only one `system`
+- [x] **Step 2 — RED** (`test_responder_splices_summary_after_soul` fails: only one `system`
   message today). **Step 3 — implement:** the one-line `recent(history_turns)` →
   `context(history_turns)` change in `remembering_responder`; nothing else.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_memory.py -q` — every pre-existing #79
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_memory.py -q` — every pre-existing #79
   responder/e2e test still green (signature and stateless/rollback semantics unchanged).
 - [ ] **Step 5 — commit:** `feat(chat-memory): responder context = summary + window`
 
@@ -731,14 +731,12 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 4 complete (forget-thread and operator CLI implemented; focused tests
-  green).
-- Next concrete step: commit/push Task 4, then start Task 5 responder context and isolation tests.
+- Current phase: Task 5 complete (responder now uses `context()`; focused tests green).
+- Next concrete step: commit/push Task 5, then start Task 6 chat-add-on memory seam tests.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in
-  `uv run pytest tests/test_chat_memory.py tests/test_private_memory.py -q` after Task 4
-  implementation (`65 passed` before commit).
+- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 5
+  implementation (`46 passed` before commit).
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.

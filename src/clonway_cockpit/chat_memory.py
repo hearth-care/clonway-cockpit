@@ -338,7 +338,7 @@ def remembering_responder(
         )
         messages: list[Message] = [{"role": "system", "content": system_prompt}]
         if transcript is not None:
-            messages.extend(transcript.recent(history_turns))
+            messages.extend(transcript.context(history_turns))
         messages.append({"role": "user", "content": message.text})
         try:
             reply = completer.complete(messages, role=role)
