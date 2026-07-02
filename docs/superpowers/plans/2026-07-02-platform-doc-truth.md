@@ -209,18 +209,22 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; rebased onto `origin/main` at `edec4b8` (v0.3.0 release).
-- Next concrete step: finish protocol done — worktree cleanup only.
+- Current phase: review fixes complete after final acceptance pass; rebased onto `origin/main` at
+  `edec4b8` (v0.3.0 release).
+- Next concrete step: run final gates, finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
   `assert_drives_clean`; auto-secretary/xquill now has both framework contract-gate calls on live
-  `main` too. Fresh evidence found auto-bookkeeper advanced to `91a980c` while still pinning
-  `v0.2.0`. `v0.3.0` (chat_addon transport + bounded persona thread memory) released 2026-07-02
-  after this plan was written; noted in pin-sync.md; no worker pins changed yet, supported
-  baseline still `v0.1.0`.
-- Known failing tests: none. Gates verified post-rebase: `grep drift-guard` → no matches;
+  `main` too. Final acceptance review found auto-bookkeeper, auto-hr, and auto-marketer had
+  advanced on `main`; their tracker stamps were refreshed to `c9b98b5`, `e20f14a`, and
+  `759054c` while their cockpit pins stayed on release tags. `v0.3.0` (chat_addon transport +
+  bounded persona thread memory) released 2026-07-02 after this plan was written; noted in
+  pin-sync.md and the getting-started checklist; no worker pins changed yet, supported baseline
+  still `v0.1.0`.
+- Known failing tests: none. Latest gates before review fixes: `grep drift-guard` → no matches;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.2.0;
-  `make lint` → All checks passed!; `make typecheck` → no issues in 67 files;
-  `make test` → 1114 passed; `pre-commit run --all-files` → all Passed.
+  `make lint` → All checks passed!; `make format` → 162 files already formatted;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed;
+  `pre-commit run --all-files` → all Passed. Re-run final gates after this handoff update.
 - Dependencies/operator TODOs: none.
