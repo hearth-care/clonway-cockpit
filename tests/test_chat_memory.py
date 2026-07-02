@@ -21,6 +21,7 @@ from clonway_cockpit.colleague import Colleague, ColleagueRegistry
 from clonway_cockpit.gateway.types import GatewayError, Message
 from clonway_cockpit.group_chat import ChatMessage, FakeChatTransport
 from clonway_cockpit.persona import Persona
+from clonway_cockpit.private_memory import PersonaMemory
 from clonway_cockpit.shared_memory import SharedMemory, is_safe_slug, render_fact, today
 
 # --- scope_for_space: raw Chat space id -> a collision-safe, debuggable slug -----------------
@@ -112,6 +113,58 @@ def test_transcript_survives_many_turns_in_order(tmp_path):
     for i in range(12):
         txn.record(USER, f"m{i}")
     assert [m["content"] for m in txn.recent(limit=100)] == [f"m{i}" for i in range(12)]
+
+
+def test_overflow_compacts_oldest_turns_into_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == "user: t0\npersona: t1\nuser: t2"
+    ctx = t.context(12)
+    assert [m["role"] for m in ctx] == ["system", "assistant", "user"]
+    assert ctx[0]["content"] == (
+        "Earlier in this conversation (compacted summary):\nuser: t0\npersona: t1\nuser: t2"
+    )
+    assert [m["content"] for m in ctx[1:]] == ["t3", "t4"]
+    names = {p.name for p in (tmp_path / "milo" / "threads" / "dm-x").glob("*.md")}
+    assert names == {"turn-000003.md", "turn-000004.md", "thread-summary.md"}
+
+
+def test_summary_truncates_oldest_lines_at_line_boundary(tmp_path):
+    t = ThreadTranscript(
+        tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20
+    )
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == "persona: t1\nuser: t2"  # 29 chars > 20 -> oldest whole line dropped
+
+
+def test_crash_window_folded_turns_are_not_double_replayed(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    # simulate the crash window: a folded turn re-appears (summary written, delete never ran)
+    PersonaMemory(tmp_path, "milo").thread("dm-x").remember(
+        name="turn-000001", kind=PERSONA, summary="t1", body="t1"
+    )
+    assert [m["content"] for m in t.context(12)[1:]] == ["t3", "t4"]  # <= folded-through: excluded
+    t.record(USER, "t5")  # the next record sweeps the leftover
+    names = {p.name for p in (tmp_path / "milo" / "threads" / "dm-x").glob("turn-*.md")}
+    assert "turn-000001.md" not in names
+
+
+def test_next_index_never_reuses_folded_indices(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    for p in (tmp_path / "milo" / "threads" / "dm-x").glob("turn-*.md"):
+        p.unlink()  # turns lost out-of-band; only thread-summary remains
+    name = t.record(USER, "fresh")
+    # rule: next = max([folded_through] + on_disk_indices) + 1 = max([2]) + 1 = 3.
+    # Reusing a lost-out-of-band NAME is fine; the guarantee is the index can never
+    # fall at or below folded-through (which would make the new turn invisible to replay).
+    assert name == "turn-000003"
+    assert [m["content"] for m in t.context(12)[1:]] == ["fresh"]  # replayed, not swallowed
 
 
 # --- remembering_responder: the memory-aware reference responder ----------------------------

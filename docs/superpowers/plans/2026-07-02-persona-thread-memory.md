@@ -296,7 +296,7 @@ asserts the responder path, Task 6 completes the edge wiring.
 **Interfaces:** the constants, `SUMMARY_FACT`, `SUMMARY_HEADER`, `ThreadTranscript` keyword
 bounds, `summary()`, `context()`, the `recent()` folded-through exclusion, the next-index rule.
 
-- [ ] **Step 1 — failing tests** (assert replayed messages and on-disk file sets — observable
+- [x] **Step 1 — failing tests** (assert replayed messages and on-disk file sets — observable
   behaviour, not internals; HR8). Embed verbatim:
 
 ```python
@@ -349,9 +349,9 @@ def test_next_index_never_reuses_folded_indices(tmp_path):
     assert name == "turn-000003"
     assert [m["content"] for m in t.context(12)[1:]] == ["fresh"]  # replayed, not swallowed
 ```
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/test_chat_memory.py -q` → expect
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/test_chat_memory.py -q` → expect
   `TypeError: ... unexpected keyword argument 'max_turns'` first (proves load-bearing).
-- [ ] **Step 3 — implement:** constructor bounds (validate `2 <= keep_turns < max_turns` and
+- [x] **Step 3 — implement:** constructor bounds (validate `2 <= keep_turns < max_turns` and
   `summary_max_chars >= 1`, `ValueError` otherwise); `_folded_through()` (parse the summary
   Fact's `source` with `re.search(r"folded-through:\s*(\d+)")`, unparseable/absent → `-1`);
   `recent()`/`_next_index` honour decision 3/4; `record()` → write turn, sweep
@@ -361,9 +361,9 @@ def test_next_index_never_reuses_folded_indices(tmp_path):
   `line[:summary_max_chars]`), `remember(name=SUMMARY_FACT, kind="summary", summary=<first
   line>, body=..., source=f"folded-through: {idx:06d}")`, then `forget` each folded turn;
   `summary()` / `context()` per the contract table. Add `PrivateScope.path` property.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_memory.py -q` → all pass (including
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_memory.py -q` → all pass (including
   every pre-existing #79 test, untouched).
-- [ ] **Step 5 — commit:** `feat(chat-memory): bounded transcript — folded-through summary, context(), compaction`
+- [x] **Step 5 — commit:** `feat(chat-memory): bounded transcript — folded-through summary, context(), compaction`
 
 ### Task 2 — atomic writes + same-process concurrency
 
@@ -731,11 +731,13 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: not started.
-- Next concrete step: Task 1 Step 1 (write the failing bounded-transcript tests).
+- Current phase: Task 1 complete (bounded transcript core implemented; focused tests green).
+- Next concrete step: push the Task 1 heartbeat, then start Task 2 failing tests for atomic
+  writes and same-process record concurrency.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none yet.
-- Dependencies/operator TODOs: #109 must be merged before Tasks 6–7; OPERATOR TODO above for the
-  live deploy.
+- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 1
+  implementation (`35 passed` before commit).
+- Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
+  TODO above remains for the live deploy.

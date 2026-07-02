@@ -69,6 +69,11 @@ class PrivateScope:
         self._base = base
         self._reader = SharedMemory(base)
 
+    @property
+    def path(self) -> Path:
+        """The on-disk scope directory. Read-only so callers do not rebuild the layout."""
+        return self._base
+
     # --- read (delegated to the shared reader — the load/recall logic is defined once) ---
 
     def get(self, name: str) -> Fact | None:

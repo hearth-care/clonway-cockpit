@@ -36,6 +36,7 @@ from .group_chat import ChatMessage
 from .persona import Persona
 from .persona_soul import SoulError
 from .private_memory import PersonaMemory, PrivateScope
+from .shared_memory import Fact
 
 # Turn roles (the ``kind`` a recorded turn carries on disk, and the basis for the replay role).
 USER = "user"
@@ -46,6 +47,21 @@ PERSONA = "persona"
 DEFAULT_TURNS = 12
 """How many of the most recent turns :meth:`ThreadTranscript.recent` replays by default (≈6
 exchanges of context — enough for genuine multi-turn without unbounded prompt growth)."""
+
+MAX_TURNS_ON_DISK = 200
+"""Compaction trigger: a thread keeps at most this many unfolded turns before folding."""
+
+KEEP_TURNS = 100
+"""How many newest unfolded turns remain after compaction."""
+
+SUMMARY_MAX_CHARS = 4000
+"""Maximum rolling summary body size retained per thread."""
+
+SUMMARY_FACT = "thread-summary"
+"""Reserved fact name for the rolling per-thread summary."""
+
+SUMMARY_HEADER = "Earlier in this conversation (compacted summary):"
+"""System-message header prepended to compacted summary context."""
 
 # A space-id char that is NOT already slug-safe — replaced with "-" before hashing.
 _NON_SLUG = re.compile(r"[^a-z0-9_-]")
@@ -60,6 +76,7 @@ _TURN_DIGITS = 6
 zero-pad width; the padding only keeps the common case lexically tidy on disk."""
 _PREVIEW_MAX = 120
 """Cap the single-line ``summary`` preview a turn carries (the full text lives in the body)."""
+_FOLDED_RE = re.compile(r"folded-through:\s*(\d+)")
 
 
 def scope_for_space(space_id: str) -> str:
@@ -106,11 +123,27 @@ class ThreadTranscript:
     and never bleeds across personas or threads. Reads are best-effort and never raise (a persona that
     has never spoken in a space simply has no history)."""
 
-    def __init__(self, base: Path, handle: str, scope: str) -> None:
+    def __init__(
+        self,
+        base: Path,
+        handle: str,
+        scope: str,
+        *,
+        max_turns: int = MAX_TURNS_ON_DISK,
+        keep_turns: int = KEEP_TURNS,
+        summary_max_chars: int = SUMMARY_MAX_CHARS,
+    ) -> None:
+        if not (2 <= keep_turns < max_turns):
+            raise ValueError("keep_turns must satisfy 2 <= keep_turns < max_turns")
+        if summary_max_chars < 1:
+            raise ValueError("summary_max_chars must be >= 1")
         # PersonaMemory validates ``handle`` is a safe slug; ``thread(scope)`` validates the scope on
         # each access and returns a fresh view (so reads reflect on-disk writes — the store's contract).
         self._memory = PersonaMemory(base, handle)
         self._scope = scope
+        self._max_turns = max_turns
+        self._keep_turns = keep_turns
+        self._summary_max_chars = summary_max_chars
 
     def _view(self) -> PrivateScope:
         return self._memory.thread(self._scope)
@@ -126,6 +159,8 @@ class ThreadTranscript:
         view = self._view()
         name = f"{_TURN_PREFIX}{self._next_index(view):0{_TURN_DIGITS}d}"
         view.remember(name=name, kind=role, summary=_preview(body), body=body)
+        self._sweep_folded(view)
+        self._compact_if_needed(view)
         return name
 
     def forget(self, name: str) -> bool:
@@ -138,22 +173,96 @@ class ThreadTranscript:
         :data:`PERSONA` turn replays as ``assistant``, anything else as ``user`` — ready to splice
         between the system prompt and the current message. Ordered by parsed integer index (correct
         at any scale), and non-turn facts are ignored. A missing/empty thread yields ``[]``."""
-        indexed = sorted(
-            ((idx, f) for f in self._view().all() if (idx := _turn_index(f.name)) is not None),
-            key=lambda pair: pair[0],
-        )
+        view = self._view()
+        folded_through = self._folded_through(view)
+        indexed = self._unfolded_turns(view, folded_through)
         out: list[Message] = []
         for _idx, fact in indexed[-limit:]:
             role = "assistant" if fact.kind == PERSONA else "user"
             out.append({"role": role, "content": fact.body or fact.summary})
         return out
 
-    @staticmethod
-    def _next_index(view: PrivateScope) -> int:
+    def summary(self) -> str | None:
+        """The compacted rolling summary body, or ``None`` when absent/unreadable."""
+        fact = self._view().get(SUMMARY_FACT)
+        return fact.body if fact is not None and fact.body else None
+
+    def context(self, limit: int = DEFAULT_TURNS) -> list[Message]:
+        """Compacted summary system message, when present, followed by the recent turn window."""
+        messages: list[Message] = []
+        body = self.summary()
+        if body:
+            messages.append({"role": "system", "content": f"{SUMMARY_HEADER}\n{body}"})
+        messages.extend(self.recent(limit))
+        return messages
+
+    def _next_index(self, view: PrivateScope) -> int:
         """The next monotonic turn index — ``max(existing) + 1``, parsed from the turn filenames via
         :func:`_turn_index`, so a gap never reuses an index and ordering stays stable."""
         indices = [idx for fact in view.all() if (idx := _turn_index(fact.name)) is not None]
+        folded_through = self._folded_through(view)
+        if folded_through >= 0:
+            indices.append(folded_through)
         return max(indices) + 1 if indices else 0
+
+    def _folded_through(self, view: PrivateScope) -> int:
+        fact = view.get(SUMMARY_FACT)
+        if fact is None or not fact.source:
+            return -1
+        match = _FOLDED_RE.search(fact.source)
+        return int(match.group(1)) if match else -1
+
+    @staticmethod
+    def _unfolded_turns(view: PrivateScope, folded_through: int) -> list[tuple[int, Fact]]:
+        return sorted(
+            (
+                (idx, fact)
+                for fact in view.all()
+                if (idx := _turn_index(fact.name)) is not None and idx > folded_through
+            ),
+            key=lambda pair: pair[0],
+        )
+
+    def _sweep_folded(self, view: PrivateScope) -> None:
+        folded_through = self._folded_through(view)
+        if folded_through < 0:
+            return
+        for fact in view.all():
+            idx = _turn_index(fact.name)
+            if idx is not None and idx <= folded_through:
+                view.forget(fact.name)
+
+    def _compact_if_needed(self, view: PrivateScope) -> None:
+        turns = self._unfolded_turns(view, self._folded_through(view))
+        if len(turns) <= self._max_turns:
+            return
+        fold_count = len(turns) - self._keep_turns
+        to_fold = turns[:fold_count]
+        lines = [f"{fact.kind}: {fact.summary}" for _idx, fact in to_fold]
+        existing = self.summary()
+        body = "\n".join([part for part in (existing, "\n".join(lines)) if part])
+        body = self._truncate_summary(body)
+        folded_through = to_fold[-1][0]
+        view.remember(
+            name=SUMMARY_FACT,
+            kind="summary",
+            summary=body.splitlines()[0],
+            body=body,
+            source=f"folded-through: {folded_through:0{_TURN_DIGITS}d}",
+        )
+        for _idx, fact in to_fold:
+            view.forget(fact.name)
+
+    def _truncate_summary(self, body: str) -> str:
+        if len(body) <= self._summary_max_chars:
+            return body
+        lines = body.splitlines()
+        while len(lines) > 1 and len("\n".join(lines)) > self._summary_max_chars:
+            lines.pop(0)
+        candidate = "\n".join(lines)
+        if len(candidate) <= self._summary_max_chars:
+            return candidate
+        return candidate[: self._summary_max_chars]
 
 
 def remembering_responder(
