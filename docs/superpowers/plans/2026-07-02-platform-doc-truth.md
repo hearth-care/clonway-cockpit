@@ -217,16 +217,16 @@ sha/date where this plan shows recon values):
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
   `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
-  contract-gate calls on live `main` too. Fresh 2026-07-02T21:00Z evidence found auto-bookkeeper
+  contract-gate calls on live `main` too. Fresh 2026-07-02T20:59Z evidence found auto-bookkeeper
   advanced to `91a980c` on `main` while still pinning `v0.2.0` and carrying both contract gates, so
   the xbook tracker stamp was refreshed.
-- Known failing tests: none. Gate results refreshed 2026-07-02T21:00Z in the mandated PR
+- Known failing tests: none. Gate results refreshed 2026-07-02T20:59Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0 with the same 7 baseline workers plus
   auto-bookkeeper on accepted newer `v0.2.0`; `make lint` passed (`All checks passed!`);
   `make format` passed (`162 files already formatted`); `make typecheck` passed
   (`Success: no issues found in 67 source files`); `make test` passed
-  (`1114 passed in 31.36s`); `pre-commit run --all-files` passed. Read-only final QA passed with
+  (`1114 passed in 28.67s`); `pre-commit run --all-files` passed. Read-only final QA passed with
   no blocking findings after doc fixes; non-blocking note: `scripts/check_fleet_pins.py` still prints
   `All workers on v0.1.0.` even while the table correctly accepts auto-bookkeeper on `v0.2.0`, which remains
   outside this doc-only PR.
