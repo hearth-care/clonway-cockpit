@@ -13,10 +13,16 @@ import sys
 import threading
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 from urllib import request as urlrequest
 
-from .chat_transport import ChatRouter, ack_response
+from wsgiref.simple_server import make_server
+
+from .chat_transport import ChatRouter, ack_response, load_allowlist
+from .colleague import gateway_responder, load_colleagues
+from .gateway import Gateway, GatewayConfig
+from .group_chat import FakeChatTransport
+from .persona import Persona, PersonaRegistry
 
 CHAT_EVENTS_PATH = "/chat-events"
 MAX_BODY_BYTES = 1_048_576
@@ -24,6 +30,10 @@ MAX_BODY_BYTES = 1_048_576
 StartResponse = Callable[[str, list[tuple[str, str]]], None]
 WsgiApp = Callable[[dict[str, Any], StartResponse], Iterable[bytes]]
 Opener = Callable[..., Any]
+
+
+class ChatAddonConfigError(RuntimeError):
+    pass
 
 
 class FileSeenStore:
@@ -166,6 +176,104 @@ def build_addon_app(
     return app
 
 
+def build_serve_app(environ: dict[str, str]) -> WsgiApp:
+    try:
+        personas_dir = Path(environ["CLONWAY_CHAT_PERSONAS_DIR"])
+        souls_dir = Path(environ["CLONWAY_CHAT_SOULS_DIR"])
+        gateway_config_path = Path(environ["CLONWAY_CHAT_GATEWAY_CONFIG"])
+    except KeyError as exc:
+        raise ChatAddonConfigError(f"missing required env var: {exc.args[0]}") from exc
+
+    colleagues = load_colleagues(personas_dir, souls_dir)
+    gateway_config = GatewayConfig.from_dict(
+        json.loads(gateway_config_path.read_text(encoding="utf-8"))
+    )
+    gateway = Gateway(gateway_config)
+    role = environ.get("CLONWAY_CHAT_ROLE", "chat")
+    problems = gateway.validate(roles=[role])
+    if problems:
+        raise ChatAddonConfigError("; ".join(problems))
+    seen = FileSeenStore(Path(environ.get("CLONWAY_CHAT_SEEN_FILE", ".cockpit/chat-seen.txt")))
+    router = ChatRouter(
+        registry=colleagues.registry,
+        responder=gateway_responder(colleagues, gateway, role=role),
+        transport=RestChatTransport(token_supplier=metadata_token_supplier),
+        allowlist=load_allowlist(),
+        already_handled=seen.__contains__,
+        mark_handled=seen.add,
+    )
+    return build_addon_app(router, background=spawn_daemon_thread)
+
+
+def run_fake(lines: Iterable[str], *, output: TextIO | None = None) -> list[str]:
+    persona = Persona.from_dict({"handle": "demo", "name": "Demo", "domain": "local dev"})
+    transport = FakeChatTransport()
+
+    def echo(persona: Persona, message) -> str:
+        return f"{persona.name}: {message.text}"
+
+    router = ChatRouter(
+        registry=PersonaRegistry.from_personas([persona]),
+        responder=echo,
+        transport=transport,
+        allowlist=frozenset({"owner@clonway.example"}),
+    )
+    app = build_addon_app(router, background=run_inline)
+    replies: list[str] = []
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        before = len(transport.posted)
+        body = json.dumps(fake_dm_envelope(text)).encode("utf-8")
+        env = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": CHAT_EVENTS_PATH,
+            "CONTENT_LENGTH": str(len(body)),
+            "wsgi.input": _BytesInput(body),
+        }
+        app(env, lambda status, headers: None)
+        for space, reply in transport.posted[before:]:
+            rendered = f"{space}: {reply}"
+            replies.append(rendered)
+            if output is not None:
+                print(rendered, file=output)
+    return replies
+
+
+class _BytesInput:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._body)
+        out = self._body[:size]
+        self._body = self._body[size:]
+        return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--serve", action="store_true")
+    mode.add_argument("--fake", action="store_true")
+    parser.add_argument("--port", type=int)
+    args = parser.parse_args(argv)
+
+    if args.fake:
+        run_fake(sys.stdin, output=sys.stdout)
+        return 0
+
+    app = build_serve_app(dict(os.environ))
+    port = args.port or int(os.environ.get("PORT", "8080"))
+    with make_server("", port, app) as httpd:
+        httpd.serve_forever()
+    return 0
+
+
 def fake_dm_envelope(
     text: str,
     *,
@@ -188,3 +296,7 @@ def fake_dm_envelope(
         },
         "commonEventObject": {},
     }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

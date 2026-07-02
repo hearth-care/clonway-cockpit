@@ -391,7 +391,7 @@ def test_non_operator_dm_is_acked_but_draws_no_reply():
 `wsgiref.simple_server.make_server("", port, app).serve_forever()`. This is the deployable
 reference entrypoint the runbook names; every deliverable above is wired through it.
 
-- [ ] **Step 1 — failing tests:**
+- [x] **Step 1 — failing tests:**
   `test_build_serve_app_wires_env_to_app` — monkeypatched env pointing
   `CLONWAY_CHAT_PERSONAS_DIR`/`CLONWAY_CHAT_SOULS_DIR` at `examples/personas`/`examples/souls`
   (real repo fixtures), `CLONWAY_CHAT_GATEWAY_CONFIG` at a tmp JSON
@@ -404,7 +404,7 @@ reference entrypoint the runbook names; every deliverable above is wired through
   `test_run_fake_repl_round_trip` — `run_fake(["hi milo"], ...)` (the `--fake` loop factored as a
   pure function over input lines) returns output containing the echo persona's reply and posts it
   through a `FakeChatTransport`, exercising the SAME `build_addon_app` app via an in-process POST.
-- [ ] **Step 2 — RED**, **Step 3 — implement:**
+- [x] **Step 2 — RED**, **Step 3 — implement:**
 
 ```python
 # build_serve_app (env-wired; verified signatures — builders: copy this shape)
@@ -429,9 +429,9 @@ return build_addon_app(router, background=spawn_daemon_thread)
   `--fake`: inline `Persona.from_dict({"handle": "demo", "name": "Demo", "domain": "local dev"})`,
   echo responder, `FakeChatTransport`, `run_inline`; each stdin line → `fake_dm_envelope(line)` →
   in-process POST to the same app → print the posted replies. Zero Google, zero model.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`; manual smoke:
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`; manual smoke:
   `echo "hi" | uv run python -m clonway_cockpit.chat_addon --fake` prints a reply.
-- [ ] **Step 5 — commit:** `feat(chat-addon): env-wired serve entrypoint + local-dev fake REPL`
+- [x] **Step 5 — commit:** `feat(chat-addon): env-wired serve entrypoint + local-dev fake REPL`
 
 ### Task 6 — docs, changelog, delivery table, full gates, RUNBOOK DELTA
 
@@ -490,8 +490,8 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 4 complete; Task 5 not started.
-- Next concrete step: Task 5 Step 1 (write the failing env-wired serve app and fake REPL tests).
+- Current phase: Task 5 complete; Task 6 not started.
+- Next concrete step: Task 6 docs/changelog/delivery-table updates, then full gates.
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
@@ -500,6 +500,9 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
   failed at the missing `FileSeenStore` import; GREEN verification was
   `uv run pytest tests/test_chat_addon.py -q` → `20 passed`. Task 4 RED failed at the missing
   `RestChatTransport` import; GREEN verification was
-  `uv run pytest tests/test_chat_addon.py -q` → `25 passed`.
+  `uv run pytest tests/test_chat_addon.py -q` → `25 passed`. Task 5 RED failed at the missing
+  `ChatAddonConfigError` import; GREEN verification was
+  `uv run pytest tests/test_chat_addon.py -q` → `28 passed`, and manual fake smoke printed
+  `spaces/LOCAL: Demo: hi`.
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.
