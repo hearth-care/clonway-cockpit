@@ -1,6 +1,6 @@
 # [Plan] Platform doc truth: conformance tracker + pin/release narrative refresh
 
-- **Date:** 2026-07-02 · **Branch:** `claude/plan-platform-doc-truth` · **Status:** plan ready — doc-only builder work, plan-signalled
+- **Date:** 2026-07-02 · **Branch:** `claude/plan-platform-doc-truth` · **Status:** implementation complete — finish protocol in progress
 - **Surfaces:** [`docs/fleet-conformance.md`](../../fleet-conformance.md), [`docs/pin-sync.md`](../../pin-sync.md), [`docs/persona-platform-getting-started.md`](../../persona-platform-getting-started.md) (§"Fleet adoption matrix" + §C), `README.md` (status table)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: implement this plan task-by-task (Claude: superpowers:subagent-driven-development or superpowers:executing-plans; Codex: the same phase/verification discipline). Steps use checkbox (`- [ ]`) syntax. Tick checkboxes as work lands and commit this plan with the edits. **This PR is documentation-only — every changed file is `.md`. Do not touch code, scripts, or workflows.**
@@ -210,8 +210,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; finish protocol next.
-- Next concrete step: mark the PR ready, move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove the worktree.
+- Current phase: implementation complete; final gates passed; finish protocol in progress.
+- Next concrete step: move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove the worktree.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none. Gate results: `make lint` passed (`All checks passed!`); `make format` passed (`162 files already formatted`); `make typecheck` passed (`Success: no issues found in 67 source files`); `make test` passed (`1090 passed in 28.58s`); `pre-commit run --all-files` passed; `python3 scripts/check_fleet_pins.py` exited 0.
 - Dependencies/operator TODOs: none.
