@@ -209,25 +209,18 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; latest builder handoff verified the implementation
-  branch after claim handoff and confirmed it is up to date with `origin/main`.
-- Next concrete step: run finish protocol GitHub writes (`ready`, label swap, DONE), then remove
-  the worktree.
+- Current phase: implementation complete; rebased onto `origin/main` at `edec4b8` (v0.3.0 release).
+- Next concrete step: finish protocol done — worktree cleanup only.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
-  `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
-  contract-gate calls on live `main` too. Fresh 2026-07-02T20:59Z evidence found auto-bookkeeper
-  advanced to `91a980c` on `main` while still pinning `v0.2.0` and carrying both contract gates, so
-  the xbook tracker stamp was refreshed.
-- Known failing tests: none. Gate results refreshed 2026-07-02T20:59Z in the mandated PR
-  worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
-  `python3 scripts/check_fleet_pins.py` exited 0 with the same 7 baseline workers plus
-  auto-bookkeeper on accepted newer `v0.2.0`; `make lint` passed (`All checks passed!`);
-  `make format` passed (`162 files already formatted`); `make typecheck` passed
-  (`Success: no issues found in 67 source files`); `make test` passed
-  (`1114 passed in 28.67s`); `pre-commit run --all-files` passed. Read-only final QA passed with
-  no blocking findings after doc fixes; non-blocking note: `scripts/check_fleet_pins.py` still prints
-  `All workers on v0.1.0.` even while the table correctly accepts auto-bookkeeper on `v0.2.0`, which remains
-  outside this doc-only PR.
+  `assert_drives_clean`; auto-secretary/xquill now has both framework contract-gate calls on live
+  `main` too. Fresh evidence found auto-bookkeeper advanced to `91a980c` while still pinning
+  `v0.2.0`. `v0.3.0` (chat_addon transport + bounded persona thread memory) released 2026-07-02
+  after this plan was written; noted in pin-sync.md; no worker pins changed yet, supported
+  baseline still `v0.1.0`.
+- Known failing tests: none. Gates verified post-rebase: `grep drift-guard` → no matches;
+  `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.2.0;
+  `make lint` → All checks passed!; `make typecheck` → no issues in 67 files;
+  `make test` → 1114 passed; `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.

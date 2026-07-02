@@ -32,9 +32,10 @@ baseline.
 
 Last static snapshot: 2026-07-02 (re-run the script for current state).
 
-`v0.2.0` was released on 2026-06-14. The supported baseline remains `v0.1.0`
-until the operator moves it; a worker on a newer release tag is conformant under
-the survey's newer-tag rule from PR #108.
+`v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
+persona thread memory) was released on 2026-07-02. The supported baseline remains
+`v0.1.0` until the operator moves it; a worker on a newer release tag is conformant
+under the survey's newer-tag rule from PR #108.
 
 | Worker repo | Pin as of 2026-07-02 | Status |
 |---|---|---|
