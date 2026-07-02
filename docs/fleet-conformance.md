@@ -21,14 +21,14 @@ Short SHAs are first 7 chars of the full commit hash. "Observed pin" = the `rev 
 
 | Worker | Repo | Cockpit command | Observed cockpit pin | Contract test present | Dynamic drive path | Last verified | Known exceptions |
 |---|---|---|---|---|---|---|---|
-| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.2.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `698bc7f` · 2026-07-02 | On newer release tag than the supported baseline; accepted by the pin survey |
-| xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelves and walks deep (`["b","q"]`, `["h","x","q"]`, capability-key paths) | `744084a` · 2026-07-02 | First-frame SLA is now documented as <=2s warm cache / <=5s cold start; see open gaps |
+| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.2.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `3a9fe0f` · 2026-07-02 | On newer release tag than the supported baseline; accepted by the pin survey |
+| xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelves and walks deep (`["b","q"]`, `["h","x","q"]`, capability-key paths) | `27a3282` · 2026-07-02 | First-frame SLA is now documented as <=2s warm cache / <=5s cold start; see open gaps |
 | xletter | hearth-care/auto-marketer | `uv run xletter --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `9d86c09` · 2026-07-02 | — |
-| xquill | hearth-care/auto-secretary | `uv run xquill --agent-stdio` | `v0.1.0` | No | `tests/test_cockpit_agent.py` smoke-drives `--agent-stdio`, but no `assert_drives_clean` contract gate is present | `333ae82` · 2026-06-21 | Agent channel exists; contract gate still absent from tests |
+| xquill | hearth-care/auto-secretary | `uv run xquill --agent-stdio` | `v0.1.0` | Yes | `assert_render_model_parity` and `assert_drives_clean` in `tests/test_cockpit_contract.py` | `317a7b4` · 2026-07-02 | — |
 | xadmissions | hearth-care/auto-admissions | `uv run xadmissions --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; drives home, admissions, and guide paths | `c17c2ce` · 2026-07-02 | — |
 | xcqc | hearth-care/auto-inspector | `uv run xcqc --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` and readiness paths in `tests/test_cockpit_readiness.py` | `b6302ec` · 2026-07-02 | — |
 | xsource | hearth-care/Auto-Procurer | `uv run xsource --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `24d0ac9` · 2026-07-02 | — |
-| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cli/test_bridge_agent_contract.py`; drives `["q"]` and `["d","x","q"]` to `worker_drilldown` | `e8e3309` · 2026-07-02 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
+| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cli/test_bridge_agent_contract.py`; drives `["q"]` and `["d","x","q"]` to `worker_drilldown` | `d31300f` · 2026-07-02 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
 
 **Contract test present** = the worker's test suite imports `clonway_cockpit.contract` and calls
 **both** `assert_render_model_parity` and `assert_drives_clean`. A partial import (one function
@@ -87,10 +87,6 @@ include a refreshed "Last verified" for that row.
 
 ## Open gaps (2026-07-02)
 
-- **xquill contract gate**: `tests/test_cockpit_agent.py` proves `xquill --agent-stdio` emits
-  a structured home frame, but no test imports `assert_render_model_parity` or
-  `assert_drives_clean`. A missing `model_*` twin would not be caught by the framework contract
-  gate until auto-secretary adopts it.
 - **xhr first-frame SLA**: the old ~60s first-frame delay has been fixed upstream, and
   auto-hr now documents a <=2s warm-cache / <=5s cold-start SLA in
   `docs/operators/agent-first-frame.md`. Keep this row under observation because drivers should

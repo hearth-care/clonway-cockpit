@@ -103,8 +103,8 @@ production traffic claim. Do not copy pin or channel cells here; update the trac
 ### C. Consumer adoption / pin work
 - [ ] **Decide when to move the supported baseline beyond `v0.1.0`.** xbook already pins
       `v0.2.0`; the operator decision is when the rest of the fleet should follow.
-- [ ] **Deepen xletter/xquill conformance where useful.** Both expose `--agent-stdio` today;
-      xletter has the framework contract gate, while xquill still has only smoke coverage.
+- [ ] **Deepen xletter/xquill platform adoption where useful.** Both expose `--agent-stdio` today
+      and run the framework contract gate; no persona surface is proven here.
 - [ ] **Decide whether admissions needs persona work.** xadmissions now pins cockpit, exposes
       `--agent-stdio`, and runs both framework contract checks; no persona surface is observed.
 - [ ] **xops cost consumer (#171 area)** — so the model spend the gateway now records shows up on

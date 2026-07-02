@@ -132,7 +132,7 @@ sha/date where this plan shows recon values):
 - [x] "Open gaps (2026-06-12)" section retitled with the build date and re-cut to observed truth:
   **remove** "xletter, xquill: No `--agent-stdio` …" (false), **remove** "Pins on raw SHA …" and
   "xbook pin …" (false — all eight on release tags), **remove** the xadmissions parity gap
-  (closed on live `main`), add the observed xquill contract-gate gap, and refresh the xhr
+  (closed on live `main`), refresh the observed contract-gate truth, and refresh the xhr
   first-frame note per observation.
 
 - [x] **Verify:** every edited row's stamp matches Task 1 output; `git diff --name-only` shows
@@ -162,16 +162,16 @@ sha/date where this plan shows recon values):
   only the platform-adoption-note column content this doc uniquely owns, refreshed against Task 1
   observations.
 - [x] §C "Decide whether xletter and xquill should become cockpit-drivable workers": rewrite the
-  premise to observed truth (both ship `--agent-stdio` today; the open question is only the depth
-  of their conformance/contract-test adoption per the tracker).
+  premise to observed truth (both ship `--agent-stdio` today; final refresh shows both now run the
+  framework contract gate, so the remaining question is platform/persona adoption depth).
 - [x] **Verify** doc-only diff; **Commit:** `docs(getting-started): adoption matrix defers to the conformance tracker`
 
 ### Task 5 — `README.md` status claims
 
 - [x] "Framework status" row `Fleet adoption | Uneven — consumers are conformant only after
   pinning + wiring; see below` → reflect verified state, e.g.
-  `All 8 fleet workers pin release tags and expose --agent-stdio; 7 fully conformant, xadmissions
-  carries a parity-gap (see docs/fleet-conformance.md — verified <date>)` (builder pins the exact
+  `All 8 fleet workers pin release tags and expose --agent-stdio; all 8 run the framework contract
+  gate (see docs/fleet-conformance.md — verified <date>)` (builder pins the exact
   worded truth to Task 1 results; keep the pointer).
 - [x] Persona-platform row: leave `no live Chat transport yet` **unless** the transport-edge work
   has merged by build time — verify against `origin/main` before touching it (it is true as of
@@ -205,8 +205,7 @@ sha/date where this plan shows recon values):
   verbatim (HR2).
 - Operator-facing: no — explicitly no RUNBOOK DELTA (HR1).
 - Dependencies: none; no wave (HR11).
-- Deferred: closing the xquill contract-gate gap itself (a code change in auto-secretary —
-  separate repo, separate PR); moving the supported baseline to v0.2.0 (operator/release decision).
+- Deferred: moving the supported baseline to v0.2.0 (operator/release decision).
 
 ## HANDOFF NOTES
 
@@ -217,8 +216,8 @@ sha/date where this plan shows recon values):
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
-  `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework
-  contract-gate calls.
+  `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
+  contract-gate calls on live `main` too.
 - Known failing tests: none. Gate results refreshed 2026-07-02T18:43:32Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0; `make lint` passed (`All checks passed!`);
