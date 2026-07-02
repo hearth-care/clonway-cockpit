@@ -4,8 +4,8 @@ The operator's on-ramp — what you can use today, the one change that makes it 
 pre-launch checklist. Companion to [`persona-platform-architecture.md`](persona-platform-architecture.md)
 (the what/why) and the per-module docs ([`personas.md`](personas.md),
 [`group-chat.md`](group-chat.md), [`receptionist.md`](receptionist.md),
-[`model-gateway.md`](model-gateway.md)). _Status verified against this repo's `main` and fetched
-sibling repo `origin/main` refs on 2026-06-09._
+[`model-gateway.md`](model-gateway.md)). _Status verified against this repo's `main` and live
+sibling repo `origin/main` refs on 2026-07-02._
 
 ## Current status — read this first
 
@@ -41,21 +41,24 @@ and the one that's been paused. Everything below works _locally_ without it.
 
 ## Fleet adoption matrix
 
-> **Adoption status superseded.** For current cockpit-channel and contract-test conformance per
-> worker, see [fleet-conformance.md](fleet-conformance.md) (updated 2026-06-12 and governed by a
-> verification recipe). The persona notes below remain valid.
+> **Adoption status lives in one place.** For current cockpit pins, agent-channel status, and
+> contract-test conformance per worker, see [fleet-conformance.md](fleet-conformance.md) (updated
+> 2026-07-02 and governed by a verification recipe). The persona notes below are only the
+> platform-adoption context this page uniquely owns.
 
-_Observed from fetched sibling repo `origin/main` refs on 2026-06-09. This is repo state, not a
-production traffic claim._
+_Observed from live sibling repo `origin/main` refs on 2026-07-02. This is repo state, not a
+production traffic claim. Do not copy pin or channel cells here; update the tracker instead._
 
-| Worker | Repo | Package | Cockpit pin | Agent channel | Platform adoption note |
-|---|---|---|---|---|---|
-| Bookkeeper | Auto-Bookkeeper | `xbook` | `a75f7a02e9da214d6eb55cd6b6f444d03251b114` | `xbook --agent-stdio` + `--allow-apply` | Has xbook Chat bot, model gateway config, Milo gateway/shared-memory work; needs pin rollout for newest cockpit platform slices |
-| Orchestrator | Auto-Orchestrator | `xops` | `200493cc77d4c3aa0bcb2a8d27ae1cc7f198a259` | `xops bridge --agent-stdio` | Drives workers via `CockpitClient`; oversight pane, not a persona |
-| HR | Auto-HR | `xhr` | `21d68b3527fb37f6f6082324643cc68cf9cd11de` | `xhr --agent-stdio` + `--allow-apply` | Strong cockpit adoption; no live persona surface observed |
-| Marketer | Auto-Marketer | `xletter` | `991b639e2f9d89544f831604c1419a03c877dd8f` | No `--agent-stdio` marker observed | Has Google Chat intake and model gateway telemetry; not yet a cockpit/persona adoption proof |
-| Secretary | Auto-Secretary | `xquill` | `21597f4` | No `--agent-stdio` marker observed | Has its own live Milo forward-concierge and Chat digest; not this platform's cockpit/persona path |
-| Admissions | Auto-Admissions | `xadmissions` | none observed | No `--agent-stdio` marker observed | Early worker; no cockpit pin observed |
+| Worker | Repo | Package | Platform adoption note |
+|---|---|---|---|
+| Bookkeeper | Auto-Bookkeeper | `xbook` | Has xbook Chat bot, model gateway config, Milo gateway/shared-memory work; currently the mature persona-adjacent worker |
+| Orchestrator | Auto-Orchestrator | `xops` | Drives workers via `CockpitClient`; oversight pane, not a persona |
+| HR | Auto-HR | `xhr` | Strong cockpit adoption; no live persona surface observed |
+| Marketer | Auto-Marketer | `xletter` | Has Google Chat intake and model gateway telemetry; cockpit channel exists, but no live persona surface is proven here |
+| Secretary | Auto-Secretary | `xquill` | Has its own live Milo forward-concierge and Chat digest; cockpit channel exists, but this is not yet this platform's persona path |
+| Admissions | Auto-Admissions | `xadmissions` | Cockpit-conformant worker; no persona surface observed |
+| Inspector | Auto-Inspector | `xcqc` | Readiness/compliance cockpit worker; no persona surface observed |
+| Procurer | Auto-Procurer | `xsource` | Template-born cockpit worker; no persona surface observed |
 
 ## Recommended next steps, in order
 
@@ -67,8 +70,8 @@ production traffic claim._
    mature part of the persona work — use it to decide whether a live colleague is worth wiring.
 3. **Keep using the cockpit + digest.** They're already the real product; nothing here changes
    them.
-4. **Roll out current cockpit pins deliberately.** The platform slices in this repo reach workers
-   only when their pinned rev moves.
+4. **Roll out current cockpit pins deliberately.** New platform slices in this repo reach workers
+   only when their pinned release tag moves.
 5. **Try the persona group chat locally** (`examples/fleet_chat_demo.py`), then decide if the
    live Chat surface is worth the one paused build (checklist §D).
 
@@ -98,13 +101,12 @@ production traffic claim._
       `XBOOK_ALLOW_HOSTED_PII=1 uv run python -c "from dotenv import load_dotenv; load_dotenv('.env'); from xbook.ai import get_gateway; print(get_gateway().complete([{'role':'user','content':'say OK'}], role='chat_intent'))"`
 
 ### C. Consumer adoption / pin work
-- [ ] **Bump xbook's cockpit pin** from `a75f7a0...` to a current rev when you want the
-      receptionist, souls, colleague wire, and governed-write platform slices in the bookkeeper.
-- [ ] **Decide whether xletter and xquill should become cockpit-drivable workers.** Their current
-      `origin/main` checkouts pin cockpit for shared platform pieces but do not expose
-      `--agent-stdio`.
-- [ ] **Decide whether xadmissions should adopt cockpit at all.** No cockpit pin was observed on
-      `origin/main`.
+- [ ] **Decide when to move the supported baseline beyond `v0.1.0`.** xbook already pins
+      `v0.2.0`; the operator decision is when the rest of the fleet should follow.
+- [ ] **Deepen xletter/xquill conformance where useful.** Both expose `--agent-stdio` today;
+      xletter has the framework contract gate, while xquill still has only smoke coverage.
+- [ ] **Decide whether admissions needs persona work.** xadmissions now pins cockpit, exposes
+      `--agent-stdio`, and runs both framework contract checks; no persona surface is observed.
 - [ ] **xops cost consumer (#171 area)** — so the model spend the gateway now records shows up on
       the xops cost page alongside infra spend (the xbook producer side is already wired).
 

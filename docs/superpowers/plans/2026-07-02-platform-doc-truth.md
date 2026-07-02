@@ -154,16 +154,16 @@ sha/date where this plan shows recon values):
 
 ### Task 4 — `docs/persona-platform-getting-started.md` (adoption matrix + §C)
 
-- [ ] Replace the "Fleet adoption matrix" per-worker `Cockpit pin` and `Agent channel` cells
+- [x] Replace the "Fleet adoption matrix" per-worker `Cockpit pin` and `Agent channel` cells
   (stale: raw SHAs `a75f7a02…`/`200493cc…`/`21d68b35…`/`991b639…`/`21597f4`/"none observed";
   "No `--agent-stdio` marker observed" for xletter/xquill/xadmissions — all false now) with a
   pointer: pins + channel status live in `docs/fleet-conformance.md` (single source, HR6). Keep
   only the platform-adoption-note column content this doc uniquely owns, refreshed against Task 1
   observations.
-- [ ] §C "Decide whether xletter and xquill should become cockpit-drivable workers": rewrite the
+- [x] §C "Decide whether xletter and xquill should become cockpit-drivable workers": rewrite the
   premise to observed truth (both ship `--agent-stdio` today; the open question is only the depth
   of their conformance/contract-test adoption per the tracker).
-- [ ] **Verify** doc-only diff; **Commit:** `docs(getting-started): adoption matrix defers to the conformance tracker`
+- [x] **Verify** doc-only diff; **Commit:** `docs(getting-started): adoption matrix defers to the conformance tracker`
 
 ### Task 5 — `README.md` status claims
 
@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 3 complete; ready for Task 4 (`docs/persona-platform-getting-started.md`).
-- Next concrete step: demote the getting-started adoption matrix to a tracker pointer and refresh §C against the observed fleet conformance.
+- Current phase: Task 4 complete; ready for Task 5 (`README.md`).
+- Next concrete step: refresh the README fleet-adoption status row against the verified tracker truth.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none (doc-only).
 - Dependencies/operator TODOs: none.
