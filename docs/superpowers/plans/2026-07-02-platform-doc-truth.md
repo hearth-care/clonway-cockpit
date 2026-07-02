@@ -210,7 +210,8 @@ sha/date where this plan shows recon values):
 ## HANDOFF NOTES
 
 - Current phase: implementation complete; builder-codex-20260702T184053Z-72962-18 verified the
-  existing implementation branch and confirmed it is up to date with `origin/main`.
+  implementation branch after the xquill live-truth refresh and confirmed it is up to date with
+  `origin/main`.
 - Next concrete step: move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove
   the worktree.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
@@ -218,10 +219,10 @@ sha/date where this plan shows recon values):
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
   `assert_drives_clean`; final review found auto-secretary/xquill now has both framework
   contract-gate calls on live `main` too.
-- Known failing tests: none. Gate results refreshed 2026-07-02T18:43:32Z in the mandated PR
+- Known failing tests: none. Gate results refreshed 2026-07-02T18:49:43Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0; `make lint` passed (`All checks passed!`);
   `make format` passed (`162 files already formatted`); `make typecheck` passed
   (`Success: no issues found in 67 source files`); `make test` passed
-  (`1114 passed in 31.29s`); `pre-commit run --all-files` passed.
+  (`1114 passed in 29.53s`); `pre-commit run --all-files` passed.
 - Dependencies/operator TODOs: none.
