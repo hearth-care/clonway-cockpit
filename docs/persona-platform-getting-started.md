@@ -63,7 +63,7 @@ production traffic claim. Do not copy pin or channel cells here; update the trac
 ## Recommended next steps, in order
 
 1. **Switch the gateway onto a real model.** The highest-leverage single action — it turns the
-   dev-quality classifiers and a mute persona into something worth using. See checklist §A; the
+   dev-quality classifiers and a mute persona into something worth using. See checklist §B; the
    full recipe is in xbook's `docs/model-gateway.md`.
 2. **Talk to Milo locally.** With a real model and `ANTHROPIC_API_KEY` set, `python milo_demo.py`
    gives a genuine multi-turn bookkeeping conversation (dry-run, no writes). This is the most
@@ -122,5 +122,5 @@ production traffic claim. Do not copy pin or channel cells here; update the trac
 
 You can **use the bookkeeping cockpit and the digest now**, and **drive Milo + the personas
 locally now** — and the one thing that makes all of it _good_ rather than proof-of-concept is
-checklist §A (a real model). Everything in §C is the deferred "go live as a DM-able colleague"
+checklist §B (a real model). Everything in §C is the deferred "go live as a DM-able colleague"
 work; none of it is required to start getting value today.

@@ -4,7 +4,7 @@ Supported: v0.1.0
 
 Workers pin clonway-cockpit release tags, not raw SHAs and not `main`. The supported line above
 is the single source an agent or doctor check should read when deciding whether a worker is on the
-current framework release.
+baseline framework release.
 
 ## Worker Update Recipe
 
@@ -26,6 +26,9 @@ For each worker repo:
 ## Current Remote Pin Survey
 
 Run `python3 scripts/check_fleet_pins.py` for a live survey against the current supported tag.
+The per-worker status rows are the authority: workers on a newer release tag are conformant when
+the script marks that row OK, even if the script's final summary names only the supported
+baseline.
 
 Last static snapshot: 2026-07-02 (re-run the script for current state).
 

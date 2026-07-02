@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; builder-codex-20260702T205108Z-60518-22 verified the
-  implementation branch after claim handoff and confirmed it is up to date with `origin/main`.
+- Current phase: implementation complete; latest builder handoff verified the implementation
+  branch after claim handoff and confirmed it is up to date with `origin/main`.
 - Next concrete step: run finish protocol GitHub writes (`ready`, label swap, DONE), then remove
   the worktree.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
@@ -223,9 +223,11 @@ sha/date where this plan shows recon values):
 - Known failing tests: none. Gate results refreshed 2026-07-02T21:00Z in the mandated PR
   worktree: `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0 with the same 7 baseline workers plus
-  auto-bookkeeper on accepted newer `v0.2.0`; full local gates still need one final rerun after
-  the refreshed tracker stamp. Read-only final QA previously passed with
-  no blocking findings; non-blocking note: `scripts/check_fleet_pins.py` still prints
+  auto-bookkeeper on accepted newer `v0.2.0`; `make lint` passed (`All checks passed!`);
+  `make format` passed (`162 files already formatted`); `make typecheck` passed
+  (`Success: no issues found in 67 source files`); `make test` passed
+  (`1114 passed in 31.36s`); `pre-commit run --all-files` passed. Read-only final QA passed with
+  no blocking findings after doc fixes; non-blocking note: `scripts/check_fleet_pins.py` still prints
   `All workers on v0.1.0.` even while the table correctly accepts auto-bookkeeper on `v0.2.0`, which remains
   outside this doc-only PR.
 - Dependencies/operator TODOs: none.
