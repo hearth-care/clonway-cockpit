@@ -426,7 +426,7 @@ def test_concurrent_records_in_one_process_lose_nothing(tmp_path):
 **Production call site (HR9):** `context()`/`recent()` inside `remembering_responder` — the path
 a live redelivered/torn file would hit.
 
-- [ ] **Step 1 — failing tests.** Embed verbatim (imports: `logging`):
+- [x] **Step 1 — failing tests.** Embed verbatim (imports: `logging`):
 
 ```python
 def test_corrupt_turn_file_degrades_and_warns_content_free(tmp_path, caplog):
@@ -457,13 +457,13 @@ def test_missing_store_reads_empty_then_record_creates(tmp_path):
     assert t.record(USER, "hello") == "turn-000000"
 ```
 
-- [ ] **Step 2 — RED** (the warning does not exist yet; the corrupt-summary case may crash on the
+- [x] **Step 2 — RED** (the warning does not exist yet; the corrupt-summary case may crash on the
   unparseable source), **Step 3 — implement:** in `recent()`/`context()`, count
   `turn-*.md` files under `PrivateScope.path` vs parsed turn facts; on mismatch emit ONE
   `logging.getLogger("clonway_cockpit.chat_memory").warning("chat_memory: skipped %d unreadable turn file(s) in one thread", n)`
   — counts only, never paths/scopes/text (decision 8). Corrupt summary: `load_fact` returning
   `None`/missing `body` → `summary()` `None`, `folded-through` `-1`.
-- [ ] **Step 4 — verify** (`uv run pytest tests/test_chat_memory.py -q`), **Step 5 — commit:**
+- [x] **Step 4 — verify** (`uv run pytest tests/test_chat_memory.py -q`), **Step 5 — commit:**
   `feat(chat-memory): corrupt/missing-store degrade + content-free warning`
 
 ### Task 4 — deletion honoured: `forget_thread` + the operator `forget` CLI
@@ -731,13 +731,13 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 2 complete (atomic writes and record lock implemented; focused tests green).
-- Next concrete step: commit/push Task 2, then start Task 3 corrupt/missing-store degrade tests.
+- Current phase: Task 3 complete (content-free unreadable-turn warning implemented; focused tests
+  green).
+- Next concrete step: commit/push Task 3, then start Task 4 forget-thread and CLI tests.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in
-  `uv run pytest tests/test_private_memory.py tests/test_chat_memory.py -q` after Task 2
-  implementation (`59 passed` before commit).
+- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 3
+  implementation (`39 passed` before commit).
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.

@@ -26,6 +26,7 @@ and the design spec ``docs/superpowers/specs/2026-06-10-thread-memory-wiring-des
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import threading
 from collections.abc import Callable
@@ -79,6 +80,7 @@ _PREVIEW_MAX = 120
 """Cap the single-line ``summary`` preview a turn carries (the full text lives in the body)."""
 _FOLDED_RE = re.compile(r"folded-through:\s*(\d+)")
 _RECORD_LOCK = threading.Lock()
+_LOG = logging.getLogger("clonway_cockpit.chat_memory")
 
 
 def scope_for_space(space_id: str) -> str:
@@ -177,6 +179,7 @@ class ThreadTranscript:
         between the system prompt and the current message. Ordered by parsed integer index (correct
         at any scale), and non-turn facts are ignored. A missing/empty thread yields ``[]``."""
         view = self._view()
+        self._warn_unreadable_turns(view)
         folded_through = self._folded_through(view)
         indexed = self._unfolded_turns(view, folded_through)
         out: list[Message] = []
@@ -266,6 +269,22 @@ class ThreadTranscript:
         if len(candidate) <= self._summary_max_chars:
             return candidate
         return candidate[: self._summary_max_chars]
+
+    @staticmethod
+    def _warn_unreadable_turns(view: PrivateScope) -> None:
+        try:
+            turn_files = list(view.path.glob(f"{_TURN_PREFIX}*.md"))
+        except (OSError, ValueError):
+            return
+        parsed_turns = sum(1 for fact in view.all() if _turn_index(fact.name) is not None)
+        unreadable = len(turn_files) - parsed_turns
+        if unreadable > 0:
+            plural = "s" if unreadable != 1 else ""
+            _LOG.warning(
+                "chat_memory: skipped %d unreadable turn file%s in one thread",
+                unreadable,
+                plural,
+            )
 
 
 def remembering_responder(

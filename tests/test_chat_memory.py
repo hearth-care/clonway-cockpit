@@ -8,6 +8,7 @@ scope normalizer, the transcript projection, the memory-aware responder, the pre
 """
 
 import threading
+import logging
 
 import pytest
 
@@ -183,6 +184,34 @@ def test_concurrent_records_in_one_process_lose_nothing(tmp_path):
     for th in threads:
         th.join()
     assert sorted(m["content"] for m in t.recent(12)) == ["m0", "m1"]
+
+
+def test_corrupt_turn_file_degrades_and_warns_content_free(tmp_path, caplog):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    t.record(USER, "the secret figures")
+    t.record(PERSONA, "noted")
+    (tmp_path / "milo" / "threads" / "dm-x" / "turn-000000.md").write_text("\x00garbage")
+    with caplog.at_level(logging.WARNING, logger="clonway_cockpit.chat_memory"):
+        ctx = t.context(12)
+    assert [m["content"] for m in ctx] == ["noted"]  # degraded to the readable remainder
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert "1 unreadable turn file" in joined
+    assert "secret" not in joined and "dm-x" not in joined  # content-free (no text, no scope)
+
+
+def test_corrupt_summary_degrades_to_no_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    (tmp_path / "milo" / "threads" / "dm-x" / "thread-summary.md").write_text("\x00garbage")
+    assert t.summary() is None
+    assert [m["role"] for m in t.context(12)] == ["assistant", "user"]  # no system note, no crash
+
+
+def test_missing_store_reads_empty_then_record_creates(tmp_path):
+    t = ThreadTranscript(tmp_path / "nowhere", "milo", "dm-x")
+    assert t.context(12) == [] and t.summary() is None
+    assert t.record(USER, "hello") == "turn-000000"
 
 
 # --- remembering_responder: the memory-aware reference responder ----------------------------
