@@ -16,11 +16,11 @@ the router, the orchestrator, the owner-only-command air-gap, or the private-mem
 **Redelivery + concurrency (read before deploying live).** Google Chat is at-least-once: it
 redelivers on a 5xx / cold start. ``ChatRouter`` dedupes only when the worker injects its
 ``already_handled`` / ``mark_handled`` hooks — **wire them (a durable store) when you use this**, or a
-redelivered message records the turn pair twice and corrupts later prompts. Likewise this records a
-turn by reading the current max index and writing the next; **v1 assumes a single writer per
-(persona, space)** (the reference ``xhr-server`` fast-acks then posts from one background task) —
-truly concurrent writers on one thread can collide. See ``docs/thread-memory.md`` → "Scope & limits"
-and the design spec ``docs/superpowers/specs/2026-06-10-thread-memory-wiring-design.md``.
+redelivered message records the turn pair twice and corrupts later prompts. Inside one process,
+deduped routing serializes check → route/post → mark, and private transcript writes/deletes share a
+lock so same-process records and forgets cannot collide. Cross-process single-writer discipline still
+belongs to deploy/runbook wiring. See ``docs/thread-memory.md`` → "Scope & limits" and the design
+spec ``docs/superpowers/specs/2026-06-10-thread-memory-wiring-design.md``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ import hashlib
 import logging
 import re
 import sys
-import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -39,7 +38,7 @@ from .gateway.types import GatewayError, Message
 from .group_chat import ChatMessage
 from .persona import Persona
 from .persona_soul import SoulError
-from .private_memory import PersonaMemory, PrivateScope
+from .private_memory import PRIVATE_MEMORY_LOCK, PersonaMemory, PrivateScope
 from .shared_memory import Fact
 
 # Turn roles (the ``kind`` a recorded turn carries on disk, and the basis for the replay role).
@@ -81,7 +80,7 @@ zero-pad width; the padding only keeps the common case lexically tidy on disk.""
 _PREVIEW_MAX = 120
 """Cap the single-line ``summary`` preview a turn carries (the full text lives in the body)."""
 _FOLDED_RE = re.compile(r"folded-through:\s*(\d+)")
-_RECORD_LOCK = threading.Lock()
+_RECORD_LOCK = PRIVATE_MEMORY_LOCK
 _LOG = logging.getLogger("clonway_cockpit.chat_memory")
 
 
@@ -177,7 +176,8 @@ class ThreadTranscript:
 
     def forget_thread(self) -> bool:
         """Delete this whole (persona, thread) transcript directory."""
-        return self._memory.forget_thread(self._scope)
+        with _RECORD_LOCK:
+            return self._memory.forget_thread(self._scope)
 
     def recent(self, limit: int = DEFAULT_TURNS) -> list[Message]:
         """The last ``limit`` turns in **chronological** order as gateway messages — a
@@ -374,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "forget":
         scope = scope_for_space(args.space)
         try:
-            deleted = PersonaMemory(args.memory_base, args.handle).forget_thread(scope)
+            deleted = ThreadTranscript(args.memory_base, args.handle, scope).forget_thread()
         except ValueError:
             print("invalid handle", file=sys.stderr)
             return 2

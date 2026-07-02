@@ -9,6 +9,7 @@ scope normalizer, the transcript projection, the memory-aware responder, the pre
 
 import logging
 import threading
+import time
 
 import pytest
 
@@ -24,7 +25,7 @@ from clonway_cockpit.colleague import Colleague, ColleagueRegistry
 from clonway_cockpit.gateway.types import GatewayError, Message
 from clonway_cockpit.group_chat import ChatMessage, FakeChatTransport
 from clonway_cockpit.persona import Persona
-from clonway_cockpit.private_memory import PersonaMemory
+from clonway_cockpit.private_memory import PersonaMemory, PrivateScope
 from clonway_cockpit.shared_memory import SharedMemory, is_safe_slug, render_fact, today
 
 # --- scope_for_space: raw Chat space id -> a collision-safe, debuggable slug -----------------
@@ -228,6 +229,54 @@ def test_forget_thread_removes_turns_and_summary(tmp_path):
     assert not (tmp_path / "milo" / "threads" / "dm-x").exists()
     assert t.context(12) == []  # a forgotten thread reads as brand new
     assert t.forget_thread() is False  # idempotent no-op
+
+
+def test_forget_thread_waits_for_in_flight_record_before_deleting(tmp_path, monkeypatch):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    started = threading.Event()
+    release = threading.Event()
+    original = PrivateScope.remember
+
+    def pausing_remember(self, *, name, kind, summary, body="", source="", as_of=None):
+        if name == "turn-000000":
+            self.path.mkdir(parents=True, exist_ok=True)
+            started.set()
+            release.wait(timeout=2)
+        return original(
+            self,
+            name=name,
+            kind=kind,
+            summary=summary,
+            body=body,
+            source=source,
+            as_of=as_of,
+        )
+
+    monkeypatch.setattr(PrivateScope, "remember", pausing_remember)
+    record_error: list[BaseException] = []
+
+    def record() -> None:
+        try:
+            t.record(USER, "new pii after forget")
+        except BaseException as exc:  # pragma: no cover - asserted below for thread propagation.
+            record_error.append(exc)
+
+    record_thread = threading.Thread(target=record)
+    record_thread.start()
+    assert started.wait(timeout=1)
+
+    forget_result: list[bool] = []
+    forget_thread = threading.Thread(target=lambda: forget_result.append(t.forget_thread()))
+    forget_thread.start()
+    time.sleep(0.05)
+    release.set()
+    record_thread.join(timeout=2)
+    forget_thread.join(timeout=2)
+
+    assert record_error == []
+    assert forget_result == [True]
+    assert not (tmp_path / "milo" / "threads" / "dm-x").exists()
+    assert t.recent() == []
 
 
 def test_forget_cli_deletes_the_thread(tmp_path, capsys):

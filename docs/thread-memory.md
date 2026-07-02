@@ -72,7 +72,9 @@ it. Turns are ordinary `Fact` files (`turn-NNNNNN`) under the persona's `thread(
   The summary header is:
   `Earlier in this conversation (compacted summary):`
 - `forget_thread()` — deletes the whole `(persona, thread)` directory, including turns, summary, and
-  corrupt strays. It returns `True` only when the directory existed.
+  corrupt strays. It returns `True` only when the directory existed. In-process deletion shares the
+  same lock as `record()`, so a record that started before a forget cannot recreate the thread after
+  the delete returns.
 
 Compaction is deterministic and extractive: folded turns contribute `"{kind}: {summary}"` lines to
 the reserved `thread-summary` Fact. That Fact's `source` field carries `folded-through: NNNNNN`,
@@ -99,6 +101,10 @@ python -m clonway_cockpit.chat_memory forget \
   --handle milo \
   --space spaces/AAA
 ```
+
+For a live deployment, pause/quiesce that persona/thread's writer before running the CLI from a
+separate process; the framework serializes in-process writes/deletes, not cross-process deletion
+against an active Cloud Run writer.
 
 ### `remembering_responder(colleagues, completer, *, role, memory_base, history_turns=12, quiet_on_error=True)`
 
@@ -141,11 +147,14 @@ but they are **required** when it does:
 - **Redelivery dedup is mandatory.** Chat is at-least-once. Wire the router's
   `already_handled`/`mark_handled` with a **durable** store (see the snippet above). Without it a
   redelivered message records the turn pair twice and the duplicate evicts real history from the
-  `recent(limit)` window. (Memory raises the stakes of a gap the stateless responder merely showed as
-  a duplicate *reply*.)
+  `recent(limit)` window. Within one router process, duplicate deliveries of the same message id are
+  serialized around check → route/post → mark so only one records and posts; cross-process dedup still
+  depends on the durable store and single-writer deploy shape. (Memory raises the stakes of a gap the
+  stateless responder merely showed as a duplicate *reply*.)
 - **Single writer per (persona, space) across processes.** Same-process concurrency is serialized by
-  `ThreadTranscript.record`, but two Cloud Run instances can still race on the same mounted
-  directory. Keep the live deployment to one writer per thread, matching the cursor-store discipline.
+  `ThreadTranscript.record`/`forget_thread` and the router's dedup lock, but two Cloud Run instances
+  can still race on the same mounted directory. Keep the live deployment to one writer per thread,
+  matching the cursor-store discipline.
 - **Append cost is bounded by compaction.** Recording scans the thread directory, but compaction keeps
   the unfolded turn set under `MAX_TURNS_ON_DISK` and caps summary prompt overhead.
 

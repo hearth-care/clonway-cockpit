@@ -84,10 +84,12 @@ app-layer gate is the email allowlist.
   `mark_handled(message_id)` (keyed on `message.name`); a redelivered id is acked and ignored. The
   event is **marked handled only after routing + delivery succeed** — if the responder or transport
   raises, the event is left un-marked so the redelivery retries (at-least-once on failure: a
-  transient error risks a duplicate reply, never a dropped message). Use a **durable** store in
-  production (a file / GCS object, as `xhr-server` does); with **no hooks** there is no dedup, so
-  delivery is at-least-once (a worker that can't tolerate a duplicate reply must inject a store, and
-  a message with no `message.name` is never deduped).
+  transient error risks a duplicate reply, never a dropped message). When both hooks are present, one
+  router instance serializes the check → route/post → mark sequence per handled event so concurrent
+  duplicate deliveries cannot both post. Use a **durable** store in production (a file / GCS object,
+  as `xhr-server` does); with **no hooks** there is no dedup, so delivery is at-least-once (a worker
+  that can't tolerate a duplicate reply must inject a store, and a message with no `message.name` is
+  never deduped).
 
 > **Per-space DM memory is available.** Inject `remembering_responder` (`chat_memory.py`) in place of
 > `gateway_responder` and each persona remembers earlier turns in the same DM/space — it splices the

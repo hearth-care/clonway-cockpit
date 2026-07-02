@@ -101,13 +101,16 @@ keys). A CRLF `body` is normalised to `\n` so it round-trips exactly. Invalid in
 **`ValueError`** and writes nothing. Writing an existing `name` overwrites it (updating a note);
 `as_of` defaults to today (UTC). Writes use the framework atomic-write primitive: render the whole
 Fact to a temp sibling and `os.replace` it, so a failed replace leaves the prior file intact and no
-`.tmp` litter.
+`.tmp` litter. In one process, private memory writes, note deletes, and whole-thread deletes share a
+reentrant lock; a thread-level forget waits for any already-started write before removing the
+directory.
 
 `forget(name)` returns `True` if the note existed, `False` if it did not — a genuine filesystem
 error (e.g. a permission denial) **propagates** rather than being mistaken for "wasn't there".
 `PersonaMemory.forget_thread(scope)` validates the scope and removes
 `<root>/<handle>/threads/<scope>/` recursively; it is the library engine behind the thread-memory
-operator deletion command.
+operator deletion command. Cross-process deletion still needs deploy discipline: pause the live
+writer before running the CLI from a separate process.
 
 Why `ValueError` and not `WriteRefused`? Because private writes are **not a trust boundary** — a bad
 private write is a programming error in the persona's own code, not an attempt to poison shared

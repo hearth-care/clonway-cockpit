@@ -159,11 +159,11 @@ directly observable in the reply text.
 | 2 | two personas, compaction has run for both | A's context never contains B's **summary** | `test_summary_isolation_per_persona` |
 | 3 | one persona, a DM space and a ROOM space | ROOM turns/summary never appear in DM context and vice versa (both directions asserted) | `test_dm_and_room_contexts_never_cross` |
 | 4 | any turn/summary write interrupted (simulated `os.replace` failure) | prior file content intact, no `.tmp` litter — never a torn fact | `test_remember_is_atomic_under_replace_failure` (in `tests/test_private_memory.py`) |
-| 5 | two same-process threads `record()` concurrently on one thread | both turns land with distinct indices; none lost (module record lock) | `test_concurrent_records_in_one_process_lose_nothing` |
+| 5 | same-process concurrent transcript writes, including `record()` vs `forget_thread()` | concurrent records land with distinct indices; a forget waits for any already-started record and the thread remains deleted when the forget returns | `test_concurrent_records_in_one_process_lose_nothing`, `test_forget_thread_waits_for_in_flight_record_before_deleting` |
 | 6 | a corrupt/unparseable turn file in the thread | skipped; remaining turns replayed; exactly one warning, content-free (no text/email/space id/scope) | `test_corrupt_turn_file_degrades_and_warns_content_free` |
 | 7 | corrupt/garbage `thread-summary` file | treated as absent: no summary message, replay proceeds, no crash | `test_corrupt_summary_degrades_to_no_summary` |
 | 8 | store root missing entirely | `context()`/`recent()`/`summary()` return empty/`None`, never raise; first `record()` creates the directories | `test_missing_store_reads_empty_then_record_creates` |
-| 9 | `forget_thread` on a populated thread (turns + summary + a corrupt stray) | directory gone; next `context()` is `[]`; second call returns `False` (clean no-op) | `test_forget_thread_removes_turns_and_summary` |
+| 9 | `forget_thread` on a populated thread (turns + summary + a corrupt stray), including an in-flight same-process record | directory gone; next `context()` is `[]`; second call returns `False` (clean no-op); pre-forget writes cannot resurrect the directory | `test_forget_thread_removes_turns_and_summary`, `test_forget_thread_waits_for_in_flight_record_before_deleting` |
 | 10 | a full conversation incl. window overflow + compaction | a `SharedMemory` reader over the same base stays empty — session memory never becomes shared truth | `test_conversation_and_compaction_never_write_shared_memory` (extends #79's `test_responder_never_writes_to_shared_memory`) |
 | 11 | crash window: summary written, folded turns not yet deleted | folded turns excluded from replay (no double context); swept on the next `record()` | `test_crash_window_folded_turns_are_not_double_replayed` |
 | 12 | only the summary remains (turns lost out-of-band) | next index > folded-through — a new turn never reuses a folded index and always replays | `test_next_index_never_reuses_folded_indices` |
@@ -194,10 +194,12 @@ the authority; sweep-on-next-record is the recovery; `forget_thread` is idempote
 - [x] DM ↔ ROOM isolation, both directions — invariant row 3
 - [x] empty `message.space` → stateless (no bogus bucket) — existing
   `test_responder_empty_space_is_stateless` (regression)
-- [x] redelivered message with dedup hooks wired → one turn pair — existing
-  `test_end_to_end_redelivery_with_dedup_hooks_records_once` (regression)
+- [x] redelivered message with dedup hooks wired → one turn pair, including concurrent duplicate
+  deliveries through the add-on edge — existing `test_end_to_end_redelivery_with_dedup_hooks_records_once`
+  plus `test_concurrent_redelivery_with_memory_and_seen_store_records_once` (regressions)
 - [x] deletion honoured: library `forget_thread` + operator CLI — invariant row 9,
-  `test_forget_cli_deletes_the_thread`, `test_forget_cli_nothing_to_forget`
+  `test_forget_cli_deletes_the_thread`, `test_forget_cli_nothing_to_forget`, and
+  `test_forget_thread_waits_for_in_flight_record_before_deleting`
 - [x] summary reaches the model after the soul — `test_responder_splices_summary_after_soul`
 - [x] *(post-#109)* owner DM through the real edge remembers across POSTs (real envelopes) —
   `test_edge_dm_remembers_across_posts_with_memory_wired`
@@ -731,18 +733,27 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: takeover fixer pass for CI FAIL complete as of 2026-07-02T16:38:30Z;
-  implementation checkboxes remain complete and runbook delta remains posted.
-- Next concrete step: final PR protocol only — mark ready, move labels, post DONE with fresh
-  gate tails, then remove the worktree.
+- Current phase: fixer pass for QA FAIL `qa-codex-20260702T164127Z-46713-147` implemented as of
+  2026-07-02T17:14:00Z; implementation checkboxes remain complete and runbook delta remains posted,
+  with one additional runbook clarification needed for quiescing the live writer before cross-process
+  `chat_memory forget`.
+- Next concrete step: commit and push this fixer increment, rebase onto latest `origin/main`, then
+  finish protocol.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
-  `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none. Gate evidence before final protocol:
-  `make docs` -> exit 0 with existing pdoc warning stream; `make lint` ->
-  `All checks passed!`; `make format` -> `162 files already formatted`;
-  `make typecheck` -> `Success: no issues found in 67 source files`; `make test` ->
-  `1112 passed in 30.76s`; `uv run pre-commit run --all-files` -> all hooks Passed.
+  `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam; same-process duplicate
+  Chat delivery is serialized around check -> route/post -> mark; same-process transcript writes
+  and whole-thread deletion share the private-memory lock.
+- Known failing tests: none after focused fixer verification. New RED evidence:
+  `uv run pytest tests/test_chat_addon.py::test_concurrent_redelivery_with_memory_and_seen_store_records_once tests/test_chat_memory.py::test_forget_thread_waits_for_in_flight_record_before_deleting -q`
+  failed before the fix with duplicate posts and a resurrected deleted thread. New GREEN evidence:
+  same command -> `2 passed in 0.31s`; affected suites
+  `uv run pytest tests/test_chat_addon.py tests/test_chat_memory.py tests/test_private_memory.py -q`
+  -> `105 passed in 0.45s`.
+- Full gate evidence after the fix: `make lint` -> `All checks passed!`; `make format` ->
+  `162 files already formatted`; `make typecheck` -> `Success: no issues found in 67 source files`;
+  `make docs` -> exit 0 with existing pdoc warning stream; `make test` ->
+  `1114 passed in 28.59s`; `uv run pre-commit run --all-files` -> all hooks Passed.
 - CI FAIL 2026-07-02T16:13:16Z follow-up: reproduced the named `docs` check locally with
   `make docs` and inspected the same GitHub docs job plus the later claim-triggered docs job.
   Both completed successfully; only the repo's existing pdoc warning stream appeared. Branch is

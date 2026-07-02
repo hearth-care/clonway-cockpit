@@ -506,6 +506,57 @@ def test_edge_non_operator_dm_records_nothing_with_memory_on(tmp_path):
     assert list(tmp_path.rglob("turn-*.md")) == []
 
 
+def test_concurrent_redelivery_with_memory_and_seen_store_records_once(tmp_path):
+    reg = _memreg("milo")
+    seen = FileSeenStore(tmp_path / "seen.txt")
+    transport = FakeChatTransport()
+    arrived = threading.Barrier(2)
+
+    class SlowCompleter(RecordingCompleter):
+        def complete(self, messages: list[Message], *, role: str) -> str:
+            with suppress(threading.BrokenBarrierError):
+                arrived.wait(timeout=0.2)
+            return super().complete(messages, role=role)
+
+    comp = SlowCompleter("noted")
+    router = ChatRouter(
+        registry=reg.registry,
+        responder=build_responder(reg, comp, role="chat", memory_dir=tmp_path),
+        transport=transport,
+        allowlist=parse_allowlist("owner@clonway.example"),
+        already_handled=seen.__contains__,
+        mark_handled=seen.add,
+    )
+    app = build_addon_app(router, background=run_inline)
+    body = json.dumps(
+        fake_dm_envelope("remember this once", msg_id="spaces/LOCAL/messages/same")
+    ).encode()
+    results: list[tuple[str, bytes]] = []
+
+    def post_duplicate() -> None:
+        results.append(_call(app, "POST", CHAT_EVENTS_PATH, body))
+
+    threads = [threading.Thread(target=post_duplicate) for _ in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    assert [status for status, _out in results] == ["200 OK", "200 OK"]
+    assert transport.posted == [("spaces/LOCAL", "noted")]
+    turns = [
+        (p.read_text(encoding="utf-8").split("kind: ", 1)[1].splitlines()[0], p)
+        for p in tmp_path.rglob("turn-*.md")
+    ]
+    assert [kind for kind, _p in sorted(turns, key=lambda item: item[1].name)] == [
+        "user",
+        "persona",
+    ]
+    assert (tmp_path / "seen.txt").read_text(encoding="utf-8").splitlines() == [
+        "spaces/LOCAL/messages/same"
+    ]
+
+
 def test_build_serve_app_fail_closed_on_gateway_problems(tmp_path, monkeypatch):
     config = tmp_path / "gateway.json"
     config.write_text(
