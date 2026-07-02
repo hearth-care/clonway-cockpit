@@ -731,21 +731,26 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: fixer pass for CI FAIL complete; implementation checkboxes remain complete and
-  runbook delta remains posted.
+- Current phase: takeover fixer pass for CI FAIL complete as of 2026-07-02T16:38:30Z;
+  implementation checkboxes remain complete and runbook delta remains posted.
 - Next concrete step: final PR protocol only — mark ready, move labels, post DONE with fresh
   gate tails, then remove the worktree.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
 - Known failing tests: none. Gate evidence before final protocol:
-  `make lint` -> `All checks passed!`; `make format` -> `162 files already formatted`;
+  `make docs` -> exit 0 with existing pdoc warning stream; `make lint` ->
+  `All checks passed!`; `make format` -> `162 files already formatted`;
   `make typecheck` -> `Success: no issues found in 67 source files`; `make test` ->
-  `1112 passed in 30.04s`; `uv run pre-commit run --all-files` -> all hooks Passed.
+  `1112 passed in 30.76s`; `uv run pre-commit run --all-files` -> all hooks Passed.
 - CI FAIL 2026-07-02T16:13:16Z follow-up: reproduced the named `docs` check locally with
   `make docs` and inspected the same GitHub docs job plus the later claim-triggered docs job.
   Both completed successfully; only the repo's existing pdoc warning stream appeared. Branch is
   already based on current `origin/main` (`b3e592a`), with no rebase conflict work needed.
+- CI FAIL 2026-07-02T16:30:06Z takeover follow-up: verified the dispatcher takeover claim is the
+  most recent PR comment; the matching GitHub run `28605733269` was cancelled by workflow
+  concurrency during `docs`, and the immediately newer run `28605758321` at the same head SHA
+  completed `docs` successfully. Local `make docs` also exits 0, so no code defect was found.
 - Deviations recorded: Task 7 test preserves the merged #109 `run_fake` return shape
   (`"spaces/LOCAL: <reply>"`), while asserting the planned echo counts inside `<reply>`.
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
