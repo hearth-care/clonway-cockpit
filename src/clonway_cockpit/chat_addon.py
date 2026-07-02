@@ -19,13 +19,15 @@ from wsgiref.simple_server import make_server
 from wsgiref.types import StartResponse, WSGIApplication
 
 from .chat_transport import ChatRouter, ack_response, load_allowlist
-from .colleague import gateway_responder, load_colleagues
+from .chat_memory import remembering_responder
+from .colleague import ColleagueRegistry, Completer, gateway_responder, load_colleagues
 from .gateway import Gateway, GatewayConfig
 from .group_chat import FakeChatTransport
 from .persona import Persona, PersonaRegistry
 
 CHAT_EVENTS_PATH = "/chat-events"
 MAX_BODY_BYTES = 1_048_576
+CLONWAY_CHAT_MEMORY_DIR = "CLONWAY_CHAT_MEMORY_DIR"
 
 WsgiApp = WSGIApplication
 Opener = Callable[..., Any]
@@ -178,6 +180,18 @@ def build_addon_app(
     return app
 
 
+def build_responder(
+    colleagues: ColleagueRegistry,
+    completer: Completer,
+    *,
+    role: str,
+    memory_dir: Path | None,
+) -> Callable[[Persona, Any], str | None]:
+    if memory_dir is None:
+        return gateway_responder(colleagues, completer, role=role)
+    return remembering_responder(colleagues, completer, role=role, memory_base=memory_dir)
+
+
 def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     try:
         personas_dir = Path(environ["CLONWAY_CHAT_PERSONAS_DIR"])
@@ -195,10 +209,11 @@ def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     problems = gateway.validate(roles=[role])
     if problems:
         raise ChatAddonConfigError("; ".join(problems))
+    memory_dir = Path(environ[CLONWAY_CHAT_MEMORY_DIR]) if environ.get(CLONWAY_CHAT_MEMORY_DIR) else None
     seen = FileSeenStore(Path(environ.get("CLONWAY_CHAT_SEEN_FILE", ".cockpit/chat-seen.txt")))
     router = ChatRouter(
         registry=colleagues.registry,
-        responder=gateway_responder(colleagues, gateway, role=role),
+        responder=build_responder(colleagues, gateway, role=role, memory_dir=memory_dir),
         transport=RestChatTransport(token_supplier=metadata_token_supplier),
         allowlist=load_allowlist(),
         already_handled=seen.__contains__,

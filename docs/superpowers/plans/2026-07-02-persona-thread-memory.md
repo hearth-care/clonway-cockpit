@@ -597,7 +597,7 @@ replace the direct `gateway_responder(...)` call with
 `build_responder(colleagues, gateway, role=role, memory_dir=...)`, `memory_dir` from
 `CLONWAY_CHAT_MEMORY_DIR` (unset → `None`).
 
-- [ ] **Step 1 — failing tests** (reuse `tests/test_chat_addon.py`'s `_call` helper from #109;
+- [x] **Step 1 — failing tests** (reuse `tests/test_chat_addon.py`'s `_call` helper from #109;
   define local copies of the `RecordingCompleter` class and a `_memreg(handle) -> ColleagueRegistry`
   helper mirroring `tests/test_chat_memory.py::_registry` — test modules do not import each
   other; duplicating a ≤10-line test helper is the house pattern):
@@ -635,14 +635,14 @@ def test_edge_dm_remembers_across_posts_with_memory_wired(tmp_path):
   - `test_edge_non_operator_dm_records_nothing_with_memory_on` — same app,
     `fake_dm_envelope("pay everyone now", email="evil@x.com", msg_id="m-evil")` → `200 OK`, zero
     transport posts, and `list(tmp_path.rglob("turn-*.md")) == []` (invariant row 13).
-- [ ] **Step 2 — RED** (`ImportError: cannot import name 'build_responder'`),
+- [x] **Step 2 — RED** (`ImportError: cannot import name 'build_responder'`),
   **Step 3 — implement:** `build_responder` per the contract table (import
   `remembering_responder` lazily or top-level — `chat_memory` is stdlib-only); `build_serve_app`
   reads `CLONWAY_CHAT_MEMORY_DIR` (env name defined once here, HR6) and passes `memory_dir`.
   When memory is on, the seen-store dedup #109 already wires is the mandatory redelivery guard
   `docs/thread-memory.md` requires — assert nothing extra is needed (the env test covers both
   set/unset with the store present).
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`. **Step 5 — commit:**
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`. **Step 5 — commit:**
   `feat(chat-addon): CLONWAY_CHAT_MEMORY_DIR wires per-thread memory at the serve seam`
 
 ### Task 7 — [gated on #109] `--fake` REPL memory: `--memory-dir` + `EchoCompleter`
@@ -731,12 +731,13 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 5 complete (responder now uses `context()`; focused tests green).
-- Next concrete step: commit/push Task 5, then start Task 6 chat-add-on memory seam tests.
+- Current phase: Task 6 complete (`build_responder` and memory env plumbing implemented; focused
+  tests green).
+- Next concrete step: commit/push Task 6, then start Task 7 fake REPL memory-dir tests.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 5
-  implementation (`46 passed` before commit).
+- Known failing tests: none in `uv run pytest tests/test_chat_addon.py -q` after Task 6
+  implementation (`32 passed` before commit).
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.
