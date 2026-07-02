@@ -650,19 +650,19 @@ def test_edge_dm_remembers_across_posts_with_memory_wired(tmp_path):
 **Files:** modify `src/clonway_cockpit/chat_addon.py`; extend `tests/test_chat_addon.py`.
 **Production call site (HR9):** `main()`'s `--fake` branch → `run_fake(..., memory_dir=...)`.
 
-- [ ] **Step 1 — failing test:** `test_run_fake_with_memory_dir_carries_history` — call the
+- [x] **Step 1 — failing test:** `test_run_fake_with_memory_dir_carries_history` — call the
   merged `run_fake` with lines `["hi", "again"]` and `memory_dir=tmp_path`; assert the two
   replies are exactly `"[2 msgs] hi"` then `"[4 msgs] again"` (the worked example), and
   `tmp_path` contains 4 `turn-*.md` files under the demo persona's thread. Adapt the call to the
   merged `run_fake` signature (#109 pins its behaviour, not every kwarg) — record any adaptation
   in HANDOFF NOTES.
-- [ ] **Step 2 — RED**, **Step 3 — implement:** `EchoCompleter` per the contract table; in the
+- [x] **Step 2 — RED**, **Step 3 — implement:** `EchoCompleter` per the contract table; in the
   fake wiring, when `memory_dir` is set build a demo `ColleagueRegistry` (persona `demo`, soul
   `"You are Demo."`) and use
   `remembering_responder(demo_colleagues, EchoCompleter(), role="chat", memory_base=memory_dir)`
   instead of the stateless echo responder; add `--memory-dir` (type `Path`, default `None`) to
   `main()`'s parser, `--fake` only.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`; manual smoke:
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q`; manual smoke:
   `printf 'hi\nagain\n' | uv run python -m clonway_cockpit.chat_addon --fake --memory-dir /tmp/demo-mem`
   → second reply shows `[4 msgs]`. **Step 5 — commit:**
   `feat(chat-addon): --fake --memory-dir — local multi-turn with zero Google/model`
@@ -731,13 +731,16 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 6 complete (`build_responder` and memory env plumbing implemented; focused
-  tests green).
-- Next concrete step: commit/push Task 6, then start Task 7 fake REPL memory-dir tests.
+- Current phase: Task 7 complete (`EchoCompleter`, memory-backed fake wiring, and `--memory-dir`
+  implemented; focused tests and manual smoke green).
+- Next concrete step: commit/push Task 7, then start Task 8 docs/changelog/gates/runbook delta.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in `uv run pytest tests/test_chat_addon.py -q` after Task 6
-  implementation (`32 passed` before commit).
+- Known failing tests: none in `uv run pytest tests/test_chat_addon.py -q` after Task 7
+  implementation (`33 passed` before commit); manual fake smoke printed `[4 msgs]` on second
+  reply.
+- Deviations recorded: Task 7 test preserves the merged #109 `run_fake` return shape
+  (`"spaces/LOCAL: <reply>"`), while asserting the planned echo counts inside `<reply>`.
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.

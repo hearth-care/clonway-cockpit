@@ -520,3 +520,9 @@ def test_build_serve_app_fail_closed_on_gateway_problems(tmp_path, monkeypatch):
 def test_run_fake_repl_round_trip():
     replies = run_fake(["hi demo"])
     assert replies == ["spaces/LOCAL: Demo: hi demo"]
+
+
+def test_run_fake_with_memory_dir_carries_history(tmp_path):
+    replies = run_fake(["hi", "again"], memory_dir=tmp_path)
+    assert replies == ["spaces/LOCAL: [2 msgs] hi", "spaces/LOCAL: [4 msgs] again"]
+    assert len(list(tmp_path.rglob("turn-*.md"))) == 4

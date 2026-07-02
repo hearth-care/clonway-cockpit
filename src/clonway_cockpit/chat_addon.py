@@ -20,8 +20,9 @@ from wsgiref.types import StartResponse, WSGIApplication
 
 from .chat_transport import ChatRouter, ack_response, load_allowlist
 from .chat_memory import remembering_responder
-from .colleague import ColleagueRegistry, Completer, gateway_responder, load_colleagues
+from .colleague import Colleague, ColleagueRegistry, Completer, gateway_responder, load_colleagues
 from .gateway import Gateway, GatewayConfig
+from .gateway.types import Message
 from .group_chat import FakeChatTransport
 from .persona import Persona, PersonaRegistry
 
@@ -35,6 +36,11 @@ Opener = Callable[..., Any]
 
 class ChatAddonConfigError(RuntimeError):
     pass
+
+
+class EchoCompleter:
+    def complete(self, messages: list[Message], *, role: str) -> str:
+        return f"[{len(messages)} msgs] {messages[-1]['content']}"
 
 
 class FileSeenStore:
@@ -222,16 +228,30 @@ def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     return build_addon_app(router, background=spawn_daemon_thread)
 
 
-def run_fake(lines: Iterable[str], *, output: TextIO | None = None) -> list[str]:
+def run_fake(
+    lines: Iterable[str], *, output: TextIO | None = None, memory_dir: Path | None = None
+) -> list[str]:
     persona = Persona.from_dict({"handle": "demo", "name": "Demo", "domain": "local dev"})
     transport = FakeChatTransport()
 
     def echo(persona: Persona, message) -> str:
         return f"{persona.name}: {message.text}"
 
+    if memory_dir is None:
+        registry = PersonaRegistry.from_personas([persona])
+        responder = echo
+    else:
+        colleagues = ColleagueRegistry(
+            colleagues={"demo": Colleague(persona=persona, soul="You are Demo.")}
+        )
+        registry = colleagues.registry
+        responder = remembering_responder(
+            colleagues, EchoCompleter(), role="chat", memory_base=memory_dir
+        )
+
     router = ChatRouter(
-        registry=PersonaRegistry.from_personas([persona]),
-        responder=echo,
+        registry=registry,
+        responder=responder,
         transport=transport,
         allowlist=frozenset({"owner@clonway.example"}),
     )
@@ -286,10 +306,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--serve", action="store_true")
     mode.add_argument("--fake", action="store_true")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--memory-dir", type=Path)
     args = parser.parse_args(argv)
 
     if args.fake:
-        run_fake(sys.stdin, output=sys.stdout)
+        run_fake(sys.stdin, output=sys.stdout, memory_dir=args.memory_dir)
         return 0
 
     app = build_serve_app(dict(os.environ))
