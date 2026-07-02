@@ -25,9 +25,11 @@ and the design spec ``docs/superpowers/specs/2026-06-10-thread-memory-wiring-des
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import logging
 import re
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -172,6 +174,10 @@ class ThreadTranscript:
         """Delete one recorded turn by name (used to roll back a half-written turn pair). Returns
         ``True`` if it existed."""
         return self._view().forget(name)
+
+    def forget_thread(self) -> bool:
+        """Delete this whole (persona, thread) transcript directory."""
+        return self._memory.forget_thread(self._scope)
 
     def recent(self, limit: int = DEFAULT_TURNS) -> list[Message]:
         """The last ``limit`` turns in **chronological** order as gateway messages — a
@@ -354,3 +360,28 @@ def remembering_responder(
         return text
 
     return respond
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m clonway_cockpit.chat_memory")
+    sub = parser.add_subparsers(dest="command", required=True)
+    forget = sub.add_parser("forget")
+    forget.add_argument("--memory-base", type=Path, required=True)
+    forget.add_argument("--handle", required=True)
+    forget.add_argument("--space", required=True)
+    args = parser.parse_args(argv)
+
+    if args.command == "forget":
+        scope = scope_for_space(args.space)
+        try:
+            deleted = PersonaMemory(args.memory_base, args.handle).forget_thread(scope)
+        except ValueError:
+            print("invalid handle", file=sys.stderr)
+            return 2
+        print("forgotten" if deleted else "nothing to forget")
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

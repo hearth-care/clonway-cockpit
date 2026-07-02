@@ -475,7 +475,7 @@ extend `tests/test_private_memory.py`, `tests/test_chat_memory.py`.
 — the operator's deletion surface; `ThreadTranscript.forget_thread` is its engine and the
 library API.
 
-- [ ] **Step 1 — failing tests.** Embed verbatim:
+- [x] **Step 1 — failing tests.** Embed verbatim:
 
 ```python
 def test_forget_thread_removes_turns_and_summary(tmp_path):
@@ -512,14 +512,14 @@ def test_forget_cli_nothing_to_forget(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "nothing to forget"
 ```
 
-- [ ] **Step 2 — RED** (`AttributeError: ... no attribute 'main'` / `forget_thread`),
+- [x] **Step 2 — RED** (`AttributeError: ... no attribute 'main'` / `forget_thread`),
   **Step 3 — implement:** `PersonaMemory.forget_thread(scope)` = validate slug,
   `shutil.rmtree(dir)` if it exists (propagate real FS errors — same posture as
   `PrivateScope.forget`); `ThreadTranscript.forget_thread()` delegates;
   CLI: one `forget` subcommand, derive `scope_for_space(args.space)`, print exactly
   `forgotten`/`nothing to forget`, return 0; an invalid `--handle` → content-free message on
   stderr, return 2.
-- [ ] **Step 4 — verify** (`uv run pytest tests/test_chat_memory.py tests/test_private_memory.py -q`),
+- [x] **Step 4 — verify** (`uv run pytest tests/test_chat_memory.py tests/test_private_memory.py -q`),
   **Step 5 — commit:** `feat(chat-memory): forget_thread + operator forget CLI`
 
 ### Task 5 — responder context upgrade + isolation/shared-tier invariants
@@ -731,13 +731,14 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 3 complete (content-free unreadable-turn warning implemented; focused tests
+- Current phase: Task 4 complete (forget-thread and operator CLI implemented; focused tests
   green).
-- Next concrete step: commit/push Task 3, then start Task 4 forget-thread and CLI tests.
+- Next concrete step: commit/push Task 4, then start Task 5 responder context and isolation tests.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 3
-  implementation (`39 passed` before commit).
+- Known failing tests: none in
+  `uv run pytest tests/test_chat_memory.py tests/test_private_memory.py -q` after Task 4
+  implementation (`65 passed` before commit).
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.

@@ -214,6 +214,40 @@ def test_missing_store_reads_empty_then_record_creates(tmp_path):
     assert t.record(USER, "hello") == "turn-000000"
 
 
+def test_forget_thread_removes_turns_and_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i in range(5):
+        t.record(USER if i % 2 == 0 else PERSONA, f"t{i}")
+    (tmp_path / "milo" / "threads" / "dm-x" / "stray.bin").write_bytes(b"\x00")  # corrupt stray
+    assert t.forget_thread() is True
+    assert not (tmp_path / "milo" / "threads" / "dm-x").exists()
+    assert t.context(12) == []  # a forgotten thread reads as brand new
+    assert t.forget_thread() is False  # idempotent no-op
+
+
+def test_forget_cli_deletes_the_thread(tmp_path, capsys):
+    from clonway_cockpit import chat_memory
+
+    scope = scope_for_space("spaces/AAA")
+    ThreadTranscript(tmp_path, "milo", scope).record(USER, "hello")
+    rc = chat_memory.main(
+        ["forget", "--memory-base", str(tmp_path), "--handle", "milo", "--space", "spaces/AAA"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "forgotten"
+    assert not (tmp_path / "milo" / "threads" / scope).exists()
+
+
+def test_forget_cli_nothing_to_forget(tmp_path, capsys):
+    from clonway_cockpit import chat_memory
+
+    rc = chat_memory.main(
+        ["forget", "--memory-base", str(tmp_path), "--handle", "milo", "--space", "spaces/ZZZ"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "nothing to forget"
+
+
 # --- remembering_responder: the memory-aware reference responder ----------------------------
 
 

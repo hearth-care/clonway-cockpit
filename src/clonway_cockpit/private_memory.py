@@ -26,6 +26,7 @@ See ``docs/private-memory.md`` and the design spec
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from clonway_cockpit.obs.atomicio import atomic_write_bytes
@@ -172,3 +173,12 @@ class PersonaMemory:
         calling here. Each call returns a **fresh** scope; hold it in a local for a read sequence."""
         _require_slug(scope, "scope")
         return PrivateScope(self._base / self._handle / _THREADS / scope)
+
+    def forget_thread(self, scope: str) -> bool:
+        """Delete one per-thread/space scoped store recursively. Returns ``True`` iff it existed."""
+        _require_slug(scope, "scope")
+        path = self._base / self._handle / _THREADS / scope
+        if not path.exists():
+            return False
+        shutil.rmtree(path)
+        return True
