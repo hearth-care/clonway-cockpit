@@ -211,7 +211,7 @@ its HTTP contract.
 **Interfaces:** `CHAT_EVENTS_PATH`, `MAX_BODY_BYTES`, `build_addon_app`, `run_inline`,
 `fake_dm_envelope`.
 
-- [ ] **Step 1 — failing tests.** WSGI-level, no server socket; assert observable status + body
+- [x] **Step 1 — failing tests.** WSGI-level, no server socket; assert observable status + body
   (HR8). Embed verbatim:
 
 ```python
@@ -285,16 +285,16 @@ def test_oversized_body_is_rejected_without_reading():
     assert _call(app, "POST", CHAT_EVENTS_PATH, big)[0] == "413 Payload Too Large"
 ```
 
-- [ ] **Step 2 — run, confirm RED:** `uv run pytest tests/test_chat_addon.py -q` → expect
+- [x] **Step 2 — run, confirm RED:** `uv run pytest tests/test_chat_addon.py -q` → expect
   `ImportError: cannot import name 'build_addon_app'` (proves load-bearing).
-- [ ] **Step 3 — implement minimal:** the WSGI callable dispatching on
+- [x] **Step 3 — implement minimal:** the WSGI callable dispatching on
   `(REQUEST_METHOD, PATH_INFO)`; `CONTENT_LENGTH` parsed defensively (absent/non-int → 400);
   length > `max_body` → 413 **before** reading the body; JSON parse failure → 400; valid JSON →
   `background(lambda: router.handle_event(event))` then respond
   `json.dumps(ack_response()).encode()` with `Content-Type: application/json`. `fake_dm_envelope`
   mirrors the core fixture's nested shape exactly.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q` → `4 passed`.
-- [ ] **Step 5 — commit:** `feat(chat-addon): WSGI edge skeleton — routing, body guards, on-contract fake envelope`
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q` → `3 passed` (the route-state cases are grouped in one test).
+- [x] **Step 5 — commit:** `feat(chat-addon): WSGI edge skeleton — routing, body guards, on-contract fake envelope`
 
 ### Task 2 — event flow: ack + per-kind matrix + air-gap + dedup + fast-ack + failure path
 
@@ -490,9 +490,11 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: not started.
-- Next concrete step: Task 1 Step 1 (write the failing routing-edge tests).
+- Current phase: Task 1 complete; Task 2 not started.
+- Next concrete step: Task 2 Step 1 (write the failing event-flow invariant tests).
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
-  (no JWT — binding); idempotency key = `message.name`; content-free logs.
-- Known failing tests: none yet.
+  (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
+  route-state cases into one test, so the narrow verification is `3 passed` rather than the
+  plan's original `4 passed`.
+- Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.
