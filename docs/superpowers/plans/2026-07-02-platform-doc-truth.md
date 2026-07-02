@@ -140,17 +140,17 @@ sha/date where this plan shows recon values):
 
 ### Task 3 — `docs/pin-sync.md`
 
-- [ ] Leave `Supported: v0.1.0` line untouched (binding decision).
-- [ ] Replace the "Last static snapshot: 2026-06-14" table (rows claiming
+- [x] Leave `Supported: v0.1.0` line untouched (binding decision).
+- [x] Replace the "Last static snapshot: 2026-06-14" table (rows claiming
   `4c63daf…` / `1c86802…` / `a75f7a0…` raw-SHA pins, "9/70/122 commits behind/ahead") with a fresh
   static snapshot dated at build time, generated from the Task 1 `check_fleet_pins.py` output —
   expected shape: 7 workers `v0.1.0` (at baseline), xbook `v0.2.0` (newer release tag — accepted,
   note PR #108), plus the "re-run the script for current state" line retained.
-- [ ] Add one narrative sentence to the snapshot section: `v0.2.0` was released 2026-06-14; the
+- [x] Add one narrative sentence to the snapshot section: `v0.2.0` was released 2026-06-14; the
   supported baseline remains `v0.1.0` until the operator moves it; a worker on a newer release
   tag is conformant per the survey's newer-tag rule (PR #108). (Describes reality; changes no
   policy.)
-- [ ] **Verify** doc-only diff; **Commit:** `docs(pin-sync): fresh pin snapshot — fleet on release tags (<date>)`
+- [x] **Verify** doc-only diff; **Commit:** `docs(pin-sync): fresh pin snapshot — fleet on release tags (<date>)`
 
 ### Task 4 — `docs/persona-platform-getting-started.md` (adoption matrix + §C)
 
@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: Task 2 complete; ready for Task 3 (`docs/pin-sync.md`).
-- Next concrete step: replace the stale pin snapshot in `docs/pin-sync.md` with the 2026-07-02 survey results.
+- Current phase: Task 3 complete; ready for Task 4 (`docs/persona-platform-getting-started.md`).
+- Next concrete step: demote the getting-started adoption matrix to a tracker pointer and refresh §C against the observed fleet conformance.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none (doc-only).
 - Dependencies/operator TODOs: none.

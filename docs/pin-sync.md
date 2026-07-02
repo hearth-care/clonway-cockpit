@@ -27,18 +27,22 @@ For each worker repo:
 
 Run `python3 scripts/check_fleet_pins.py` for a live survey against the current supported tag.
 
-Last static snapshot: 2026-06-14 (re-run the script for current state).
+Last static snapshot: 2026-07-02 (re-run the script for current state).
 
-| Worker repo | Pin as of 2026-06-14 | Status |
+`v0.2.0` was released on 2026-06-14. The supported baseline remains `v0.1.0`
+until the operator moves it; a worker on a newer release tag is conformant under
+the survey's newer-tag rule from PR #108.
+
+| Worker repo | Pin as of 2026-07-02 | Status |
 |---|---|---|
-| Auto-Orchestrator | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-admissions | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-bookkeeper | `1c868027e31587c33acb5f4d213beeb7650df6f2` | 122 commits ahead (bare SHA → needs tag switch) |
-| auto-hr | `a75f7a02e9da214d6eb55cd6b6f444d03251b114` | 70 commits behind `v0.1.0` |
-| auto-inspector | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-marketer | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-secretary | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| Auto-Procurer | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
+| auto-orchestrator | `v0.1.0` | OK (on supported baseline) |
+| auto-admissions | `v0.1.0` | OK (on supported baseline) |
+| auto-bookkeeper | `v0.2.0` | OK (newer release tag than `v0.1.0`) |
+| auto-hr | `v0.1.0` | OK (on supported baseline) |
+| auto-inspector | `v0.1.0` | OK (on supported baseline) |
+| auto-marketer | `v0.1.0` | OK (on supported baseline) |
+| auto-secretary | `v0.1.0` | OK (on supported baseline) |
+| Auto-Procurer | `v0.1.0` | OK (on supported baseline) |
 
 Update consumers before emitters when a wire shape changes. The orchestrator is the first consumer
 because it bridges worker output across the fleet; update it before workers that emit changed
