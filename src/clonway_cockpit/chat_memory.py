@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
 from collections.abc import Callable
 from pathlib import Path
 
@@ -77,6 +78,7 @@ zero-pad width; the padding only keeps the common case lexically tidy on disk.""
 _PREVIEW_MAX = 120
 """Cap the single-line ``summary`` preview a turn carries (the full text lives in the body)."""
 _FOLDED_RE = re.compile(r"folded-through:\s*(\d+)")
+_RECORD_LOCK = threading.Lock()
 
 
 def scope_for_space(space_id: str) -> str:
@@ -156,12 +158,13 @@ class ThreadTranscript:
         body = text.strip()
         if not body:
             return None
-        view = self._view()
-        name = f"{_TURN_PREFIX}{self._next_index(view):0{_TURN_DIGITS}d}"
-        view.remember(name=name, kind=role, summary=_preview(body), body=body)
-        self._sweep_folded(view)
-        self._compact_if_needed(view)
-        return name
+        with _RECORD_LOCK:
+            view = self._view()
+            name = f"{_TURN_PREFIX}{self._next_index(view):0{_TURN_DIGITS}d}"
+            view.remember(name=name, kind=role, summary=_preview(body), body=body)
+            self._sweep_folded(view)
+            self._compact_if_needed(view)
+            return name
 
     def forget(self, name: str) -> bool:
         """Delete one recorded turn by name (used to roll back a half-written turn pair). Returns

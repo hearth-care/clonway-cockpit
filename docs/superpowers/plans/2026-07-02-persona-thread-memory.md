@@ -372,7 +372,7 @@ extend `tests/test_private_memory.py`, `tests/test_chat_memory.py`.
 **Production call site (HR9):** every `PrivateScope.remember` (turns, summaries, working notes)
 and `ThreadTranscript.record` under #109's `spawn_daemon_thread` concurrency.
 
-- [ ] **Step 1 — failing tests.** Embed verbatim (imports: `threading`, `pytest`,
+- [x] **Step 1 — failing tests.** Embed verbatim (imports: `threading`, `pytest`,
   `PersonaMemory`):
 
 ```python
@@ -409,15 +409,15 @@ def test_concurrent_records_in_one_process_lose_nothing(tmp_path):
     assert sorted(m["content"] for m in t.recent(12)) == ["m0", "m1"]
 ```
 
-- [ ] **Step 2 — RED** (`uv run pytest tests/test_private_memory.py tests/test_chat_memory.py -q`
+- [x] **Step 2 — RED** (`uv run pytest tests/test_private_memory.py tests/test_chat_memory.py -q`
   — the atomic test fails because `remember` uses `write_text`; the concurrency test flakes/fails
   on a lost index).
-- [ ] **Step 3 — implement:** `PrivateScope.remember` writes via
+- [x] **Step 3 — implement:** `PrivateScope.remember` writes via
   `atomic_write_bytes(path, rendered.encode("utf-8"))` (import from `clonway_cockpit.obs.atomicio`
   — reuse, do not copy); add a module-level `_RECORD_LOCK = threading.Lock()` in `chat_memory`
   held across `record()`'s whole read-index → write → sweep → compact sequence (mirrors
   `atomicio._WRITE_LOCK`; serialises all transcripts in-process, which is correct and cheap).
-- [ ] **Step 4 — verify:** same command → all pass. **Step 5 — commit:**
+- [x] **Step 4 — verify:** same command → all pass. **Step 5 — commit:**
   `feat(memory): atomic Fact writes + per-process record lock`
 
 ### Task 3 — corrupt/missing-store degrade with a content-free warning
@@ -731,13 +731,13 @@ live deploy), `CHANGELOG.md` (`## [Unreleased]`), and this plan (tick boxes, HAN
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 complete (bounded transcript core implemented; focused tests green).
-- Next concrete step: push the Task 1 heartbeat, then start Task 2 failing tests for atomic
-  writes and same-process record concurrency.
+- Current phase: Task 2 complete (atomic writes and record lock implemented; focused tests green).
+- Next concrete step: commit/push Task 2, then start Task 3 corrupt/missing-store degrade tests.
 - Decisions taken: file-backed store + atomicio (no GCS-API store); deterministic extractive
   summarisation; folded-through authority in the summary Fact; next-index =
   `max([folded_through] + on_disk) + 1`; env-opt-in wiring at #109's seam.
-- Known failing tests: none in `uv run pytest tests/test_chat_memory.py -q` after Task 1
-  implementation (`35 passed` before commit).
+- Known failing tests: none in
+  `uv run pytest tests/test_private_memory.py tests/test_chat_memory.py -q` after Task 2
+  implementation (`59 passed` before commit).
 - Dependencies/operator TODOs: #109 is merged into `origin/main` (verified 2026-07-02); OPERATOR
   TODO above remains for the live deploy.

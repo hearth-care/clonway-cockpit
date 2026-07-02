@@ -154,6 +154,23 @@ def test_malformed_file_is_skipped_not_fatal(tmp_path):
     assert names == ["good"]
 
 
+def test_remember_is_atomic_under_replace_failure(tmp_path, monkeypatch):
+    scope = PersonaMemory(tmp_path, "milo").thread("dm-x")
+    scope.remember(name="note", kind="note", summary="v1", body="v1")
+
+    def boom(src, dst):
+        raise OSError("simulated crash mid-write")
+
+    monkeypatch.setattr("clonway_cockpit.obs.atomicio.os.replace", boom)
+    with pytest.raises(OSError):
+        scope.remember(name="note", kind="note", summary="v2", body="v2")
+    monkeypatch.undo()
+    fresh = PersonaMemory(tmp_path, "milo").thread("dm-x")
+    fact = fresh.get("note")
+    assert fact is not None and fact.body == "v1"  # never a torn/half file
+    assert not list((tmp_path / "milo" / "threads" / "dm-x").glob("*.tmp"))
+
+
 # --- forget ---------------------------------------------------------------------------------
 
 

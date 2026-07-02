@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from clonway_cockpit.obs.atomicio import atomic_write_bytes
 from clonway_cockpit.shared_memory import (
     Fact,
     SharedMemory,
@@ -114,8 +115,9 @@ class PrivateScope:
         clean_body = body.strip()
         self._base.mkdir(parents=True, exist_ok=True)
         path = self._base / f"{name}.md"
-        path.write_text(
-            render_fact(name, kind, summary, clean_source, stamp, clean_body), encoding="utf-8"
+        atomic_write_bytes(
+            path,
+            render_fact(name, kind, summary, clean_source, stamp, clean_body).encode("utf-8"),
         )
         self._reader = SharedMemory(self._base)  # refresh: reads-after-write are consistent
         return Fact(

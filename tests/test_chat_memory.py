@@ -7,6 +7,8 @@ scope normalizer, the transcript projection, the memory-aware responder, the pre
 ``ChatRouter``.
 """
 
+import threading
+
 import pytest
 
 from clonway_cockpit.chat_memory import (
@@ -165,6 +167,22 @@ def test_next_index_never_reuses_folded_indices(tmp_path):
     # fall at or below folded-through (which would make the new turn invisible to replay).
     assert name == "turn-000003"
     assert [m["content"] for m in t.context(12)[1:]] == ["fresh"]  # replayed, not swallowed
+
+
+def test_concurrent_records_in_one_process_lose_nothing(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    start = threading.Barrier(2)
+
+    def worker(text: str) -> None:
+        start.wait()
+        t.record(USER, text)
+
+    threads = [threading.Thread(target=worker, args=(f"m{i}",)) for i in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert sorted(m["content"] for m in t.recent(12)) == ["m0", "m1"]
 
 
 # --- remembering_responder: the memory-aware reference responder ----------------------------
