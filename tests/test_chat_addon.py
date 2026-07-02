@@ -7,6 +7,7 @@ import pytest
 
 from clonway_cockpit.chat_addon import (
     CHAT_EVENTS_PATH,
+    FileSeenStore,
     MAX_BODY_BYTES,
     build_addon_app,
     fake_dm_envelope,
@@ -244,3 +245,32 @@ def test_edge_logging_is_content_free(capsys):
     assert "reconcile" not in output
     assert "owner@clonway.example" not in output
     assert "spaces/" not in output
+
+
+def test_seen_store_survives_restart(tmp_path):
+    seen_path = tmp_path / "seen.txt"
+    store = FileSeenStore(seen_path)
+    transport = FakeChatTransport()
+    app = _make_app(
+        transport,
+        already_handled=store.__contains__,
+        mark_handled=store.add,
+    )
+    envelope = fake_dm_envelope("reconcile the bank?")
+    assert _post(app, envelope)[0] == "200 OK"
+    assert transport.posted == [("spaces/LOCAL", "Milo: on it.")]
+
+    restarted = FileSeenStore(seen_path)
+    restarted_transport = FakeChatTransport()
+    restarted_app = _make_app(
+        restarted_transport,
+        already_handled=restarted.__contains__,
+        mark_handled=restarted.add,
+    )
+    assert _post(restarted_app, envelope)[0] == "200 OK"
+    assert restarted_transport.posted == []
+
+
+def test_seen_store_tolerates_missing_file(tmp_path):
+    store = FileSeenStore(tmp_path / "missing" / "seen.txt")
+    assert "spaces/LOCAL/messages/local-1" not in store

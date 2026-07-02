@@ -355,15 +355,15 @@ def test_non_operator_dm_is_acked_but_draws_no_reply():
 `already_handled=store.__contains__, mark_handled=store.add`; Task 3's tests plug it through
 `build_addon_app` the same way.
 
-- [ ] **Step 1 — failing tests:** `test_seen_store_survives_restart` (mark via a POST through the
+- [x] **Step 1 — failing tests:** `test_seen_store_survives_restart` (mark via a POST through the
   edge, rebuild a new `FileSeenStore(tmp_path / "seen.txt")` on the same path, POST the same
   envelope → zero new posts); `test_seen_store_tolerates_missing_file` (fresh path → empty, no
   raise).
-- [ ] **Step 2 — RED**, then **Step 3 — implement:** load ids into a set at init (missing file →
+- [x] **Step 2 — RED**, then **Step 3 — implement:** load ids into a set at init (missing file →
   empty), `add()` appends a line, flushes, `os.fsync`. Idempotency key = the event's
   `message.name` exactly as the core hands it (`NormalizedChatEvent.message_id`); no hashing, no
   uuid (HR4).
-- [ ] **Step 4 — verify** (`uv run pytest tests/test_chat_addon.py -q`), **Step 5 — commit:**
+- [x] **Step 4 — verify** (`uv run pytest tests/test_chat_addon.py -q`), **Step 5 — commit:**
   `feat(chat-addon): durable FileSeenStore dedup`
 
 ### Task 4 — outbound: `RestChatTransport` + `metadata_token_supplier`
@@ -490,12 +490,14 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 2 complete; Task 3 not started.
-- Next concrete step: Task 3 Step 1 (write the failing FileSeenStore restart/missing-file tests).
+- Current phase: Task 3 complete; Task 4 not started.
+- Next concrete step: Task 4 Step 1 (write the failing REST poster and metadata token tests).
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
   plan's original `4 passed`. Task 2 RED failed at the missing `spawn_daemon_thread` import;
-  GREEN verification was `uv run pytest tests/test_chat_addon.py -q` → `18 passed`.
+  GREEN verification was `uv run pytest tests/test_chat_addon.py -q` → `18 passed`. Task 3 RED
+  failed at the missing `FileSeenStore` import; GREEN verification was
+  `uv run pytest tests/test_chat_addon.py -q` → `20 passed`.
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.

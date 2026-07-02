@@ -8,9 +8,11 @@ operator gating, routing, and mark-after-delivery semantics stay in the core.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 from collections.abc import Callable, Iterable
+from pathlib import Path
 from typing import Any
 
 from .chat_transport import ChatRouter, ack_response
@@ -20,6 +22,28 @@ MAX_BODY_BYTES = 1_048_576
 
 StartResponse = Callable[[str, list[tuple[str, str]]], None]
 WsgiApp = Callable[[dict[str, Any], StartResponse], Iterable[bytes]]
+
+
+class FileSeenStore:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        try:
+            self._seen = {line.strip() for line in path.read_text(encoding="utf-8").splitlines()}
+        except FileNotFoundError:
+            self._seen = set()
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._seen
+
+    def add(self, item: str) -> None:
+        if item in self._seen:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(f"{item}\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        self._seen.add(item)
 
 
 def run_inline(fn: Callable[[], None]) -> None:
