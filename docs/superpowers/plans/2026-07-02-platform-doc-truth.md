@@ -96,8 +96,8 @@ scripts/check_fleet_pins.py` (read-only run). **No new dependencies, no code cha
 
 ### Task 1 — fresh evidence pass (no edits yet)
 
-- [ ] Run, verbatim, and save output: `python3 scripts/check_fleet_pins.py`
-- [ ] For each of the 8 worker repos, run the tracker's recipe steps 1–4
+- [x] Run, verbatim, and save output: `python3 scripts/check_fleet_pins.py`
+- [x] For each of the 8 worker repos, run the tracker's recipe steps 1–4
   (`gh api repos/hearth-care/<repo>/contents/pyproject.toml --jq '.content' | base64 -d | grep -A2 'clonway-cockpit'`;
   `gh search code --repo hearth-care/<repo> agent_stdio`;
   `gh search code --repo hearth-care/<repo> assert_render_model_parity` and
@@ -106,7 +106,7 @@ scripts/check_fleet_pins.py` (read-only run). **No new dependencies, no code cha
   Record per worker: pin `rev`, agent-stdio evidence, both-contract-functions evidence, HEAD
   `sha · date`. (If `gh search code` is rate-limited/unavailable, fall back to
   `gh api` contents reads of the known test paths named in the recon table.)
-- [ ] **Commit** (evidence goes in the PR comment, not committed files): nothing to commit —
+- [x] **Commit** (evidence goes in the PR comment, not committed files): nothing to commit —
   proceed. (Checkpoint is the saved output.)
 
 ### Task 2 — `docs/fleet-conformance.md`
@@ -114,27 +114,27 @@ scripts/check_fleet_pins.py` (read-only run). **No new dependencies, no code cha
 Each box = one claim corrected with before → after (builder substitutes freshly observed
 sha/date where this plan shows recon values):
 
-- [ ] Header line 3: `read 2026-06-12` → `read <build date>` (keep the source description).
-- [ ] xletter row: `_(no --agent-stdio)_` / Contract test `No` / drive path `n/a` / Known
+- [x] Header line 3: `read 2026-06-12` → `read <build date>` (keep the source description).
+- [x] xletter row: `_(no --agent-stdio)_` / Contract test `No` / drive path `n/a` / Known
   exceptions `Not cockpit-drivable; --agent-stdio absent from CLI` → observed truth
   (`uv run xletter --agent-stdio`; contract-test cell per the Task 1 `gh search code` result —
   expected both-functions evidence or `Partial`, whichever is observed; fresh
   `Last verified` sha · date). Observed pin cell `4c63daf` → `v0.1.0`.
-- [ ] xquill row: same correction shape as xletter (`uv run xquill --agent-stdio`, observed
+- [x] xquill row: same correction shape as xletter (`uv run xquill --agent-stdio`, observed
   contract-test cell, pin `4c63daf` → `v0.1.0`, fresh stamp).
-- [ ] xbook row: observed pin `8449c2d` → `v0.2.0`; fresh stamp.
-- [ ] xhr row: observed pin `a75f7a0` → `v0.1.0`; fresh stamp; keep the 60s first-frame exception
+- [x] xbook row: observed pin `8449c2d` → `v0.2.0`; fresh stamp.
+- [x] xhr row: observed pin `a75f7a0` → `v0.1.0`; fresh stamp; keep the 60s first-frame exception
   unless Task 1 finds it resolved.
-- [ ] xadmissions row: keep `Partial` + parity-gap exception (recon confirms still true —
-  `tests/cockpit/test_agent_contract.py` imports only `assert_drives_clean`); pin `4c63daf` →
-  `v0.1.0`; fresh stamp.
-- [ ] xcqc, xsource, xops-bridge rows: pins `4c63daf` → `v0.1.0`; fresh stamps.
-- [ ] "Open gaps (2026-06-12)" section retitled with the build date and re-cut to observed truth:
+- [x] xadmissions row: plan expected `Partial` + parity-gap exception, but live evidence showed
+  `tests/cockpit/test_agent_contract.py` now imports both `assert_render_model_parity` and
+  `assert_drives_clean`; pin `4c63daf` → `v0.1.0`; fresh stamp.
+- [x] xcqc, xsource, xops-bridge rows: pins `4c63daf` → `v0.1.0`; fresh stamps.
+- [x] "Open gaps (2026-06-12)" section retitled with the build date and re-cut to observed truth:
   **remove** "xletter, xquill: No `--agent-stdio` …" (false), **remove** "Pins on raw SHA …" and
   "xbook pin …" (false — all eight on release tags), **keep** the xadmissions parity gap (with
   fresh evidence line), **keep/refresh** the xhr first-frame note per observation.
 
-- [ ] **Verify:** every edited row's stamp matches Task 1 output; `git diff --name-only` shows
+- [x] **Verify:** every edited row's stamp matches Task 1 output; `git diff --name-only` shows
   only `.md`.
 - [ ] **Commit:** `docs(fleet-conformance): re-verify all 8 rows against live origin/main (<date>)`
 
@@ -209,8 +209,8 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: not started.
-- Next concrete step: Task 1 — run `python3 scripts/check_fleet_pins.py` and the per-repo recipe.
-- Decisions taken: live-remote truth wins over this plan's recon; supported line untouched.
+- Current phase: Task 2 complete; ready for Task 3 (`docs/pin-sync.md`).
+- Next concrete step: replace the stale pin snapshot in `docs/pin-sync.md` with the 2026-07-02 survey results.
+- Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none (doc-only).
 - Dependencies/operator TODOs: none.
