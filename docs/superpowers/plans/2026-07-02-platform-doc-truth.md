@@ -47,7 +47,7 @@ repo's own pin-survey script as the evidence trail.
 | xhr | auto-hr | `v0.1.0` | yes | pin-sync PR 2026-06-21 (`8c51f82`) |
 | xletter | auto-marketer | `v0.1.0` | **yes** — added 2026-06-12 18:23, commit `855d980` (`src/xletter/cli/__init__.py`) | tracker's 06-12 row predates the same-day add |
 | xquill | auto-secretary | `v0.1.0` | **yes** — added 2026-06-15, commit `43d94ea` (`src/xquill/cockpit.py`) | read-only status surface |
-| xadmissions | auto-admissions | `v0.1.0` | yes | **parity gap STILL open**: `tests/cockpit/test_agent_contract.py` imports `assert_drives_clean` only — `assert_render_model_parity` still absent |
+| xadmissions | auto-admissions | `v0.1.0` | yes | Initial recon expected a parity gap, but live verification found both contract asserts present on `main` |
 | xcqc | auto-inspector | `v0.1.0` | yes | pin-sync PR 2026-06-21 |
 | xsource | Auto-Procurer | `v0.1.0` | yes | pin-sync PR 2026-06-28 |
 | xops bridge | auto-orchestrator | `v0.1.0` | yes | pin-sync PR 2026-06-25 |
@@ -221,7 +221,8 @@ sha/date where this plan shows recon values):
   `759054c` while their cockpit pins stayed on release tags. `v0.3.0` (chat_addon transport +
   bounded persona thread memory) released 2026-07-02 after this plan was written; noted in
   pin-sync.md and the getting-started checklist; no worker pins changed yet, supported baseline
-  still `v0.1.0`.
+  still `v0.1.0`. Final review found one stale advisory recon sentence for auto-admissions; it
+  was corrected to match the observed contract-gate truth.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
