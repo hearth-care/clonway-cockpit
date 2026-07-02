@@ -18,6 +18,11 @@ Record them here and bump the release tag before merging.
   Chat REST poster, Cloud Run metadata token supplier, env-wired `--serve`, and zero-Google `--fake`
   local loop.
 
+- **Bounded per-persona thread memory** — `chat_memory.py` now compacts old turns into a bounded
+  per-thread summary, replays summary + recent window context, writes private Facts atomically,
+  supports whole-thread deletion via `python -m clonway_cockpit.chat_memory forget`, and wires memory
+  into `chat_addon` with `CLONWAY_CHAT_MEMORY_DIR` and `--fake --memory-dir`.
+
 ## [0.2.0] - 2026-06-14
 
 ### Added

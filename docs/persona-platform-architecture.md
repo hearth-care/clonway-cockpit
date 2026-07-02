@@ -342,13 +342,14 @@ optimism. Audit the table against the merged PRs before locking the next slice.
 | **Chat add-on transport** (framework core: Workspace add-on envelope normalize + operator-allowlist auth + DM/group routing into the proven wire) — `chat_transport.py` | yes | yes | no | no | #78 | Framework core is merged; live deploy is the remaining operator step. |
 | **Per-thread/space conversation memory** (the transcript wiring that connects #77's per-thread store and #78's transport so a persona remembers a conversation across turns: `scope_for_space` + `ThreadTranscript` + `remembering_responder`) — `chat_memory.py` | yes | yes | no | no | #79 | Coded and merged; not watched-working until live transport carries it. |
 | **Chat add-on edge** (deployable reference server: WSGI app, REST poster, durable dedup, local fake) — `chat_addon.py` | yes | yes | no | no | #109 | Framework edge is coded; xbook/Milo wiring, Cloud Run deploy, add-on manifest, IAM grant, and watched DM remain separate. |
+| **Bounded per-persona thread memory** (window + compacted summary context, retention bounds, atomic writes, forget operation + CLI, serve/`--fake` wiring) — `chat_memory.py` + `chat_addon.py` | yes | yes | no | no | #111 | Framework memory is bounded, deletable, and wired at the add-on seam; live deploy remains separate. |
 | **Handoff envelope contract** (the typed, schema-pinned frame cross-worker negotiation speaks: notice/response/plan + fail-closed parse) — `handoff.py` | yes | yes | no | no | PR A negotiation slice | See `docs/cross-worker-handoffs.md`. |
 | **Safe-direction reflex** (blocking-only auto-approval as an `ApprovalPolicy` at the existing gate: structural direction checks + provenance requirement + restart-surviving idempotency) — `reflex.py` | yes | yes | no | no | PR B negotiation slice | Direction checks are merged framework-side. |
 | **Cross-worker negotiation** (envelope-aware responder, per-ask decisions reconciled in code, task ledger, unified plan + stall escalation — `docs/cross-worker-handoffs.md`) — `negotiation.py` | yes | yes | no | no | PRs C+D negotiation slice | Negotiation core is merged; live worker-edge wiring remains separate. |
 | **Framework audit log** (metadata-only fleet ledger at capability launch, write gate, reflex, and approval-delivery chokepoints) — `audit_log.py` + `docs/audit-log.md` | yes | yes | no | no | #96 | Framework implementation and template wiring are complete; worker pin rollout is separate. |
 
 Still ahead: the **live Google Chat transport deploy** (the framework transport core, reference edge,
-and per-thread memory wiring are now coded (#78, #79, #109) — but the production surface is not
+and per-thread memory wiring are now coded (#78, #79, #109, #111) — but the production surface is not
 watched-working until xbook/Milo is wired, the operator deploys the add-on, configures IAM/manifest,
 and a real DM lands); **surfacing
 model spend in the xops cost page** (the gateway already emits and fans out telemetry); and
@@ -361,7 +362,7 @@ The negotiation layer (handoff envelopes, safe-direction reflex, task ledger —
 `ReflexRule` registrations, ride the same worker-edge slice as the live transport deploy.
 
 **Next locked slice → xbook/Milo wiring + live Chat transport deploy.** Everything it needs
-framework-side is coded (transport core #78, memory wiring #79, reference edge #109); it is now a
+framework-side is coded (transport core #78, memory wiring #79/#111, reference edge #109); it is now a
 worker-edge + operator-deploy step, not another framework edge build. See
 [`persona-platform-go-live-plan.md`](persona-platform-go-live-plan.md) (Slice B/C) and
 [`chat-transport.md`](chat-transport.md) → "Operator deploy runbook" + the `remembering_responder`

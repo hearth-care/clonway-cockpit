@@ -54,14 +54,17 @@ envelope, the **message-receive trigger must be declared in the add-on deploymen
 - **Takes:** remaining worker integration plus operator deployment. Reference: Auto-HR `xhr-server`
   + the architecture transport section. Highest-risk slice until a real DM is watched landing.
 
-### Slice C — Per-space session memory (true multi-turn) — **in review (#79)**
-- **Does:** persist a transcript keyed by Chat space/thread, so a conversation remembers across
-  messages instead of each DM being a fresh one-shot.
-- **Greens:** makes Milo feel like a colleague, not a stateless Q&A box.
-- **Status:** the framework wiring is built — `chat_memory.py` (`remembering_responder` +
-  `ThreadTranscript` over the merged #77 store), in review as #79 ([`thread-memory.md`](thread-memory.md)).
-  Remaining before it's *watched-working*: the live transport deploy (Slice B) wiring in
-  `remembering_responder` + its dedup hooks, and a worker pin bump.
+### Slice C — Bounded per-space session memory (true multi-turn)
+- **Does:** persists a transcript keyed by Chat space/thread, replays a bounded recent window plus
+  compacted summary context, writes atomically, supports whole-thread deletion, and wires memory at
+  the `chat_addon` serve/fake seams via `CLONWAY_CHAT_MEMORY_DIR` / `--memory-dir`.
+- **Greens:** makes Milo feel like a colleague, not a stateless Q&A box, while keeping prompt and
+  disk growth bounded.
+- **Status:** the framework wiring is coded — `chat_memory.py` (`remembering_responder` +
+  `ThreadTranscript` over the merged #77 store) plus `chat_addon.py` memory selection
+  ([`thread-memory.md`](thread-memory.md)). Remaining before it's *watched-working*: the live
+  transport deploy (Slice B), `CLONWAY_CHAT_MEMORY_DIR` pointing at a durable mount, dedup hooks
+  enabled, and a worker pin bump.
 
 ### Slice D — The group chat, live (the fleet) — a PROGRAM, not a slice
 - **Does:** a real `ChatTransport` backed by the Chat API (the framework has the Protocol +

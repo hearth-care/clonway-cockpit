@@ -26,8 +26,11 @@ See ``docs/private-memory.md`` and the design spec
 
 from __future__ import annotations
 
+import shutil
+import threading
 from pathlib import Path
 
+from clonway_cockpit.obs.atomicio import atomic_write_bytes
 from clonway_cockpit.shared_memory import (
     Fact,
     SharedMemory,
@@ -42,6 +45,9 @@ WORKING = "working"
 
 _THREADS = "threads"
 """Parent directory for per-thread/space scoped memory (kept separate from ``working``)."""
+
+PRIVATE_MEMORY_LOCK = threading.RLock()
+"""Process-local lock for private memory writes and whole-thread deletion."""
 
 
 def _require_slug(value: str, what: str) -> str:
@@ -68,6 +74,11 @@ class PrivateScope:
     def __init__(self, base: Path) -> None:
         self._base = base
         self._reader = SharedMemory(base)
+
+    @property
+    def path(self) -> Path:
+        """The on-disk scope directory. Read-only so callers do not rebuild the layout."""
+        return self._base
 
     # --- read (delegated to the shared reader — the load/recall logic is defined once) ---
 
@@ -107,12 +118,14 @@ class PrivateScope:
         clean_source = single_line(source, "source") if source else ""
         stamp = single_line(as_of, "as_of") if as_of else today()
         clean_body = body.strip()
-        self._base.mkdir(parents=True, exist_ok=True)
-        path = self._base / f"{name}.md"
-        path.write_text(
-            render_fact(name, kind, summary, clean_source, stamp, clean_body), encoding="utf-8"
-        )
-        self._reader = SharedMemory(self._base)  # refresh: reads-after-write are consistent
+        with PRIVATE_MEMORY_LOCK:
+            self._base.mkdir(parents=True, exist_ok=True)
+            path = self._base / f"{name}.md"
+            atomic_write_bytes(
+                path,
+                render_fact(name, kind, summary, clean_source, stamp, clean_body).encode("utf-8"),
+            )
+            self._reader = SharedMemory(self._base)  # refresh: reads-after-write are consistent
         return Fact(
             name=name,
             kind=kind,
@@ -132,12 +145,13 @@ class PrivateScope:
         if not is_safe_slug(name):
             return False
         path = self._base / f"{name}.md"
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            return False
-        self._reader = SharedMemory(self._base)  # refresh after the delete
-        return True
+        with PRIVATE_MEMORY_LOCK:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                return False
+            self._reader = SharedMemory(self._base)  # refresh after the delete
+            return True
 
 
 class PersonaMemory:
@@ -165,3 +179,13 @@ class PersonaMemory:
         calling here. Each call returns a **fresh** scope; hold it in a local for a read sequence."""
         _require_slug(scope, "scope")
         return PrivateScope(self._base / self._handle / _THREADS / scope)
+
+    def forget_thread(self, scope: str) -> bool:
+        """Delete one per-thread/space scoped store recursively. Returns ``True`` iff it existed."""
+        _require_slug(scope, "scope")
+        path = self._base / self._handle / _THREADS / scope
+        with PRIVATE_MEMORY_LOCK:
+            if not path.exists():
+                return False
+            shutil.rmtree(path)
+            return True

@@ -84,10 +84,12 @@ app-layer gate is the email allowlist.
   `mark_handled(message_id)` (keyed on `message.name`); a redelivered id is acked and ignored. The
   event is **marked handled only after routing + delivery succeed** — if the responder or transport
   raises, the event is left un-marked so the redelivery retries (at-least-once on failure: a
-  transient error risks a duplicate reply, never a dropped message). Use a **durable** store in
-  production (a file / GCS object, as `xhr-server` does); with **no hooks** there is no dedup, so
-  delivery is at-least-once (a worker that can't tolerate a duplicate reply must inject a store, and
-  a message with no `message.name` is never deduped).
+  transient error risks a duplicate reply, never a dropped message). When both hooks are present, one
+  router instance serializes the check → route/post → mark sequence per handled event so concurrent
+  duplicate deliveries cannot both post. Use a **durable** store in production (a file / GCS object,
+  as `xhr-server` does); with **no hooks** there is no dedup, so delivery is at-least-once (a worker
+  that can't tolerate a duplicate reply must inject a store, and a message with no `message.name` is
+  never deduped).
 
 > **Per-space DM memory is available.** Inject `remembering_responder` (`chat_memory.py`) in place of
 > `gateway_responder` and each persona remembers earlier turns in the same DM/space — it splices the
@@ -115,9 +117,10 @@ unless they have a worker-specific server stack.
   plugs into `ChatRouter(already_handled=store.__contains__, mark_handled=store.add)`.
 - `RestChatTransport(metadata_token_supplier)` posts replies to `spaces.messages.create` as
   `{"text": ...}` using the Cloud Run metadata-server access token.
-- `build_serve_app(os.environ)` wires colleagues, gateway responder, REST poster, allowlist, and
-  durable seen store into the same WSGI app.
-- `python -m clonway_cockpit.chat_addon --fake` runs a zero-Google local loop through the same app.
+- `build_serve_app(os.environ)` wires colleagues, the selected responder, REST poster, allowlist,
+  durable seen store, and optional per-thread memory into the same WSGI app.
+- `python -m clonway_cockpit.chat_addon --fake` runs a zero-Google local loop through the same app;
+  add `--memory-dir DIR` to prove multi-turn memory locally.
 - `python -m clonway_cockpit.chat_addon --serve --port 8080` starts the reference `wsgiref` server.
 
 Environment contract for `--serve`:
@@ -130,11 +133,12 @@ Environment contract for `--serve`:
 | `CLONWAY_CHAT_ROLE` | Gateway role, default `chat`. |
 | `CLONWAY_CHAT_OPERATORS` | Comma-separated operator allowlist; unset trusts no one. |
 | `CLONWAY_CHAT_SEEN_FILE` | Durable dedup file, default `.cockpit/chat-seen.txt`. |
+| `CLONWAY_CHAT_MEMORY_DIR` | Optional durable private-memory root; when set, `build_serve_app` uses per-thread memory. Must not be Cloud Run `/tmp`. |
 | `PORT` | Cloud Run listen port; `--port` overrides locally. |
 
-Per-space **multi-turn memory** is available framework-side: inject `remembering_responder`
-(`chat_memory.py`) into the responder path, with durable dedup enabled, so redelivery does not record
-duplicate turns.
+Per-space **multi-turn memory** is available framework-side via `CLONWAY_CHAT_MEMORY_DIR`, or by
+calling `build_responder(..., memory_dir=Path(...))` directly in tests/custom servers. Keep durable
+dedup enabled so redelivery does not record duplicate turns.
 
 ## Operator deploy runbook (the load-bearing other half)
 
@@ -160,7 +164,9 @@ add-on**, mirroring `xhr-server`:
    empty/unset value trusts no one (fail-closed) — the transport will ack but never treat anything as
    a command.
 6. **Runtime config.** Set `CLONWAY_CHAT_PERSONAS_DIR`, `CLONWAY_CHAT_SOULS_DIR`,
-   `CLONWAY_CHAT_GATEWAY_CONFIG`, optional `CLONWAY_CHAT_ROLE`, and `CLONWAY_CHAT_SEEN_FILE`.
+   `CLONWAY_CHAT_GATEWAY_CONFIG`, optional `CLONWAY_CHAT_ROLE`, `CLONWAY_CHAT_SEEN_FILE`, and
+   `CLONWAY_CHAT_MEMORY_DIR` when memory should be live. Point memory at a durable mount, never
+   Cloud Run `/tmp`.
 7. **Outbound poster identity.** The reference `RestChatTransport.post` authenticates from Cloud Run's
    metadata-server token (scope `chat.bot`); messages appear from the add-on identity.
 
@@ -173,6 +179,5 @@ watched working).
 Normalisation never raises (unknown shape → ignored). The router acts only on `MESSAGE` events in v1;
 `ADDED_TO_SPACE` / `REMOVED_FROM_SPACE` / `CARD_CLICKED` are surfaced (so a worker can handle them
 deliberately) but acked-and-ignored here. Cards/buttons and the live deploy remain worker/operator
-work; the reference HTTP route, REST poster, local fake, and durable dedup store are shipped in
-`chat_addon.py`. Per-space multi-turn memory is its own merged slice (`chat_memory.py`,
-`docs/thread-memory.md`).
+work; the reference HTTP route, REST poster, local fake, durable dedup store, and memory selector are
+shipped in `chat_addon.py`. Per-space multi-turn memory is documented in `docs/thread-memory.md`.

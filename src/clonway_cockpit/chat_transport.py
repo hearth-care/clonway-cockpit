@@ -23,6 +23,7 @@ stays ``rich``-only. See ``docs/chat-transport.md`` and the design spec
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -214,6 +215,7 @@ class ChatRouter:
     domain_matches: Callable[[str, Persona], bool] | None = None
     already_handled: Callable[[str], bool] | None = None
     mark_handled: Callable[[str], None] | None = None
+    _dedupe_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
 
     def handle_event(self, event: dict) -> ChatOutcome:
         """Normalise, dedupe, bridge, and route one inbound event. Never raises on a malformed
@@ -224,6 +226,12 @@ class ChatRouter:
         if norm.kind != MESSAGE:
             # v1 acts only on messages; everything else is acked and ignored, never mis-handled.
             return ChatOutcome(norm.kind, [], norm.space_id, ignored="not-a-message")
+        if norm.message_id and self.already_handled is not None and self.mark_handled is not None:
+            with self._dedupe_lock:
+                return self._handle_message(norm)
+        return self._handle_message(norm)
+
+    def _handle_message(self, norm: NormalizedChatEvent) -> ChatOutcome:
         if (
             norm.message_id
             and self.already_handled is not None

@@ -18,14 +18,17 @@ from urllib import request as urlrequest
 from wsgiref.simple_server import make_server
 from wsgiref.types import StartResponse, WSGIApplication
 
+from .chat_memory import remembering_responder
 from .chat_transport import ChatRouter, ack_response, load_allowlist
-from .colleague import gateway_responder, load_colleagues
+from .colleague import Colleague, ColleagueRegistry, Completer, gateway_responder, load_colleagues
 from .gateway import Gateway, GatewayConfig
+from .gateway.types import Message
 from .group_chat import FakeChatTransport
 from .persona import Persona, PersonaRegistry
 
 CHAT_EVENTS_PATH = "/chat-events"
 MAX_BODY_BYTES = 1_048_576
+CLONWAY_CHAT_MEMORY_DIR = "CLONWAY_CHAT_MEMORY_DIR"
 
 WsgiApp = WSGIApplication
 Opener = Callable[..., Any]
@@ -33,6 +36,11 @@ Opener = Callable[..., Any]
 
 class ChatAddonConfigError(RuntimeError):
     pass
+
+
+class EchoCompleter:
+    def complete(self, messages: list[Message], *, role: str) -> str:
+        return f"[{len(messages)} msgs] {messages[-1]['content']}"
 
 
 class FileSeenStore:
@@ -178,6 +186,18 @@ def build_addon_app(
     return app
 
 
+def build_responder(
+    colleagues: ColleagueRegistry,
+    completer: Completer,
+    *,
+    role: str,
+    memory_dir: Path | None,
+) -> Callable[[Persona, Any], str | None]:
+    if memory_dir is None:
+        return gateway_responder(colleagues, completer, role=role)
+    return remembering_responder(colleagues, completer, role=role, memory_base=memory_dir)
+
+
 def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     try:
         personas_dir = Path(environ["CLONWAY_CHAT_PERSONAS_DIR"])
@@ -195,10 +215,13 @@ def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     problems = gateway.validate(roles=[role])
     if problems:
         raise ChatAddonConfigError("; ".join(problems))
+    memory_dir = (
+        Path(environ[CLONWAY_CHAT_MEMORY_DIR]) if environ.get(CLONWAY_CHAT_MEMORY_DIR) else None
+    )
     seen = FileSeenStore(Path(environ.get("CLONWAY_CHAT_SEEN_FILE", ".cockpit/chat-seen.txt")))
     router = ChatRouter(
         registry=colleagues.registry,
-        responder=gateway_responder(colleagues, gateway, role=role),
+        responder=build_responder(colleagues, gateway, role=role, memory_dir=memory_dir),
         transport=RestChatTransport(token_supplier=metadata_token_supplier),
         allowlist=load_allowlist(),
         already_handled=seen.__contains__,
@@ -207,16 +230,31 @@ def build_serve_app(environ: dict[str, str]) -> WsgiApp:
     return build_addon_app(router, background=spawn_daemon_thread)
 
 
-def run_fake(lines: Iterable[str], *, output: TextIO | None = None) -> list[str]:
+def run_fake(
+    lines: Iterable[str], *, output: TextIO | None = None, memory_dir: Path | None = None
+) -> list[str]:
     persona = Persona.from_dict({"handle": "demo", "name": "Demo", "domain": "local dev"})
     transport = FakeChatTransport()
 
     def echo(persona: Persona, message) -> str:
         return f"{persona.name}: {message.text}"
 
+    responder: Callable[[Persona, Any], str | None]
+    if memory_dir is None:
+        registry = PersonaRegistry.from_personas([persona])
+        responder = echo
+    else:
+        colleagues = ColleagueRegistry(
+            colleagues={"demo": Colleague(persona=persona, soul="You are Demo.")}
+        )
+        registry = colleagues.registry
+        responder = remembering_responder(
+            colleagues, EchoCompleter(), role="chat", memory_base=memory_dir
+        )
+
     router = ChatRouter(
-        registry=PersonaRegistry.from_personas([persona]),
-        responder=echo,
+        registry=registry,
+        responder=responder,
         transport=transport,
         allowlist=frozenset({"owner@clonway.example"}),
     )
@@ -271,10 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--serve", action="store_true")
     mode.add_argument("--fake", action="store_true")
     parser.add_argument("--port", type=int)
+    parser.add_argument("--memory-dir", type=Path)
     args = parser.parse_args(argv)
 
     if args.fake:
-        run_fake(sys.stdin, output=sys.stdout)
+        run_fake(sys.stdin, output=sys.stdout, memory_dir=args.memory_dir)
         return 0
 
     app = build_serve_app(dict(os.environ))

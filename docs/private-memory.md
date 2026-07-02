@@ -73,6 +73,7 @@ scope = "spaces/AAAAbCdEf".lower().replace("/", "-")   # -> "spaces-aaaabcdef"
 mem.thread(scope).remember(name="ask", kind="note",
                            summary="owner asked for the Q2 figures")
 mem.thread(scope).recall("Q2 figures")
+mem.forget_thread(scope)               # deletes the whole per-thread scope; True iff it existed
 ```
 
 `thread(scope)` validates `scope` as a slug, so a raw Google Chat space id (`spaces/AAAA…`, which
@@ -98,9 +99,18 @@ lower-case, bounded length, so it both rejects path traversal and can't overflow
 `kind`/`summary`/`source`/`as_of` must be single-line (else a newline would inject extra frontmatter
 keys). A CRLF `body` is normalised to `\n` so it round-trips exactly. Invalid input raises
 **`ValueError`** and writes nothing. Writing an existing `name` overwrites it (updating a note);
-`as_of` defaults to today (UTC). `forget(name)` returns `True` if the note existed, `False` if it
-did not — a genuine filesystem error (e.g. a permission denial) **propagates** rather than being
-mistaken for "wasn't there".
+`as_of` defaults to today (UTC). Writes use the framework atomic-write primitive: render the whole
+Fact to a temp sibling and `os.replace` it, so a failed replace leaves the prior file intact and no
+`.tmp` litter. In one process, private memory writes, note deletes, and whole-thread deletes share a
+reentrant lock; a thread-level forget waits for any already-started write before removing the
+directory.
+
+`forget(name)` returns `True` if the note existed, `False` if it did not — a genuine filesystem
+error (e.g. a permission denial) **propagates** rather than being mistaken for "wasn't there".
+`PersonaMemory.forget_thread(scope)` validates the scope and removes
+`<root>/<handle>/threads/<scope>/` recursively; it is the library engine behind the thread-memory
+operator deletion command. Cross-process deletion still needs deploy discipline: pause the live
+writer before running the CLI from a separate process.
 
 Why `ValueError` and not `WriteRefused`? Because private writes are **not a trust boundary** — a bad
 private write is a programming error in the persona's own code, not an attempt to poison shared
@@ -125,6 +135,5 @@ shared handbook). Keep the root owned and writable only by the cockpit.
 
 ## Scope
 
-Still later: promoting a confirmed private note into shared memory through the owner gate (the
-conversation-layer wiring), semantic recall, a memory reflector/summariser, and constructing a
-persona's `thread(scope)` from a real Chat space id (arrives with the Chat transport slice).
+Still later: promoting a confirmed private note into shared memory through the owner gate, semantic
+recall, model-quality summarisation, and age-based retention policy.

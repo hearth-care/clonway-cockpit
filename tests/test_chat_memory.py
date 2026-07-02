@@ -7,6 +7,10 @@ scope normalizer, the transcript projection, the memory-aware responder, the pre
 ``ChatRouter``.
 """
 
+import logging
+import threading
+import time
+
 import pytest
 
 from clonway_cockpit.chat_memory import (
@@ -21,6 +25,7 @@ from clonway_cockpit.colleague import Colleague, ColleagueRegistry
 from clonway_cockpit.gateway.types import GatewayError, Message
 from clonway_cockpit.group_chat import ChatMessage, FakeChatTransport
 from clonway_cockpit.persona import Persona
+from clonway_cockpit.private_memory import PersonaMemory, PrivateScope
 from clonway_cockpit.shared_memory import SharedMemory, is_safe_slug, render_fact, today
 
 # --- scope_for_space: raw Chat space id -> a collision-safe, debuggable slug -----------------
@@ -114,6 +119,189 @@ def test_transcript_survives_many_turns_in_order(tmp_path):
     assert [m["content"] for m in txn.recent(limit=100)] == [f"m{i}" for i in range(12)]
 
 
+def test_overflow_compacts_oldest_turns_into_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == "user: t0\npersona: t1\nuser: t2"
+    ctx = t.context(12)
+    assert [m["role"] for m in ctx] == ["system", "assistant", "user"]
+    assert ctx[0]["content"] == (
+        "Earlier in this conversation (compacted summary):\nuser: t0\npersona: t1\nuser: t2"
+    )
+    assert [m["content"] for m in ctx[1:]] == ["t3", "t4"]
+    names = {p.name for p in (tmp_path / "milo" / "threads" / "dm-x").glob("*.md")}
+    assert names == {"turn-000003.md", "turn-000004.md", "thread-summary.md"}
+
+
+def test_summary_truncates_oldest_lines_at_line_boundary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == "persona: t1\nuser: t2"  # 29 chars > 20 -> oldest whole line dropped
+
+
+def test_summary_single_overlong_line_hard_truncates(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2, summary_max_chars=20)
+    for i, text in enumerate(["a" * 50, "b" * 50, "c" * 50, "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    assert t.summary() == f"user: {'c' * 14}"
+
+
+def test_crash_window_folded_turns_are_not_double_replayed(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    # simulate the crash window: a folded turn re-appears (summary written, delete never ran)
+    PersonaMemory(tmp_path, "milo").thread("dm-x").remember(
+        name="turn-000001", kind=PERSONA, summary="t1", body="t1"
+    )
+    assert [m["content"] for m in t.context(12)[1:]] == ["t3", "t4"]  # <= folded-through: excluded
+    t.record(USER, "t5")  # the next record sweeps the leftover
+    names = {p.name for p in (tmp_path / "milo" / "threads" / "dm-x").glob("turn-*.md")}
+    assert "turn-000001.md" not in names
+
+
+def test_next_index_never_reuses_folded_indices(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    for p in (tmp_path / "milo" / "threads" / "dm-x").glob("turn-*.md"):
+        p.unlink()  # turns lost out-of-band; only thread-summary remains
+    name = t.record(USER, "fresh")
+    # rule: next = max([folded_through] + on_disk_indices) + 1 = max([2]) + 1 = 3.
+    # Reusing a lost-out-of-band NAME is fine; the guarantee is the index can never
+    # fall at or below folded-through (which would make the new turn invisible to replay).
+    assert name == "turn-000003"
+    assert [m["content"] for m in t.context(12)[1:]] == ["fresh"]  # replayed, not swallowed
+
+
+def test_concurrent_records_in_one_process_lose_nothing(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    start = threading.Barrier(2)
+
+    def worker(text: str) -> None:
+        start.wait()
+        t.record(USER, text)
+
+    threads = [threading.Thread(target=worker, args=(f"m{i}",)) for i in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert sorted(m["content"] for m in t.recent(12)) == ["m0", "m1"]
+
+
+def test_corrupt_turn_file_degrades_and_warns_content_free(tmp_path, caplog):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    t.record(USER, "the secret figures")
+    t.record(PERSONA, "noted")
+    (tmp_path / "milo" / "threads" / "dm-x" / "turn-000000.md").write_text("\x00garbage")
+    with caplog.at_level(logging.WARNING, logger="clonway_cockpit.chat_memory"):
+        ctx = t.context(12)
+    assert [m["content"] for m in ctx] == ["noted"]  # degraded to the readable remainder
+    joined = " ".join(r.getMessage() for r in caplog.records)
+    assert "1 unreadable turn file" in joined
+    assert "secret" not in joined and "dm-x" not in joined  # content-free (no text, no scope)
+
+
+def test_corrupt_summary_degrades_to_no_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i, text in enumerate(["t0", "t1", "t2", "t3", "t4"]):
+        t.record(USER if i % 2 == 0 else PERSONA, text)
+    (tmp_path / "milo" / "threads" / "dm-x" / "thread-summary.md").write_text("\x00garbage")
+    assert t.summary() is None
+    assert [m["role"] for m in t.context(12)] == ["assistant", "user"]  # no system note, no crash
+
+
+def test_missing_store_reads_empty_then_record_creates(tmp_path):
+    t = ThreadTranscript(tmp_path / "nowhere", "milo", "dm-x")
+    assert t.context(12) == [] and t.summary() is None
+    assert t.record(USER, "hello") == "turn-000000"
+
+
+def test_forget_thread_removes_turns_and_summary(tmp_path):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x", max_turns=4, keep_turns=2)
+    for i in range(5):
+        t.record(USER if i % 2 == 0 else PERSONA, f"t{i}")
+    (tmp_path / "milo" / "threads" / "dm-x" / "stray.bin").write_bytes(b"\x00")  # corrupt stray
+    assert t.forget_thread() is True
+    assert not (tmp_path / "milo" / "threads" / "dm-x").exists()
+    assert t.context(12) == []  # a forgotten thread reads as brand new
+    assert t.forget_thread() is False  # idempotent no-op
+
+
+def test_forget_thread_waits_for_in_flight_record_before_deleting(tmp_path, monkeypatch):
+    t = ThreadTranscript(tmp_path, "milo", "dm-x")
+    started = threading.Event()
+    release = threading.Event()
+    original = PrivateScope.remember
+
+    def pausing_remember(self, *, name, kind, summary, body="", source="", as_of=None):
+        if name == "turn-000000":
+            self.path.mkdir(parents=True, exist_ok=True)
+            started.set()
+            release.wait(timeout=2)
+        return original(
+            self,
+            name=name,
+            kind=kind,
+            summary=summary,
+            body=body,
+            source=source,
+            as_of=as_of,
+        )
+
+    monkeypatch.setattr(PrivateScope, "remember", pausing_remember)
+    record_error: list[BaseException] = []
+
+    def record() -> None:
+        try:
+            t.record(USER, "new pii after forget")
+        except BaseException as exc:  # pragma: no cover - asserted below for thread propagation.
+            record_error.append(exc)
+
+    record_thread = threading.Thread(target=record)
+    record_thread.start()
+    assert started.wait(timeout=1)
+
+    forget_result: list[bool] = []
+    forget_thread = threading.Thread(target=lambda: forget_result.append(t.forget_thread()))
+    forget_thread.start()
+    time.sleep(0.05)
+    release.set()
+    record_thread.join(timeout=2)
+    forget_thread.join(timeout=2)
+
+    assert record_error == []
+    assert forget_result == [True]
+    assert not (tmp_path / "milo" / "threads" / "dm-x").exists()
+    assert t.recent() == []
+
+
+def test_forget_cli_deletes_the_thread(tmp_path, capsys):
+    from clonway_cockpit import chat_memory
+
+    scope = scope_for_space("spaces/AAA")
+    ThreadTranscript(tmp_path, "milo", scope).record(USER, "hello")
+    rc = chat_memory.main(
+        ["forget", "--memory-base", str(tmp_path), "--handle", "milo", "--space", "spaces/AAA"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "forgotten"
+    assert not (tmp_path / "milo" / "threads" / scope).exists()
+
+
+def test_forget_cli_nothing_to_forget(tmp_path, capsys):
+    from clonway_cockpit import chat_memory
+
+    rc = chat_memory.main(
+        ["forget", "--memory-base", str(tmp_path), "--handle", "milo", "--space", "spaces/ZZZ"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.strip() == "nothing to forget"
+
+
 # --- remembering_responder: the memory-aware reference responder ----------------------------
 
 
@@ -199,6 +387,28 @@ def test_responder_first_call_has_no_history_then_injects_prior_turns(tmp_path):
     assert [m["content"] for m in comp.calls[1][1:]] == ["first", "answer", "second"]
 
 
+def test_responder_splices_summary_after_soul(tmp_path):
+    reg = _registry("milo")
+    comp = RecordingCompleter("ok")
+    respond = remembering_responder(reg, comp, role="chat", memory_base=tmp_path)
+    pre = ThreadTranscript(
+        tmp_path, "milo", scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2
+    )
+    for i in range(5):
+        pre.record(USER if i % 2 == 0 else PERSONA, f"t{i}")  # summary now on disk
+    msg = ChatMessage.from_text("and now?", author="owner", is_owner=True, space="spaces/AAA")
+    respond(Persona("milo", "Milo", "milo domain"), msg)
+    roles = [m["role"] for m in comp.calls[0]]
+    assert roles == [
+        "system",
+        "system",
+        "assistant",
+        "user",
+        "user",
+    ]  # soul, summary, t3, t4, current
+    assert comp.calls[0][1]["content"].startswith("Earlier in this conversation")
+
+
 def test_responder_isolates_transcripts_per_persona(tmp_path):
     reg = _registry("milo", "vera")
     respond = remembering_responder(
@@ -220,6 +430,26 @@ def test_responder_isolates_transcripts_per_persona(tmp_path):
     assert [m["content"] for m in vera] == ["for vera", "ok"]
 
 
+def test_summary_isolation_per_persona(tmp_path):
+    for handle in ("milo", "iris"):
+        pre = ThreadTranscript(
+            tmp_path, handle, scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2
+        )
+        for i in range(5):
+            pre.record(USER if i % 2 == 0 else PERSONA, f"{handle}-t{i}")
+    milo_ctx = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA")).context(12)
+    assert all("iris" not in m["content"] for m in milo_ctx)
+
+
+def test_dm_and_room_contexts_never_cross(tmp_path):
+    dm = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/DM111"))
+    room = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/ROOM22"))
+    dm.record(USER, "dm-only fact")
+    room.record(USER, "room-only fact")
+    assert [m["content"] for m in dm.context(12)] == ["dm-only fact"]
+    assert [m["content"] for m in room.context(12)] == ["room-only fact"]
+
+
 def test_responder_never_writes_to_shared_memory(tmp_path):
     shared_dir = tmp_path / "shared"
     shared_dir.mkdir()
@@ -239,6 +469,21 @@ def test_responder_never_writes_to_shared_memory(tmp_path):
     assert (
         SharedMemory(mem_base).all() == []
     )  # turns live in subdirs, not at the handbook top level
+
+
+def test_conversation_and_compaction_never_write_shared_memory(tmp_path):
+    reg = _registry("milo")
+    comp = RecordingCompleter("noted")
+    respond = remembering_responder(reg, comp, role="chat", memory_base=tmp_path)
+    for i in range(3):
+        msg = ChatMessage.from_text(f"m{i}", author="owner", is_owner=True, space="spaces/AAA")
+        respond(Persona("milo", "Milo", "milo domain"), msg)  # 3 exchanges = 6 turns on disk
+    # force a compaction through the SAME store the responder writes to (low test bounds)
+    t = ThreadTranscript(tmp_path, "milo", scope_for_space("spaces/AAA"), max_turns=4, keep_turns=2)
+    t.record(USER, "one more")  # 7 turns > 4 -> folds oldest 5; summary Fact written
+    assert t.summary() is not None
+    # the shared tier reads the base directory — turns AND the summary stay in the private tree
+    assert SharedMemory(tmp_path).all() == []
 
 
 def test_responder_empty_space_is_stateless(tmp_path):
