@@ -302,7 +302,7 @@ def test_oversized_body_is_rejected_without_reading():
 **Production call site (HR9):** the `POST /chat-events` handler calling
 `router.handle_event` — cells 1–10, 12–13 of the invariant table all pass through it.
 
-- [ ] **Step 1 — failing tests.** Add, at minimum (names bound in the cell table): the worked
+- [x] **Step 1 — failing tests.** Add, at minimum (names bound in the cell table): the worked
   example pair (verbatim below), `test_room_message_routes_by_self_selection` (two personas,
   payroll question, only milo replies — mirror `test_group_space_distributed_self_selection`
   through the edge), parametrised `test_event_kind_matrix` over
@@ -339,14 +339,14 @@ def test_non_operator_dm_is_acked_but_draws_no_reply():
     assert transport.posted == []  # the air-gap holds at the edge
 ```
 
-- [ ] **Step 2 — run, confirm RED** (`uv run pytest tests/test_chat_addon.py -q`; the new tests
+- [x] **Step 2 — run, confirm RED** (`uv run pytest tests/test_chat_addon.py -q`; the new tests
   fail — e.g. the executor seam and spy assertions don't exist yet).
-- [ ] **Step 3 — implement:** background-executor error handling (exception → content-free
+- [x] **Step 3 — implement:** background-executor error handling (exception → content-free
   one-line stderr log, never a 5xx since the ack already went out), `spawn_daemon_thread`
   (`threading.Thread(target=fn, daemon=True).start()`), structured dispatch of parsed events into
   `router.handle_event`. Do **not** re-implement any routing/auth — the router owns it.
-- [ ] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q` → all pass.
-- [ ] **Step 5 — commit:** `feat(chat-addon): event flow — ack, kind matrix, air-gap, dedup seam, fast-ack`
+- [x] **Step 4 — verify:** `uv run pytest tests/test_chat_addon.py -q` → `18 passed`.
+- [x] **Step 5 — commit:** `feat(chat-addon): event flow — ack, kind matrix, air-gap, dedup seam, fast-ack`
 
 ### Task 3 — durable idempotency: `FileSeenStore`
 
@@ -490,11 +490,12 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 complete; Task 2 not started.
-- Next concrete step: Task 2 Step 1 (write the failing event-flow invariant tests).
+- Current phase: Task 2 complete; Task 3 not started.
+- Next concrete step: Task 3 Step 1 (write the failing FileSeenStore restart/missing-file tests).
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
-  plan's original `4 passed`.
+  plan's original `4 passed`. Task 2 RED failed at the missing `spawn_daemon_thread` import;
+  GREEN verification was `uv run pytest tests/test_chat_addon.py -q` → `18 passed`.
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.

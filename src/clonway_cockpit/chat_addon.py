@@ -8,6 +8,8 @@ operator gating, routing, and mark-after-delivery semantics stay in the core.
 from __future__ import annotations
 
 import json
+import sys
+import threading
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -22,6 +24,18 @@ WsgiApp = Callable[[dict[str, Any], StartResponse], Iterable[bytes]]
 
 def run_inline(fn: Callable[[], None]) -> None:
     fn()
+
+
+def spawn_daemon_thread(fn: Callable[[], None]) -> None:
+    thread = threading.Thread(target=fn, daemon=True)
+    thread.start()
+
+
+def _run_content_free(fn: Callable[[], None]) -> None:
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - background edge must keep ack path alive.
+        print(f"chat_addon background handler failed: {type(exc).__name__}", file=sys.stderr)
 
 
 def _response(
@@ -66,7 +80,7 @@ def build_addon_app(
         except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
             return _response(start_response, "400 Bad Request", b"bad request")
 
-        background(lambda: router.handle_event(event))
+        background(lambda: _run_content_free(lambda: router.handle_event(event)))
         body = json.dumps(ack_response()).encode("utf-8")
         return _response(start_response, "200 OK", body, content_type="application/json")
 
