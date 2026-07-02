@@ -210,14 +210,15 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete; builder-codex-20260702T162449Z-46713-141 refreshed
+- Current phase: implementation complete; builder-codex-20260702T164657Z-46713-149 refreshed
   final gates and is running the finish protocol.
-- Next concrete step: move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove the worktree.
+- Next concrete step: move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove
+  the worktree.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
-- Known failing tests: none. Gate results refreshed 2026-07-02:
+- Known failing tests: none. Gate results refreshed 2026-07-02T16:49:25Z:
   `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" ...` returned no matches;
   `python3 scripts/check_fleet_pins.py` exited 0; `make lint` passed (`All checks passed!`);
   `make format` passed (`162 files already formatted`); `make typecheck` passed
-  (`Success: no issues found in 67 source files`); `make test` passed (`1090 passed in 32.92s`);
+  (`Success: no issues found in 67 source files`); `make test` passed (`1090 passed in 29.37s`);
   `pre-commit run --all-files` passed.
 - Dependencies/operator TODOs: none.
