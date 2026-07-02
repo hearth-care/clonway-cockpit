@@ -131,12 +131,13 @@ sha/date where this plan shows recon values):
 - [x] xcqc, xsource, xops-bridge rows: pins `4c63daf` → `v0.1.0`; fresh stamps.
 - [x] "Open gaps (2026-06-12)" section retitled with the build date and re-cut to observed truth:
   **remove** "xletter, xquill: No `--agent-stdio` …" (false), **remove** "Pins on raw SHA …" and
-  "xbook pin …" (false — all eight on release tags), **keep** the xadmissions parity gap (with
-  fresh evidence line), **keep/refresh** the xhr first-frame note per observation.
+  "xbook pin …" (false — all eight on release tags), **remove** the xadmissions parity gap
+  (closed on live `main`), add the observed xquill contract-gate gap, and refresh the xhr
+  first-frame note per observation.
 
 - [x] **Verify:** every edited row's stamp matches Task 1 output; `git diff --name-only` shows
   only `.md`.
-- [ ] **Commit:** `docs(fleet-conformance): re-verify all 8 rows against live origin/main (<date>)`
+- [x] **Commit:** `docs(fleet-conformance): re-verify all 8 rows against live origin/main (<date>)`
 
 ### Task 3 — `docs/pin-sync.md`
 
@@ -204,13 +205,13 @@ sha/date where this plan shows recon values):
   verbatim (HR2).
 - Operator-facing: no — explicitly no RUNBOOK DELTA (HR1).
 - Dependencies: none; no wave (HR11).
-- Deferred: closing the xadmissions parity gap itself (a code change in auto-admissions — separate
-  repo, separate PR); moving the supported baseline to v0.2.0 (operator/release decision).
+- Deferred: closing the xquill contract-gate gap itself (a code change in auto-secretary —
+  separate repo, separate PR); moving the supported baseline to v0.2.0 (operator/release decision).
 
 ## HANDOFF NOTES
 
-- Current phase: Task 6 complete; finish protocol next.
-- Next concrete step: commit this plan handoff, push with `--force-with-lease`, mark the PR ready, move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove the worktree.
+- Current phase: implementation complete; finish protocol next.
+- Next concrete step: mark the PR ready, move labels from `agent:claimed` to `agent:needs-qa`, post DONE, then remove the worktree.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1 used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and `assert_drives_clean`; auto-secretary/xquill has `--agent-stdio` smoke tests but no framework contract-gate calls.
 - Known failing tests: none. Gate results: `make lint` passed (`All checks passed!`); `make format` passed (`162 files already formatted`); `make typecheck` passed (`Success: no issues found in 67 source files`); `make test` passed (`1090 passed in 28.58s`); `pre-commit run --all-files` passed; `python3 scripts/check_fleet_pins.py` exited 0.
 - Dependencies/operator TODOs: none.
