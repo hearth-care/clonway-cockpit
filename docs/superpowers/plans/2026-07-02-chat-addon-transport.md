@@ -371,16 +371,16 @@ def test_non_operator_dm_is_acked_but_draws_no_reply():
 **Files:** modify `src/clonway_cockpit/chat_addon.py`; extend `tests/test_chat_addon.py`.
 **Production call site (HR9):** `build_serve_app` (Task 5) passes it as the router's `transport`.
 
-- [ ] **Step 1 — failing tests** (fake `opener` injected; no network): `test_rest_transport_posts_message_create` — `RestChatTransport(token_supplier=lambda: "tok", opener=fake).post("spaces/AAA", "hi")` asserts exactly one request to
+- [x] **Step 1 — failing tests** (fake `opener` injected; no network): `test_rest_transport_posts_message_create` — `RestChatTransport(token_supplier=lambda: "tok", opener=fake).post("spaces/AAA", "hi")` asserts exactly one request to
   `https://chat.googleapis.com/v1/spaces/AAA/messages`, method POST, header
   `Authorization: Bearer tok`, `Content-Type: application/json`, body `{"text": "hi"}`;
   `test_rest_transport_error_propagates` (opener raising / returning 500 → `post` raises);
   `test_rest_transport_iter_messages_is_empty` (push model);
   `test_metadata_token_supplier_shape` (fake opener: asserts URL + `Metadata-Flavor: Google`
   header, returns parsed `access_token`).
-- [ ] **Step 2 — RED**, **Step 3 — implement** with `urllib.request.Request`; never log text/space/
+- [x] **Step 2 — RED**, **Step 3 — implement** with `urllib.request.Request`; never log text/space/
   email (extend `test_edge_logging_is_content_free` to cover the failure log line).
-- [ ] **Step 4 — verify**, **Step 5 — commit:** `feat(chat-addon): Chat REST poster + Cloud Run metadata token supplier`
+- [x] **Step 4 — verify**, **Step 5 — commit:** `feat(chat-addon): Chat REST poster + Cloud Run metadata token supplier`
 
 ### Task 5 — the production call site: `build_serve_app` + `main()` (`--serve` / `--fake`)
 
@@ -490,14 +490,16 @@ framework edge is coded; remaining = worker/xbook wiring + operator deploy),
 
 ## HANDOFF NOTES
 
-- Current phase: Task 3 complete; Task 4 not started.
-- Next concrete step: Task 4 Step 1 (write the failing REST poster and metadata token tests).
+- Current phase: Task 4 complete; Task 5 not started.
+- Next concrete step: Task 5 Step 1 (write the failing env-wired serve app and fake REPL tests).
 - Decisions taken: stdlib-only edge; `background` required (no default); IAM+allowlist auth model
   (no JWT — binding); idempotency key = `message.name`; content-free logs. Task 1 groups the
   route-state cases into one test, so the narrow verification is `3 passed` rather than the
   plan's original `4 passed`. Task 2 RED failed at the missing `spawn_daemon_thread` import;
   GREEN verification was `uv run pytest tests/test_chat_addon.py -q` → `18 passed`. Task 3 RED
   failed at the missing `FileSeenStore` import; GREEN verification was
-  `uv run pytest tests/test_chat_addon.py -q` → `20 passed`.
+  `uv run pytest tests/test_chat_addon.py -q` → `20 passed`. Task 4 RED failed at the missing
+  `RestChatTransport` import; GREEN verification was
+  `uv run pytest tests/test_chat_addon.py -q` → `25 passed`.
 - Known failing tests: none.
 - Dependencies/operator TODOs: see OPERATOR TODO above; nothing blocks the build.

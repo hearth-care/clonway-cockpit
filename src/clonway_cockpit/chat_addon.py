@@ -14,6 +14,7 @@ import threading
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
+from urllib import request as urlrequest
 
 from .chat_transport import ChatRouter, ack_response
 
@@ -22,6 +23,7 @@ MAX_BODY_BYTES = 1_048_576
 
 StartResponse = Callable[[str, list[tuple[str, str]]], None]
 WsgiApp = Callable[[dict[str, Any], StartResponse], Iterable[bytes]]
+Opener = Callable[..., Any]
 
 
 class FileSeenStore:
@@ -44,6 +46,59 @@ class FileSeenStore:
             fh.flush()
             os.fsync(fh.fileno())
         self._seen.add(item)
+
+
+class RestChatTransport:
+    def __init__(
+        self,
+        token_supplier: Callable[[], str],
+        base_url: str = "https://chat.googleapis.com/v1",
+        timeout: float = 10.0,
+        opener: Opener = urlrequest.urlopen,
+    ) -> None:
+        self._token_supplier = token_supplier
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+        self._opener = opener
+
+    def post(self, space: str, text: str) -> None:
+        body = json.dumps({"text": text}).encode("utf-8")
+        req = urlrequest.Request(
+            f"{self._base_url}/{space}/messages",
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self._token_supplier()}",
+                "Content-Type": "application/json",
+            },
+        )
+        with self._opener(req, timeout=self._timeout) as response:
+            status = int(response.getcode())
+            if status < 200 or status >= 300:
+                raise RuntimeError(f"Google Chat post failed with HTTP {status}")
+
+    def iter_messages(self, space: str) -> Iterable[Any]:
+        return iter(())
+
+
+def metadata_token_supplier(
+    *,
+    opener: Opener = urlrequest.urlopen,
+    timeout: float = 10.0,
+) -> str:
+    req = urlrequest.Request(
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+        headers={"Metadata-Flavor": "Google"},
+    )
+    with opener(req, timeout=timeout) as response:
+        status = int(response.getcode())
+        if status < 200 or status >= 300:
+            raise RuntimeError(f"metadata token request failed with HTTP {status}")
+        payload = json.loads(response.read().decode("utf-8"))
+    token = payload.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("metadata token response missing access_token")
+    return token
 
 
 def run_inline(fn: Callable[[], None]) -> None:

@@ -2,6 +2,7 @@ import io
 import json
 import threading
 import time
+from urllib.error import URLError
 
 import pytest
 
@@ -9,8 +10,10 @@ from clonway_cockpit.chat_addon import (
     CHAT_EVENTS_PATH,
     FileSeenStore,
     MAX_BODY_BYTES,
+    RestChatTransport,
     build_addon_app,
     fake_dm_envelope,
+    metadata_token_supplier,
     run_inline,
     spawn_daemon_thread,
 )
@@ -274,3 +277,75 @@ def test_seen_store_survives_restart(tmp_path):
 def test_seen_store_tolerates_missing_file(tmp_path):
     store = FileSeenStore(tmp_path / "missing" / "seen.txt")
     assert "spaces/LOCAL/messages/local-1" not in store
+
+
+class _FakeResponse:
+    def __init__(self, *, status: int = 200, body: bytes = b"{}") -> None:
+        self.status = status
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+    def getcode(self) -> int:
+        return self.status
+
+
+def test_rest_transport_posts_message_create():
+    requests = []
+
+    def fake_opener(request, timeout):
+        requests.append((request, timeout))
+        return _FakeResponse(status=200)
+
+    transport = RestChatTransport(token_supplier=lambda: "tok", opener=fake_opener)
+    transport.post("spaces/AAA", "hi")
+
+    request, timeout = requests[0]
+    assert request.full_url == "https://chat.googleapis.com/v1/spaces/AAA/messages"
+    assert request.get_method() == "POST"
+    assert request.get_header("Authorization") == "Bearer tok"
+    assert request.get_header("Content-type") == "application/json"
+    assert json.loads(request.data.decode("utf-8")) == {"text": "hi"}
+    assert timeout == 10.0
+
+
+@pytest.mark.parametrize(
+    "opener",
+    [
+        lambda request, timeout: _FakeResponse(status=500),
+        lambda request, timeout: (_ for _ in ()).throw(URLError("down")),
+    ],
+)
+def test_rest_transport_error_propagates(opener):
+    transport = RestChatTransport(token_supplier=lambda: "tok", opener=opener)
+    with pytest.raises(Exception):
+        transport.post("spaces/AAA", "hi")
+
+
+def test_rest_transport_iter_messages_is_empty():
+    transport = RestChatTransport(token_supplier=lambda: "tok")
+    assert list(transport.iter_messages("spaces/AAA")) == []
+
+
+def test_metadata_token_supplier_shape():
+    requests = []
+
+    def fake_opener(request, timeout):
+        requests.append((request, timeout))
+        return _FakeResponse(status=200, body=b'{"access_token": "ya29.token"}')
+
+    assert metadata_token_supplier(opener=fake_opener) == "ya29.token"
+    request, timeout = requests[0]
+    assert (
+        request.full_url
+        == "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )
+    assert request.get_header("Metadata-flavor") == "Google"
+    assert timeout == 10.0
