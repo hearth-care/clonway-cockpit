@@ -235,7 +235,9 @@ sha/date where this plan shows recon values):
   review found stale `v0.2.0` baseline-target wording and a README duplicate verification date;
   both were corrected. Builder 60518-120 hit GitHub code-search rate limits during the final
   evidence re-check and used direct contents API reads of the known CLI and contract-test paths as
-  the fallback evidence path.
+  the fallback evidence path; reviewer found two remaining date inconsistencies, so the open-gaps
+  heading and persona tracker pointer were normalised to the 2026-07-03 verification date while
+  leaving the persona-notes observation date explicit.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,

@@ -43,10 +43,10 @@ and the one that's been paused. Everything below works _locally_ without it.
 
 > **Adoption status lives in one place.** For current cockpit pins, agent-channel status, and
 > contract-test conformance per worker, see [fleet-conformance.md](fleet-conformance.md) (updated
-> 2026-07-02 and governed by a verification recipe). The persona notes below are only the
+> 2026-07-03 and governed by a verification recipe). The persona notes below are only the
 > platform-adoption context this page uniquely owns.
 
-_Observed from live sibling repo `origin/main` refs on 2026-07-02. This is repo state, not a
+_Persona-platform notes observed from live sibling repo `origin/main` refs on 2026-07-02. This is repo state, not a
 production traffic claim. Do not copy pin or channel cells here; update the tracker instead._
 
 | Worker | Repo | Package | Platform adoption note |

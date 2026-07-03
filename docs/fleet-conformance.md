@@ -85,7 +85,7 @@ include a refreshed "Last verified" for that row.
 
 ---
 
-## Open gaps (2026-07-02)
+## Open gaps (2026-07-03)
 
 - **xhr first-frame SLA**: the old ~60s first-frame delay has been fixed upstream, and
   auto-hr now documents a <=2s warm-cache / <=5s cold-start SLA in
