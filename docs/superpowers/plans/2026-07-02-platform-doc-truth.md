@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T061708Z-60518-189 re-ran
-  the pin survey, live HEAD stamp check, shallow-clone evidence check, drift guard,
-  rebase check, full local gates, and pre-commit by 2026-07-03T06:20:43Z.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T062314Z-60518-191 re-ran
+  the pin survey, drift guard, rebase check, full local gates, and pre-commit by
+  2026-07-03T06:26:31Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
@@ -261,9 +261,7 @@ sha/date where this plan shows recon values):
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
-  shallow-clone evidence → all eight CLI files contain `agent_stdio` and all eight contract-test
-  files contain both `assert_render_model_parity` and `assert_drives_clean`;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.45s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.01s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
