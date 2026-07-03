@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T080926Z-60518-212
-  re-ran the pin survey, fresh shallow-clone evidence pass, rebase check, drift guard, doc-only
-  diff check, and full local gates on 2026-07-03.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T085852Z-60518-221
+  re-ran the pin survey, live worker HEAD check, direct contents evidence for auto-bookkeeper,
+  drift guard, doc-only diff check, and local gates on 2026-07-03.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this handoff refresh, run finish protocol, then worktree cleanup.
@@ -276,14 +276,16 @@ sha/date where this plan shows recon values):
   2026-07-03" was a transcription drift, not the recipe's actual output. Corrected both cells back
   to `2026-07-02` (the true committer date for those unchanged commits) so the stamp matches
   exactly what running the documented recipe produces. All other rows/pins/shas verified unchanged
-  against fresh `gh api` reads.
-- Known failing tests: none. Latest gates from builder-claude-20260703T082015Z-60518-213:
-  `git rebase origin/main` → current (up to date, no rebase needed);
+  against fresh `gh api` reads. This builder found auto-bookkeeper advanced to `449396e` on
+  2026-07-03 while keeping `v0.3.0`, `agent_stdio`, and both contract assertions; the xbook row
+  stamp was refreshed.
+- Known failing tests: none. Latest gates from builder-codex-20260703T085852Z-60518-221:
+  `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
+  live worker HEAD check → only auto-bookkeeper drifted, now `449396e` · 2026-07-03;
   `grep drift-guard` → no matches (exit 1 / zero hits);
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
-  `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
   `make typecheck` → Success: no issues found in 67 source files;
-  `make test` → 1114 passed in 38.99s; `pre-commit run --all-files` → all Passed.
+  `make test` → 1114 passed in 32.18s; `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none. No RUNBOOK DELTA — doc-only, no operator-facing change (HR1).
