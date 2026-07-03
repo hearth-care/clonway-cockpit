@@ -210,10 +210,10 @@ sha/date where this plan shows recon values):
 ## HANDOFF NOTES
 
 - Current phase: implementation and review fixes complete; the latest verification pass re-ran
-  the pin survey, drift guard, full gates, worker HEAD-stamp audit, and final read-only audit at
-  2026-07-03T02:34Z. auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on
-  `v0.1.0`, and the branch is current with `origin/main`.
-- Next concrete step: finish protocol, then worktree cleanup.
+  the pin survey, drift guard, full local gates, and pre-commit at 2026-07-03T04:16Z.
+  auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
+  is current with `origin/main`.
+- Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
@@ -249,6 +249,6 @@ sha/date where this plan shows recon values):
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.59s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.95s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
