@@ -463,3 +463,12 @@ sha/date where this plan shows recon values):
   `make typecheck` → Success: no issues found in 67 source files; `make test` → 1114 passed in
   31.56s; `uv run pre-commit run --all-files` → all hooks Passed. Next step is the final
   rebase/current check, force-with-lease push, and finish protocol.
+- Final convergence check: builder-claude-20260703T125749Z-60518-265 independently re-verified
+  from a fresh worktree: branch 0 behind `origin/main` (77 commits ahead), doc-only diff
+  unchanged (same seven surfaces), drift-guard grep → zero hits. `python3
+  scripts/check_fleet_pins.py` → exit 0, matching the tracker cell-for-cell (7×v0.1.0 +
+  auto-bookkeeper v0.3.0). `make lint`/`make format`/`make typecheck`/`make test` (1114
+  passed)/`uv run pre-commit run --all-files` → all green. No content edits needed — concurs
+  with the dispatcher-loop diagnosis already recorded above (PR reaches `agent:needs-qa` via
+  the finish protocol and is later reclaimed as `agent:claimed`, rather than this branch having
+  outstanding work). Running the finish protocol once more per instructions.
