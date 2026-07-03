@@ -472,3 +472,17 @@ sha/date where this plan shows recon values):
   with the dispatcher-loop diagnosis already recorded above (PR reaches `agent:needs-qa` via
   the finish protocol and is later reclaimed as `agent:claimed`, rather than this branch having
   outstanding work). Running the finish protocol once more per instructions.
+- Final convergence check: builder-codex-20260703T130351Z-60518-268 verified the dispatcher claim,
+  reused the mandated `.claude/worktrees/pr-110` worktree, and reran the live evidence at
+  2026-07-03T13:05:36Z. `python3 scripts/check_fleet_pins.py` still exits 0 with seven workers
+  on `v0.1.0` and auto-bookkeeper on accepted newer `v0.3.0`. The tracker recipe's
+  `gh api repos/hearth-care/<repo>/commits/main` output still matches every row:
+  auto-orchestrator `f15d1d2` · 2026-07-03, auto-admissions `f7843b1` · 2026-07-02,
+  auto-bookkeeper `da66c96` · 2026-07-03, auto-hr `e20f14a` · 2026-07-02,
+  auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` · 2026-07-02,
+  auto-secretary `317a7b4` · 2026-07-02, and Auto-Procurer `24d0ac9` · 2026-07-02. Fresh
+  shallow clones under `/tmp/pr110-evidence-builder-codex-268` confirmed all eight workers still
+  pin release tags, expose `agent_stdio` / `--agent-stdio` wiring, and contain both framework
+  contract assertions. Extended drift guard returned zero matches, and the branch diff remains
+  Markdown-only. No content edits were needed beyond this handoff refresh; next step is the full
+  gate suite, rebase/current check, force-with-lease push, and finish protocol.
