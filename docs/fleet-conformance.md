@@ -21,14 +21,14 @@ Short SHAs are first 7 chars of the full commit hash. "Observed pin" = the `rev 
 
 | Worker | Repo | Cockpit command | Observed cockpit pin | Contract test present | Dynamic drive path | Last verified | Known exceptions |
 |---|---|---|---|---|---|---|---|
-| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.2.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `c9b98b5` · 2026-07-02 | On newer release tag than the supported baseline; accepted by the pin survey |
+| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.2.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `549d69d` · 2026-07-02 | On newer release tag than the supported baseline; accepted by the pin survey |
 | xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelves and walks deep (`["b","q"]`, `["h","x","q"]`, capability-key paths) | `e20f14a` · 2026-07-02 | First-frame SLA is now documented as <=2s warm cache / <=5s cold start; see open gaps |
 | xletter | hearth-care/auto-marketer | `uv run xletter --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `759054c` · 2026-07-02 | — |
 | xquill | hearth-care/auto-secretary | `uv run xquill --agent-stdio` | `v0.1.0` | Yes | `assert_render_model_parity` and `assert_drives_clean` in `tests/test_cockpit_contract.py` | `317a7b4` · 2026-07-02 | — |
-| xadmissions | hearth-care/auto-admissions | `uv run xadmissions --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; drives home, admissions, and guide paths | `c17c2ce` · 2026-07-02 | — |
+| xadmissions | hearth-care/auto-admissions | `uv run xadmissions --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; drives home, admissions, and guide paths | `f7843b1` · 2026-07-02 | — |
 | xcqc | hearth-care/auto-inspector | `uv run xcqc --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` and readiness paths in `tests/test_cockpit_readiness.py` | `b6302ec` · 2026-07-02 | — |
 | xsource | hearth-care/Auto-Procurer | `uv run xsource --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `24d0ac9` · 2026-07-02 | — |
-| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cli/test_bridge_agent_contract.py`; drives `["q"]` and `["d","x","q"]` to `worker_drilldown` | `d31300f` · 2026-07-02 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
+| xops bridge | hearth-care/auto-orchestrator | `uv run xops bridge --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cli/test_bridge_agent_contract.py`; drives `["q"]` and `["d","x","q"]` to `worker_drilldown` | `72d1166` · 2026-07-02 | Orchestrator role — drives other workers via `CockpitClient`; also exposes its own `--agent-stdio` for meta-orchestration |
 
 **Contract test present** = the worker's test suite imports `clonway_cockpit.contract` and calls
 **both** `assert_render_model_parity` and `assert_drives_clean`. A partial import (one function

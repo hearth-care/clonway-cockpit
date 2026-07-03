@@ -52,13 +52,13 @@ production traffic claim. Do not copy pin or channel cells here; update the trac
 | Worker | Repo | Package | Platform adoption note |
 |---|---|---|---|
 | Bookkeeper | Auto-Bookkeeper | `xbook` | Has xbook Chat bot, model gateway config, Milo gateway/shared-memory work; currently the mature persona-adjacent worker |
-| Orchestrator | Auto-Orchestrator | `xops` | Drives workers via `CockpitClient`; oversight pane, not a persona |
-| HR | Auto-HR | `xhr` | Strong cockpit adoption; no live persona surface observed |
-| Marketer | Auto-Marketer | `xletter` | Has Google Chat intake and model gateway telemetry; cockpit channel exists, but no live persona surface is proven here |
-| Secretary | Auto-Secretary | `xquill` | Has its own live Milo forward-concierge and Chat digest; cockpit channel exists, but this is not yet this platform's persona path |
-| Admissions | Auto-Admissions | `xadmissions` | Cockpit-conformant worker; no persona surface observed |
-| Inspector | Auto-Inspector | `xcqc` | Readiness/compliance cockpit worker; no persona surface observed |
-| Procurer | Auto-Procurer | `xsource` | Template-born cockpit worker; no persona surface observed |
+| Orchestrator | Auto-Orchestrator | `xops` | Oversight pane, not a persona |
+| HR | Auto-HR | `xhr` | No live persona surface observed |
+| Marketer | Auto-Marketer | `xletter` | Has Google Chat intake and model gateway telemetry; no live persona surface is proven here |
+| Secretary | Auto-Secretary | `xquill` | Has its own live Milo forward-concierge and Chat digest; this is not yet this platform's persona path |
+| Admissions | Auto-Admissions | `xadmissions` | No persona surface observed |
+| Inspector | Auto-Inspector | `xcqc` | Readiness/compliance worker; no persona surface observed |
+| Procurer | Auto-Procurer | `xsource` | Procurement worker; no persona surface observed |
 
 ## Recommended next steps, in order
 
