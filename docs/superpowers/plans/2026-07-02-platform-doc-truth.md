@@ -210,12 +210,11 @@ sha/date where this plan shows recon values):
 ## HANDOFF NOTES
 
 - Current phase: implementation and review fixes complete; builder-codex-20260703T045958Z-60518-176 re-ran
-  the pin survey, live HEAD stamp check, direct contents fallback evidence check, and drift guard at
-  2026-07-03T05:02:48Z; full local gates are next.
+  the pin survey, live HEAD stamp check, direct contents fallback evidence check, drift guard, full
+  local gates, pre-commit, and rebase check by 2026-07-03T05:04:34Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
-- Next concrete step: run full local gates, push this final handoff refresh, run finish protocol,
-  then worktree cleanup.
+- Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
@@ -248,11 +247,14 @@ sha/date where this plan shows recon values):
   final evidence pass also hit GitHub code-search rate limits after auto-marketer and used direct
   contents API reads for the known CLI and contract-test paths; the observed pins, contract
   evidence, and live HEAD stamps still match the docs.
-- Known failing tests: none. Latest pre-gate evidence: `grep drift-guard` → no matches;
+- Known failing tests: none. Final gates after this builder's evidence refresh:
+  `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   direct contents fallback → all eight CLI files contain `agent_stdio` and all eight contract-test
-  files contain both `assert_render_model_parity` and `assert_drives_clean`. Full gates pending for
-  this builder.
+  files contain both `assert_render_model_parity` and `assert_drives_clean`;
+  `make lint` → All checks passed!; `make format` → 162 files already formatted;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.91s;
+  `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
