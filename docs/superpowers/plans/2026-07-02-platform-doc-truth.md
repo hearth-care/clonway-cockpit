@@ -435,3 +435,15 @@ sha/date where this plan shows recon values):
   zero hits, and `python3 scripts/check_fleet_pins.py` exit 0 with seven workers on `v0.1.0` and
   auto-bookkeeper on accepted newer `v0.3.0`. Branch rebase/current-check reported up to date with
   `origin/main`; final step is the PR finish protocol.
+- Final convergence check: builder-codex-20260703T123527Z-60518-260 verified the dispatcher claim,
+  created the mandated `.claude/worktrees/pr-110` worktree, and reran the live pin/stamp evidence
+  at 2026-07-03T12:36:45Z. `python3 scripts/check_fleet_pins.py` still exits 0 with seven
+  workers on `v0.1.0` and auto-bookkeeper on accepted newer `v0.3.0`. The tracker recipe's
+  `gh api repos/hearth-care/<repo>/commits/main` output still matches every row:
+  auto-orchestrator `f15d1d2` · 2026-07-03, auto-admissions `f7843b1` · 2026-07-02,
+  auto-bookkeeper `da66c96` · 2026-07-03, auto-hr `e20f14a` · 2026-07-02,
+  auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` · 2026-07-02,
+  auto-secretary `317a7b4` · 2026-07-02, and Auto-Procurer `24d0ac9` · 2026-07-02. The extended
+  drift guard returned zero matches, and the branch diff remains Markdown-only. No content edits
+  were needed beyond this handoff refresh; next step is the full gate suite, rebase/current check,
+  push, and finish protocol.
