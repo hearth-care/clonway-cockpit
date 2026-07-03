@@ -400,3 +400,11 @@ sha/date where this plan shows recon values):
   getting reclaimed instead of merged or left at `agent:needs-qa`) rather than anything wrong
   with this branch's content. Recommend the operator inspect the dispatcher/QA step for PR #110
   directly rather than re-queuing another builder pass.
+- Final convergence check: builder-claude-20260703T115531Z-60518-250 independently re-verified
+  from a fresh worktree: branch 0 behind `origin/main`, doc-only diff unchanged (same seven
+  surfaces), `python3 scripts/check_fleet_pins.py` → exit 0 (7×v0.1.0 + auto-bookkeeper v0.3.0),
+  `make lint`/`make format`/`make typecheck`/`make test` (1114 passed)/`uv run pre-commit run
+  --all-files` all green. No content edits needed — concurs with builder-244's dispatcher-loop
+  diagnosis; this is the ~47th independent convergence confirmation. Running the finish protocol
+  again per instructions rather than escalating further, since fixing the dispatcher is outside a
+  builder's authority.
