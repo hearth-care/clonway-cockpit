@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T085852Z-60518-221
-  re-ran the pin survey, live worker HEAD check, direct contents evidence for auto-bookkeeper,
-  drift guard, doc-only diff check, and local gates on 2026-07-03.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T090957Z-60518-224
+  re-ran the pin survey, live worker HEAD check, fresh shallow-clone evidence for all eight
+  workers, drift guard, doc-only diff check, and local gates on 2026-07-03.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this handoff refresh, run finish protocol, then worktree cleanup.
@@ -278,14 +278,22 @@ sha/date where this plan shows recon values):
   exactly what running the documented recipe produces. All other rows/pins/shas verified unchanged
   against fresh `gh api` reads. This builder found auto-bookkeeper advanced to `449396e` on
   2026-07-03 while keeping `v0.3.0`, `agent_stdio`, and both contract assertions; the xbook row
-  stamp was refreshed.
-- Known failing tests: none. Latest gates from builder-codex-20260703T085852Z-60518-221:
+  stamp was refreshed. This builder used fresh shallow clones under
+  `/tmp/pr110-evidence-builder-codex-224`; the observed pins, live HEAD stamps, `agent_stdio`
+  files, and contract-test evidence still match the docs. GitHub code search returned zero
+  results for several known-conformant repos, so the clone fallback remained the reliable evidence
+  source. The tracker keeps the recipe's UTC committer-date stamps from
+  `gh api repos/hearth-care/<repo>/commits/main`.
+- Known failing tests: none. Latest gates from builder-codex-20260703T090957Z-60518-224:
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
-  live worker HEAD check → only auto-bookkeeper drifted, now `449396e` · 2026-07-03;
+  live worker HEAD check → auto-orchestrator `72d1166` · 2026-07-02, auto-admissions
+  `f7843b1` · 2026-07-02, auto-bookkeeper `449396e` · 2026-07-03, auto-hr `e20f14a` ·
+  2026-07-02, auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` · 2026-07-02,
+  auto-secretary `317a7b4` · 2026-07-02, Auto-Procurer `24d0ac9` · 2026-07-02;
   `grep drift-guard` → no matches (exit 1 / zero hits);
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
   `make typecheck` → Success: no issues found in 67 source files;
-  `make test` → 1114 passed in 32.18s; `pre-commit run --all-files` → all Passed.
+  `make test` → 1114 passed in 35.20s; `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none. No RUNBOOK DELTA — doc-only, no operator-facing change (HR1).
