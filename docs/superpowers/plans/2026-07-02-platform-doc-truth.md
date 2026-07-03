@@ -209,12 +209,13 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T065140Z-60518-198 re-ran
-  the pin survey, live shallow-clone evidence pass, rebase check, full local gates, and
-  pre-commit by 2026-07-03T06:54:42Z.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T073102Z-60518-205
+  re-ran the pin survey, live contents evidence pass, rebase check, drift guard, and doc-only diff
+  check on 2026-07-03.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
-- Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
+- Next concrete step: run final local gates, push this handoff refresh, run finish protocol, then
+  worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
@@ -261,8 +262,12 @@ sha/date where this plan shows recon values):
   auto-orchestrator dates refreshed to 2026-07-03 for their unchanged `f7843b1` and `72d1166`
   commits. This builder used fresh shallow clones under `/tmp/pr110-evidence-builder-codex-198`;
   the observed pins, live HEAD stamps, `agent_stdio` files, and contract-test evidence still
-  match the docs.
-- Known failing tests: none. Final gates after this builder's evidence refresh:
+  match the docs. This builder used direct contents API reads and found auto-bookkeeper had
+  advanced to `4d0661a` while keeping `v0.3.0`, `agent_stdio`, and both contract assertions; the
+  tracker stamp was refreshed. The same evidence pass confirmed auto-admissions and
+  auto-orchestrator still match their documented pins and contract evidence; their stamp dates
+  were normalised to the recipe's committer-date output for `f7843b1` and `72d1166`.
+- Known failing tests: none. Latest gates before this builder's final full run:
   `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
