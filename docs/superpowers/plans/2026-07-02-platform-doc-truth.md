@@ -430,5 +430,8 @@ sha/date where this plan shows recon values):
   refreshed. Remaining worker stamps still match the tracker: auto-admissions `f7843b1` ·
   2026-07-02, auto-hr `e20f14a` · 2026-07-02, auto-inspector `b6302ec` · 2026-07-02,
   auto-marketer `759054c` · 2026-07-02, auto-secretary `317a7b4` · 2026-07-02, and Auto-Procurer
-  `24d0ac9` · 2026-07-02. Next step: run the full gates, rebase/current-check, push this doc-only
-  stamp refresh, and execute the finish protocol again.
+  `24d0ac9` · 2026-07-02. Full gates passed on this pass: `make lint`, `make format`,
+  `make typecheck`, `make test` (1114 passed), `uv run pre-commit run --all-files`, drift guard
+  zero hits, and `python3 scripts/check_fleet_pins.py` exit 0 with seven workers on `v0.1.0` and
+  auto-bookkeeper on accepted newer `v0.3.0`. Branch rebase/current-check reported up to date with
+  `origin/main`; final step is the PR finish protocol.
