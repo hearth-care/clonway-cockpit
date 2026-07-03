@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T052755Z-60518-182 re-ran
+- Current phase: implementation and review fixes complete; builder-codex-20260703T055537Z-60518-187 re-ran
   the pin survey, live HEAD stamp check, direct contents fallback evidence check, drift guard,
-  rebase check, full local gates, and pre-commit by 2026-07-03T05:45:00Z.
+  rebase check, full local gates, and pre-commit by 2026-07-03T06:04:36Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
@@ -250,7 +250,8 @@ sha/date where this plan shows recon values):
   reads and found the same evidence; auto-orchestrator's `agent_stdio` proof is in
   `src/xops/cli/bridge.py` for the `xops bridge --agent-stdio` subcommand rather than
   `src/xops/cli/__init__.py`. This builder re-used direct contents API reads and found the same
-  HEAD stamps, `agent_stdio` files, and contract-test evidence.
+  HEAD stamps, `agent_stdio` files, and contract-test evidence; GitHub code search rate-limited
+  during the auto-secretary pass, so the fallback path remained the reliable evidence source.
 - Known failing tests: none. Final gates after this builder's evidence refresh:
   `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
@@ -259,6 +260,6 @@ sha/date where this plan shows recon values):
   direct contents fallback → all eight CLI files contain `agent_stdio` and all eight contract-test
   files contain both `assert_render_model_parity` and `assert_drives_clean`;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.05s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.10s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
