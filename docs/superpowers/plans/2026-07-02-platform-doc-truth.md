@@ -381,3 +381,22 @@ sha/date where this plan shows recon values):
   line still says `All workers on v0.1.0.` even when xbook is on accepted newer `v0.3.0`; this is
   not changed here because this PR is doc-only and `docs/pin-sync.md` already calls the
   per-worker rows authoritative over that legacy summary line.
+- Final convergence check: builder-claude-20260703T112658Z-60518-244 re-verified from a fresh
+  worktree checkout of `origin/claude/plan-platform-doc-truth` (0 behind/ahead — no rebase
+  needed). `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0.
+  Live `gh api repos/hearth-care/auto-bookkeeper/commits/main` → `299e40c` · 2026-07-03, exactly
+  matching the tracker's xbook row (no drift this pass — auto-bookkeeper had not advanced since
+  builder-codex-20260703T111042Z-60518-242's check). `git diff origin/main --name-only` →
+  same seven doc surfaces as recorded above; no other drift found. `make lint` / `make format` /
+  `make typecheck` / `make test` (1114 passed) / `uv run pre-commit run --all-files` → all green.
+  No content edits were needed.
+  **Dispatcher-loop note for the operator/supervisor:** this PR has now converged and been
+  independently re-confirmed by 45+ separate builder claims across 2026-07-02 15:23Z through
+  2026-07-03 11:27Z, each finding nothing substantive left to change (the only recurring "drift"
+  is auto-bookkeeper's live `main` SHA advancing a few commits between passes — a moving upstream
+  fact restated in a stamp cell, not a defect in this PR). Every prior builder ran the finish
+  protocol (`gh pr ready` + label flip to `agent:needs-qa`), yet the PR keeps coming back as
+  `agent:claimed` for a fresh builder. That strongly suggests a dispatcher/QA-loop bug (PR
+  getting reclaimed instead of merged or left at `agent:needs-qa`) rather than anything wrong
+  with this branch's content. Recommend the operator inspect the dispatcher/QA step for PR #110
+  directly rather than re-queuing another builder pass.
