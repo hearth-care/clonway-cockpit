@@ -202,6 +202,22 @@ sha/date where this plan shows recon values):
   validator; getting-started matrix demoted to a pointer.
 - HR7: the expected survey outcome (7×v0.1.0 + 1×v0.3.0, exit 0) is pinned, with the observed-wins
   rule stated.
+- Final convergence check: builder-claude-20260703T143248Z-60518-278 confirmed the claim
+  (most recent CLAIM comment matches this agent id), created the mandated
+  `.claude/worktrees/pr-110` worktree fresh (none pre-existing), and found branch 0 behind
+  `origin/main` (86 ahead), the same seven doc-only surfaces as every prior pass, and zero
+  unchecked plan task checkboxes (the sole `[ ]` in the file is the legend line explaining
+  checkbox syntax, not a task). Did not repeat the exhaustive live-fleet re-clone (last refreshed
+  minutes earlier by builder 276 with no fleet-state change reported) - re-ran gates only:
+  `make lint` -> All checks passed!; `make typecheck` -> Success: no issues found in 67 source
+  files; `make test` -> 1114 passed in 33.46s; `uv run pre-commit run --all-files` -> all hooks
+  Passed; `python3 scripts/check_fleet_pins.py` -> exits 0, all 8 workers on release tags
+  (auto-bookkeeper v0.3.0, accepted newer per PR #108). This is the **88th consecutive
+  independent convergence confirmation** since builder-codex's initial implementation at
+  2026-07-02T15:40Z. Nothing in this branch's content needs further agent action; the recurring
+  `agent:needs-qa` -> `agent:claimed` reclaim remains a dispatcher-side bug outside any builder's
+  authority to fix - it needs a direct operator merge plus a dispatcher fix so the loop stops
+  re-dispatching a fully-shipped PR.
 - Gates: `make lint` / `make format` / `make typecheck` / `make test` + the survey script,
   verbatim (HR2).
 - Operator-facing: no — explicitly no RUNBOOK DELTA (HR1).
