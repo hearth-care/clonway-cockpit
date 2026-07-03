@@ -209,13 +209,12 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T073102Z-60518-205
-  re-ran the pin survey, live contents evidence pass, rebase check, drift guard, and doc-only diff
-  check on 2026-07-03.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T080926Z-60518-212
+  re-ran the pin survey, fresh shallow-clone evidence pass, rebase check, drift guard, doc-only
+  diff check, and full local gates on 2026-07-03.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
-- Next concrete step: run final local gates, push this handoff refresh, run finish protocol, then
-  worktree cleanup.
+- Next concrete step: push this handoff refresh, run finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
   limits. Observed delta from plan: auto-admissions now has both `assert_render_model_parity` and
@@ -267,12 +266,15 @@ sha/date where this plan shows recon values):
   tracker stamp was refreshed. The same evidence pass confirmed auto-admissions and
   auto-orchestrator still match their documented pins and contract evidence; their stamp dates
   were normalised to the recipe's committer-date output for `f7843b1` and `72d1166`.
-- Known failing tests: none. Latest gates before this builder's final full run:
+  This builder used fresh shallow clones under `/tmp/pr110-evidence-builder-codex-212`; the
+  observed pins, live HEAD stamps, `agent_stdio` files, and contract-test evidence still match the
+  docs after refreshing `f7843b1` and `72d1166` to the 2026-07-03 committer-date stamps.
+- Known failing tests: none. Latest gates from builder-codex-20260703T080926Z-60518-212:
   `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.64s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 32.95s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
