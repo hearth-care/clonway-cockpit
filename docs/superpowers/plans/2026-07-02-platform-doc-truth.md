@@ -209,9 +209,10 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T005616Z-60518-115
-  re-ran the pin survey and full gates at 2026-07-03T01:04:33Z, then refreshed the xbook
-  pin/stamp after auto-bookkeeper advanced on live `main`.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T011852Z-60518-120
+  re-ran the pin survey and live commit-stamp checks at 2026-07-03T01:21:38Z. No doc truth cells
+  changed: auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and
+  all tracker commit stamps still match live `main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -232,7 +233,9 @@ sha/date where this plan shows recon values):
   decisions. Builder 60518-112 review found the adoption matrix still repeated channel/conformance
   wording in worker notes; those notes now stay persona/platform-only. Builder 60518-115 final
   review found stale `v0.2.0` baseline-target wording and a README duplicate verification date;
-  both were corrected.
+  both were corrected. Builder 60518-120 hit GitHub code-search rate limits during the final
+  evidence re-check and used direct contents API reads of the known CLI and contract-test paths as
+  the fallback evidence path.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
