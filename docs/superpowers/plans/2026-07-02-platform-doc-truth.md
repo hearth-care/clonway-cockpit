@@ -363,3 +363,12 @@ sha/date where this plan shows recon values):
   issues found in 67 source files; `make test` → 1114 passed in 30.36s; `uv run pre-commit run
   --all-files` → all Passed. Acceptance re-check after the audit fix passed with no remaining
   contradictory adoption/pin/channel claims in the named docs.
+- Final convergence check: builder-codex-20260703T111042Z-60518-242 verified the dispatcher claim,
+  reused the mandated `.claude/worktrees/pr-110` worktree, and reran the live pin/stamp evidence.
+  `python3 scripts/check_fleet_pins.py` still exits 0 with seven workers on `v0.1.0` and
+  auto-bookkeeper on accepted newer `v0.3.0`. The tracker recipe's
+  `gh api repos/hearth-care/<repo>/commits/main` output still matches every row except xbook had
+  advanced again to `299e40c` · 2026-07-03; direct contents API reads confirmed the xbook pin
+  stayed `v0.3.0`, `--agent-stdio` remained wired, and both `assert_render_model_parity` and
+  `assert_drives_clean` remained present. The xbook tracker stamp was refreshed to
+  `299e40c` · 2026-07-03; no other doc-truth drift has been found so far.
