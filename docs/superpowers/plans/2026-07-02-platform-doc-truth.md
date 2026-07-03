@@ -539,3 +539,20 @@ sha/date where this plan shows recon values):
   6 plan tasks are complete, the diff is unchanged, and this remains a **dispatcher-side loop**
   (agent:needs-qa keeps getting reset to agent:claimed and re-dispatched), not outstanding branch
   work. Running the finish protocol once more per instructions.
+- Final convergence check: builder-claude-20260703T140959Z-60518-274 confirmed the claim
+  (most recent CLAIM comment matches this agent id), reused the mandated
+  `.claude/worktrees/pr-110` worktree, and found branch 0 behind `origin/main` (83 ahead), the
+  same seven doc-only surfaces as every prior pass, and zero unchecked plan checkboxes. Did not
+  repeat the exhaustive live-fleet re-clone (last refreshed minutes earlier by builder 273 with
+  no fleet-state change reported) — re-ran gates only: `make lint` → All checks passed!;
+  `make format` → 162 files already formatted; `make typecheck` → Success: no issues found in 67
+  source files; `make test` → 1114 passed in 31.43s; `uv run pre-commit run --all-files` → all
+  hooks Passed; `python3 scripts/check_fleet_pins.py` → exits 0, all 8 workers on release tags
+  (auto-bookkeeper v0.3.0, accepted newer per PR #108). PR state confirmed `isDraft: false`,
+  `mergeable: MERGEABLE`, label `agent:claimed` before this pass — direct evidence the reclaim
+  loop resets the label after finish without the PR itself reverting to draft. This is the
+  **85th consecutive independent convergence confirmation** since builder-codex's initial
+  implementation at 2026-07-02T15:40Z. The plan's 6 tasks are complete; nothing in this branch's
+  content needs further agent action. **Operator: this PR should be merged directly, and the
+  dispatcher/QA-loop step that keeps resetting `agent:needs-qa` → `agent:claimed` for this PR
+  needs a direct fix** — no further builder pass can resolve it, only re-confirm it.
