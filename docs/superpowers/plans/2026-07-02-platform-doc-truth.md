@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T055537Z-60518-187 re-ran
-  the pin survey, live HEAD stamp check, direct contents fallback evidence check, drift guard,
-  rebase check, full local gates, and pre-commit by 2026-07-03T06:04:36Z.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T061708Z-60518-189 re-ran
+  the pin survey, live HEAD stamp check, shallow-clone evidence check, drift guard,
+  rebase check, full local gates, and pre-commit by 2026-07-03T06:20:43Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
@@ -252,14 +252,18 @@ sha/date where this plan shows recon values):
   `src/xops/cli/__init__.py`. This builder re-used direct contents API reads and found the same
   HEAD stamps, `agent_stdio` files, and contract-test evidence; GitHub code search rate-limited
   during the auto-secretary pass, so the fallback path remained the reliable evidence source.
+  This builder used fresh shallow clones under `/tmp/pr110-evidence-builder-codex-189`; the
+  observed pins, live HEAD stamps, `agent_stdio` files, and contract-test evidence still match the
+  docs. An attempted direct API helper failed after accidentally shadowing zsh `path`; it did not
+  change any repo state, and the shallow-clone pass replaced it as the evidence source.
 - Known failing tests: none. Final gates after this builder's evidence refresh:
   `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
-  direct contents fallback → all eight CLI files contain `agent_stdio` and all eight contract-test
+  shallow-clone evidence → all eight CLI files contain `agent_stdio` and all eight contract-test
   files contain both `assert_render_model_parity` and `assert_drives_clean`;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.10s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.45s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
