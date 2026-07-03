@@ -102,12 +102,12 @@ production traffic claim. Do not copy pin or channel cells here; update the trac
       `XBOOK_ALLOW_HOSTED_PII=1 uv run python -c "from dotenv import load_dotenv; load_dotenv('.env'); from xbook.ai import get_gateway; print(get_gateway().complete([{'role':'user','content':'say OK'}], role='chat_intent'))"`
 
 ### C. Consumer adoption / pin work
-- [ ] **Decide when to move the supported baseline beyond `v0.1.0`.** xbook already pins
-      `v0.2.0`; the operator decision is when the rest of the fleet should follow.
-- [ ] **Deepen xletter/xquill platform adoption where useful.** Both expose `--agent-stdio` today
-      and run the framework contract gate; no persona surface is proven here.
-- [ ] **Decide whether admissions needs persona work.** xadmissions now pins cockpit, exposes
-      `--agent-stdio`, and runs both framework contract checks; no persona surface is observed.
+- [ ] **Decide when to move the supported baseline.** Current pin and channel truth lives in
+      `docs/fleet-conformance.md`; this doc only tracks the platform adoption decision.
+- [ ] **Deepen xletter/xquill platform adoption where useful.** Use the conformance tracker for
+      cockpit status; no persona surface is proven here.
+- [ ] **Decide whether admissions needs persona work.** Use the conformance tracker for cockpit
+      status; no persona surface is observed.
 - [ ] **xops cost consumer (#171 area)** — so the model spend the gateway now records shows up on
       the xops cost page alongside infra spend (the xbook producer side is already wired).
 
