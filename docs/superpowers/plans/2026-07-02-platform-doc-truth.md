@@ -527,3 +527,15 @@ sha/date where this plan shows recon values):
   with every prior pass: the 6 plan tasks are complete and this is a **dispatcher-side loop**
   (agent:needs-qa keeps getting reset to agent:claimed and re-dispatched), not outstanding branch
   work. Running the finish protocol once more per instructions.
+- Final convergence check: builder-claude-20260703T135341Z-60518-273 confirmed the claim
+  (most recent CLAIM comment matches this agent id), reused the mandated
+  `.claude/worktrees/pr-110` worktree, and found branch 0 behind `origin/main` (82 ahead), same
+  seven doc-only surfaces as every prior pass. Did not repeat the exhaustive live-fleet re-clone
+  (last refreshed minutes earlier by builder 272 with no fleet-state change reported) — re-ran
+  gates only: `make lint` → All checks passed!; `make typecheck` → Success: no issues found in
+  67 source files; `make test` → 1114 passed in 31.31s; `uv run pre-commit run --all-files` →
+  all hooks Passed; `python3 scripts/check_fleet_pins.py` → exits 0, all 8 workers on v0.1.0
+  (auto-bookkeeper v0.3.0, accepted newer). Concurs with every prior pass since builder 265: the
+  6 plan tasks are complete, the diff is unchanged, and this remains a **dispatcher-side loop**
+  (agent:needs-qa keeps getting reset to agent:claimed and re-dispatched), not outstanding branch
+  work. Running the finish protocol once more per instructions.
