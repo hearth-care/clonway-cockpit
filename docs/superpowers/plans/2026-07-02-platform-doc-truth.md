@@ -1,7 +1,7 @@
 # [Plan] Platform doc truth: conformance tracker + pin/release narrative refresh
 
 - **Date:** 2026-07-02 · **Branch:** `claude/plan-platform-doc-truth` · **Status:** implementation complete — finish protocol in progress
-- **Surfaces:** [`docs/fleet-conformance.md`](../../fleet-conformance.md), [`docs/pin-sync.md`](../../pin-sync.md), [`docs/persona-platform-getting-started.md`](../../persona-platform-getting-started.md) (§"Fleet adoption matrix" + §C), `README.md` (status table)
+- **Surfaces:** [`docs/fleet-conformance.md`](../../fleet-conformance.md), [`docs/pin-sync.md`](../../pin-sync.md), [`docs/persona-platform-getting-started.md`](../../persona-platform-getting-started.md) (§"Fleet adoption matrix" + §C), [`docs/adopting-the-agent-channel.md`](../../adopting-the-agent-channel.md), [`docs/ci-adoption.md`](../../ci-adoption.md), `README.md` (status table)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: implement this plan task-by-task (Claude: superpowers:subagent-driven-development or superpowers:executing-plans; Codex: the same phase/verification discipline). Steps use checkbox (`- [ ]`) syntax. Tick checkboxes as work lands and commit this plan with the edits. **This PR is documentation-only — every changed file is `.md`. Do not touch code, scripts, or workflows.**
 
@@ -14,7 +14,8 @@ workers are not cockpit-drivable and that the whole fleet sits on raw SHAs — b
 is the declared "single source of truth for cockpit adoption status" (fleet-conformance.md's own
 words) actively misleads planning while stale.
 
-**Goal:** every adoption/pin claim across the four surfaces is re-verified against the **live
+**Goal:** every adoption/pin claim across the original four surfaces, plus audit-discovered stale
+adjacent adoption docs, is re-verified against the **live
 `origin/main` of each worker repo on the day the builder edits it**, corrected, and stamped
 `verified <date> against <sha>` per row — using the tracker's own verification recipe and the
 repo's own pin-survey script as the evidence trail.
@@ -63,7 +64,7 @@ newer-than-baseline release tags).
 
 Every corrected claim is a checkbox below with exact before → after (HR5's enumeration applied to
 doc rows: the full set of stale cells is listed; there is no "update the tables as needed"). After
-the edit, **no data cell in any of the four surfaces contradicts the builder's fresh
+the edit, **no data cell in any touched adoption surface contradicts the builder's fresh
 verification output**, and every touched row carries a fresh `verified <sha> · <date>` stamp per
 the tracker's own rule ("a row is not green without a verified commit").
 
@@ -77,7 +78,7 @@ in the docs.
 
 ## Implementation plan
 
-**Goal:** four doc surfaces telling one verified, dated truth.
+**Goal:** the touched adoption doc surfaces tell one verified, dated truth.
 **Architecture:** n/a — doc-only. **Tech stack:** markdown + `gh` CLI + `python3
 scripts/check_fleet_pins.py` (read-only run). **No new dependencies, no code changes.**
 
@@ -180,11 +181,11 @@ sha/date where this plan shows recon values):
 
 ### Task 6 — final verification + gates
 
-- [x] Re-read all four surfaces; confirm zero remaining `2026-06-12`/`2026-06-14`-stamped data
+- [x] Re-read all touched adoption surfaces; confirm zero remaining `2026-06-12`/`2026-06-14`-stamped data
   cells that Task 1 contradicted. Drift-guard command (expected: zero hits):
-  `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" docs/fleet-conformance.md docs/pin-sync.md docs/persona-platform-getting-started.md README.md`
+  `grep -rnE "4c63daf|no .--agent-stdio|2026-06-12" docs/fleet-conformance.md docs/pin-sync.md docs/persona-platform-getting-started.md README.md docs/adopting-the-agent-channel.md docs/ci-adoption.md`
   (dated historical narrative elsewhere — e.g. CHANGELOG — is untouched and out of this grep's scope).
-- [x] `git diff origin/main --name-only` → only the four `.md` surfaces + this plan.
+- [x] `git diff origin/main --name-only` → only Markdown doc surfaces + this plan.
 - [x] Full gates, verbatim, paste tails in DONE (HR2): `make lint` · `make format` ·
   `make typecheck` · `make test`; paste `python3 scripts/check_fleet_pins.py` output.
 - [x] **Commit:** `docs(plan): tick platform-doc-truth checkboxes + handoff`
@@ -372,3 +373,11 @@ sha/date where this plan shows recon values):
   stayed `v0.3.0`, `--agent-stdio` remained wired, and both `assert_render_model_parity` and
   `assert_drives_clean` remained present. The xbook tracker stamp was refreshed to
   `299e40c` · 2026-07-03; no other doc-truth drift has been found so far.
+- Final Boss Audit for builder-codex-20260703T111042Z-60518-242 found one medium doc-truth gap
+  outside the original target surfaces: `docs/ci-adoption.md` still described `v0.2.0` as an
+  uncut future release. That checklist now states `v0.2.0` was released on 2026-06-14,
+  `v0.3.0` on 2026-07-02, and reusable workflow callers should prefer the current release tag
+  unless deliberately freezing a reviewed SHA. The same audit noted the survey script's final
+  line still says `All workers on v0.1.0.` even when xbook is on accepted newer `v0.3.0`; this is
+  not changed here because this PR is doc-only and `docs/pin-sync.md` already calls the
+  per-worker rows authoritative over that legacy summary line.

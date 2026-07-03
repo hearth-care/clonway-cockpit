@@ -5,16 +5,17 @@ One PR per worker. Survey re-verified against `origin/main` of each repo on 2026
 
 ## Before opening any adoption PR
 
-1. **Pin the reusable workflow by tag or SHA** — never `@main`.
-   Tag `v0.2.0` is the intended pin; until it is cut from the release-engineering plan
-   (`docs/superpowers/plans/2026-06-fleet-audit-release-engineering.md`), use the
-   SHA at which `reusable-ci.yml` first landed on `main`:
+1. **Pin the reusable workflow by release tag or SHA** — never `@main`.
+   `v0.2.0` was released on 2026-06-14 and `v0.3.0` was released on 2026-07-02. For
+   cockpit package pins, follow the supported baseline in
+   [`pin-sync.md`](pin-sync.md); for reusable workflow callers, prefer the current
+   release tag unless the rollout deliberately freezes a reviewed SHA:
 
    ```
-   hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
+   hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-SHA>
    ```
 
-   Replace `<SHA>` with the merge-commit SHA of this PR once it lands on `main`.
+   Replace `<tag-or-SHA>` with the release tag or reviewed commit SHA chosen for the adoption PR.
 
 2. **Cross-repo `workflow_call` access** — this repo is public, so worker repos can
    call it without org-level policy changes. Verify once with one worker (auto-hr is
@@ -71,7 +72,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.label.name == 'run-ci' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
+    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-SHA>
     with:
       lint-paths: "src tests"
       mypy-args: ""
@@ -88,7 +89,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.label.name == 'run-ci' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
+    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-SHA>
     with:
       lint-paths: "src tests scripts"
       mypy-args: ""
@@ -106,7 +107,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.label.name == 'run-ci' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
+    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-SHA>
 ```
 
 ### auto-orchestrator
@@ -123,7 +124,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.label.name == 'run-ci' ||
       contains(github.event.pull_request.labels.*.name, 'run-ci')
-    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<SHA>
+    uses: hearth-care/clonway-cockpit/.github/workflows/reusable-ci.yml@<tag-or-SHA>
     with:
       lint-paths: "src tests"
       mypy-args: "src"
@@ -193,5 +194,4 @@ would add a new gate.
 - `skip-test` / `skip-mypy` boolean inputs on `reusable-ci.yml` — unblocks auto-marketer,
   auto-bookkeeper (test), auto-secretary (mypy).
 - `pre-test-command` string input — clean alternative to `skip-test` for system dep installs.
-- Cut the `v0.2.0` release tag — all eight worker adoption PRs should reference it, not a SHA.
 - Branch protection (O1) — required checks must be re-pointed after adoption.
