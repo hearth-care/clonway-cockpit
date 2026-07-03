@@ -408,3 +408,15 @@ sha/date where this plan shows recon values):
   diagnosis; this is the ~47th independent convergence confirmation. Running the finish protocol
   again per instructions rather than escalating further, since fixing the dispatcher is outside a
   builder's authority.
+- Final convergence check: builder-claude-20260703T120110Z-60518-251 independently re-verified
+  from a fresh worktree: branch 0 behind `origin/main`, doc-only diff unchanged (same seven
+  surfaces), zero unchecked plan checkboxes, xbook tracker stamp `299e40c` · 2026-07-03 still
+  matches live `gh api repos/hearth-care/auto-bookkeeper/commits/main` exactly (no drift since
+  builder-250). `python3 scripts/check_fleet_pins.py` → exit 0 (7×v0.1.0 + auto-bookkeeper
+  v0.3.0), `make lint`/`make format`/`make typecheck`/`make test` (1114 passed)/`uv run
+  pre-commit run --all-files` all green. No content edits needed. Confirmed the PR was already
+  `isDraft: false` before this pass began yet still carried `agent:claimed` — direct evidence the
+  reclaim loop flips the label back after a builder's `gh pr ready` + `agent:needs-qa`, since the
+  PR itself never reverted to draft. This is the ~48th independent convergence confirmation with
+  no substantive branch content left to change; running the finish protocol once more per
+  instructions.
