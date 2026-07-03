@@ -57,6 +57,7 @@ signals, run logs, screen models, or handoff payloads.
 - Every worker MUST pin a release tag.
 - A worker MUST NOT pin `main`.
 - A worker MUST NOT stay on a bare SHA after a supported tag exists.
-- The maximum supported skew is one minor version between any two workers.
+- The survey accepts workers on the supported tag or on a newer release tag; move the
+  supported line when the operator wants the fleet baseline to catch up.
 - A fleet-level operator config may record each worker's observed `cockpit_pin` so the
   orchestrator doctor can compare actual pins with the supported line in this file.

@@ -209,10 +209,10 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T021514Z-60518-134
-  re-ran the pin survey, drift guard, full gates, worker HEAD-stamp audit, and final read-only
-  audit at 2026-07-03T02:18Z. No doc truth cells changed: auto-bookkeeper remains on `v0.3.0`,
-  the other seven workers remain on `v0.1.0`, and the branch is current with `origin/main`.
+- Current phase: implementation and review fixes complete; the latest verification pass re-ran
+  the pin survey, drift guard, full gates, worker HEAD-stamp audit, and final read-only audit at
+  2026-07-03T02:34Z. auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on
+  `v0.1.0`, and the branch is current with `origin/main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -220,33 +220,35 @@ sha/date where this plan shows recon values):
   `assert_drives_clean`; auto-secretary/xquill now has both framework contract-gate calls on live
   `main` too. Final acceptance review found auto-bookkeeper, auto-hr, and auto-marketer had
   advanced on `main`; their tracker stamps were refreshed to `c9b98b5`, `e20f14a`, and
-  `759054c` while their cockpit pins stayed on release tags. Builder 60518-112 final read-only
-  review found auto-bookkeeper, auto-admissions, and auto-orchestrator had advanced again; their
+  `759054c` while their cockpit pins stayed on release tags. A later final read-only review
+  found auto-bookkeeper, auto-admissions, and auto-orchestrator had advanced again; their
   tracker stamps were refreshed to `549d69d`, `f7843b1`, and `72d1166` after confirming pins and
   contract evidence still matched the tracker. `v0.3.0` (chat_addon transport + bounded persona
   thread memory) released 2026-07-02 after this plan was written; noted in pin-sync.md and the
   getting-started checklist; auto-bookkeeper now pins `v0.3.0` on live `main`, supported baseline
   still `v0.1.0`. Final
   review found one stale advisory recon sentence for auto-admissions; it was corrected to match
-  the observed contract-gate truth. Builder 60518-99 final review found §C still duplicated worker
+  the observed contract-gate truth. A later final review found §C still duplicated worker
   pin/channel facts; §C now points back to the conformance tracker and keeps only platform/persona
-  decisions. Builder 60518-112 review found the adoption matrix still repeated channel/conformance
-  wording in worker notes; those notes now stay persona/platform-only. Builder 60518-115 final
-  review found stale `v0.2.0` baseline-target wording and a README duplicate verification date;
-  both were corrected. Builder 60518-120 hit GitHub code-search rate limits during the final
-  evidence re-check and used direct contents API reads of the known CLI and contract-test paths as
-  the fallback evidence path; reviewer found two remaining date inconsistencies, so the open-gaps
-  heading and persona tracker pointer were normalised to the 2026-07-03 verification date while
-  leaving the persona-notes observation date explicit. Builder 60518-134 also hit GitHub code-search
+  decisions. Another review found the adoption matrix still repeated channel/conformance
+  wording in worker notes; those notes now stay persona/platform-only. A final review found stale
+  `v0.2.0` baseline-target wording and a README duplicate verification date; both were corrected.
+  A subsequent final evidence re-check hit GitHub code-search rate limits and used direct contents
+  API reads of the known CLI and contract-test paths as the fallback evidence path; reviewer found
+  two remaining date inconsistencies, so the open-gaps heading and persona tracker pointer were
+  normalised to the 2026-07-03 verification date while leaving the persona-notes observation date
+  explicit. The latest final audit also hit GitHub code-search
   rate limits during final audit and used direct contents API reads; all eight workers still expose
   `agent_stdio`, all eight contract-test files still contain both contract assertions, and all live
-  worker HEAD stamps still match the tracker.
+  worker HEAD stamps still match the tracker. A doc-truth audit then found the old one-minor-skew
+  policy sentence contradicted the checker and the accepted `v0.3.0` xbook pin; pin-sync.md now
+  states the checker-backed rule directly without changing the supported baseline.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.77s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.59s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
