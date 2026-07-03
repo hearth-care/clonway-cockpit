@@ -209,10 +209,10 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T013007Z-60518-123
-  re-ran the pin survey, drift guard, full gates, and final read-only audit at
-  2026-07-03T01:32:53Z. No doc truth cells changed: auto-bookkeeper remains on `v0.3.0`, the
-  other seven workers remain on `v0.1.0`, and the branch is current with `origin/main`.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T021514Z-60518-134
+  re-ran the pin survey, drift guard, full gates, worker HEAD-stamp audit, and final read-only
+  audit at 2026-07-03T02:18Z. No doc truth cells changed: auto-bookkeeper remains on `v0.3.0`,
+  the other seven workers remain on `v0.1.0`, and the branch is current with `origin/main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -237,13 +237,16 @@ sha/date where this plan shows recon values):
   evidence re-check and used direct contents API reads of the known CLI and contract-test paths as
   the fallback evidence path; reviewer found two remaining date inconsistencies, so the open-gaps
   heading and persona tracker pointer were normalised to the 2026-07-03 verification date while
-  leaving the persona-notes observation date explicit.
+  leaving the persona-notes observation date explicit. Builder 60518-134 also hit GitHub code-search
+  rate limits during final audit and used direct contents API reads; all eight workers still expose
+  `agent_stdio`, all eight contract-test files still contain both contract assertions, and all live
+  worker HEAD stamps still match the tracker.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.05s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.77s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
