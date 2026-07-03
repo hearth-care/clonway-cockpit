@@ -317,3 +317,17 @@ sha/date where this plan shows recon values):
   2026-07-02/03, each of whom found nothing left to change. Recording this explicitly so a
   future dispatcher/reviewer can treat convergence as the terminal state rather than
   re-queuing another evidence pass.
+- Final convergence check: builder-codex-20260703T094909Z-60518-233 verified the dispatcher claim,
+  reused the mandated `.claude/worktrees/pr-110` worktree, rebased/current-checked against
+  `origin/main`, and reran the evidence pass at 2026-07-03T09:51:37Z. `python3
+  scripts/check_fleet_pins.py` still exits 0 with seven workers on `v0.1.0` and auto-bookkeeper
+  on accepted newer `v0.3.0`. Fresh shallow clones under
+  `/tmp/pr110-evidence-builder-codex-233` showed all eight workers still expose `agent_stdio`,
+  all eight test suites still contain both framework contract assertions, and pins still match
+  the tracker. The exact tracker `gh api repos/hearth-care/<repo>/commits/main --jq ...`
+  committer-date recipe still reports: auto-orchestrator `72d1166` · 2026-07-02,
+  auto-admissions `f7843b1` · 2026-07-02, auto-bookkeeper `449396e` · 2026-07-03, auto-hr
+  `e20f14a` · 2026-07-02, auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` ·
+  2026-07-02, auto-secretary `317a7b4` · 2026-07-02, Auto-Procurer `24d0ac9` · 2026-07-02.
+  No doc-truth content edits were needed; this pass only records fresh resume evidence before
+  rerunning the full gate suite and finish protocol.
