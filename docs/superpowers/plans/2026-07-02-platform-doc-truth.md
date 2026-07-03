@@ -209,10 +209,10 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T011852Z-60518-120
-  re-ran the pin survey and live commit-stamp checks at 2026-07-03T01:21:38Z. No doc truth cells
-  changed: auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and
-  all tracker commit stamps still match live `main`.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T013007Z-60518-123
+  re-ran the pin survey, drift guard, full gates, and final read-only audit at
+  2026-07-03T01:32:53Z. No doc truth cells changed: auto-bookkeeper remains on `v0.3.0`, the
+  other seven workers remain on `v0.1.0`, and the branch is current with `origin/main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -244,6 +244,6 @@ sha/date where this plan shows recon values):
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 27.26s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 31.05s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
