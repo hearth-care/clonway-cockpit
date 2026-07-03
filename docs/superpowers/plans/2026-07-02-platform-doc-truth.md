@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260702T235935Z-60518-99
-  re-verified final gates at 2026-07-03T00:06:05Z after confirming the branch is current with
-  `origin/main` at `edec4b8` (v0.3.0 release).
+- Current phase: implementation and review fixes complete; builder-codex-20260703T004447Z-60518-112
+  re-verified final gates at 2026-07-03T00:47:53Z after confirming the branch is current with
+  `origin/main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -232,6 +232,6 @@ sha/date where this plan shows recon values):
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.2.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 27.33s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.50s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
