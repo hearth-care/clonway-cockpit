@@ -269,12 +269,21 @@ sha/date where this plan shows recon values):
   This builder used fresh shallow clones under `/tmp/pr110-evidence-builder-codex-212`; the
   observed pins, live HEAD stamps, `agent_stdio` files, and contract-test evidence still match the
   docs after refreshing `f7843b1` and `72d1166` to the 2026-07-03 committer-date stamps.
-- Known failing tests: none. Latest gates from builder-codex-20260703T080926Z-60518-212:
-  `git rebase origin/main` → current; `grep drift-guard` → no matches;
+  This builder (builder-claude-20260703T082015Z-60518-213) re-ran the exact recipe command
+  (`gh api repos/hearth-care/<repo>/commits/main --jq '{sha, committer_date}'`) for auto-admissions
+  and auto-orchestrator and found the recipe's own committer-date output is `2026-07-02`, not the
+  `2026-07-03` the tracker had stamped for `f7843b1` / `72d1166` — the prior pass's "normalise to
+  2026-07-03" was a transcription drift, not the recipe's actual output. Corrected both cells back
+  to `2026-07-02` (the true committer date for those unchanged commits) so the stamp matches
+  exactly what running the documented recipe produces. All other rows/pins/shas verified unchanged
+  against fresh `gh api` reads.
+- Known failing tests: none. Latest gates from builder-claude-20260703T082015Z-60518-213:
+  `git rebase origin/main` → current (up to date, no rebase needed);
+  `grep drift-guard` → no matches (exit 1 / zero hits);
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 32.95s;
-  `pre-commit run --all-files` → all Passed.
-- Dependencies/operator TODOs: none.
+  `make typecheck` → Success: no issues found in 67 source files;
+  `make test` → 1114 passed in 38.99s; `pre-commit run --all-files` → all Passed.
+- Dependencies/operator TODOs: none. No RUNBOOK DELTA — doc-only, no operator-facing change (HR1).
