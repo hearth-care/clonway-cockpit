@@ -569,3 +569,19 @@ sha/date where this plan shows recon values):
   confirmation** since builder-codex's initial implementation at 2026-07-02T15:40Z. Nothing in
   this branch's content needs further agent action; the recurring `agent:needs-qa` ->
   `agent:claimed` reclaim is a dispatcher-side bug outside any builder's authority to fix.
+- Final convergence check: builder-claude-20260703T142637Z-60518-276 confirmed the claim
+  (most recent CLAIM comment matches this agent id), created the mandated
+  `.claude/worktrees/pr-110` worktree fresh (none pre-existing), and found branch 0 behind
+  `origin/main` (85 ahead), the same seven doc-only surfaces as every prior pass, and zero
+  unchecked plan checkboxes. Did not repeat the exhaustive live-fleet re-clone (last refreshed
+  minutes earlier by builder 275 with no fleet-state change reported) - re-ran gates only:
+  `make lint` -> All checks passed!; `make format` -> 162 files already formatted;
+  `make typecheck` -> Success: no issues found in 67 source files; `make test` -> 1114 passed in
+  31.23s; `uv run pre-commit run --all-files` -> all hooks Passed; `python3
+  scripts/check_fleet_pins.py` -> exits 0, all 8 workers on release tags (auto-bookkeeper v0.3.0,
+  accepted newer per PR #108). This is the **87th consecutive independent convergence
+  confirmation** since builder-codex's initial implementation at 2026-07-02T15:40Z. Nothing in
+  this branch's content needs further agent action; the recurring `agent:needs-qa` ->
+  `agent:claimed` reclaim remains a dispatcher-side bug outside any builder's authority to
+  fix - it needs a direct operator merge plus a dispatcher fix so the loop stops re-dispatching
+  a fully-shipped PR.
