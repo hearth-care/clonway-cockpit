@@ -325,9 +325,11 @@ sha/date where this plan shows recon values):
   `/tmp/pr110-evidence-builder-codex-233` showed all eight workers still expose `agent_stdio`,
   all eight test suites still contain both framework contract assertions, and pins still match
   the tracker. The exact tracker `gh api repos/hearth-care/<repo>/commits/main --jq ...`
-  committer-date recipe still reports: auto-orchestrator `72d1166` · 2026-07-02,
-  auto-admissions `f7843b1` · 2026-07-02, auto-bookkeeper `449396e` · 2026-07-03, auto-hr
+  committer-date recipe reports: auto-orchestrator `72d1166` · 2026-07-02,
+  auto-admissions `f7843b1` · 2026-07-02, auto-bookkeeper `9ea4648` · 2026-07-03, auto-hr
   `e20f14a` · 2026-07-02, auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` ·
   2026-07-02, auto-secretary `317a7b4` · 2026-07-02, Auto-Procurer `24d0ac9` · 2026-07-02.
   No doc-truth content edits were needed; this pass only records fresh resume evidence before
-  rerunning the full gate suite and finish protocol.
+  rerunning the full gate suite and finish protocol. Architect audit found auto-bookkeeper had
+  advanced again during finish from `449396e` to `9ea4648`; the xbook tracker stamp was refreshed
+  after confirming the pin stayed `v0.3.0` and the agent/contract evidence remained present.
