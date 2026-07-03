@@ -30,18 +30,18 @@ The per-worker status rows are the authority: workers on a newer release tag are
 the script marks that row OK, even if the script's final summary names only the supported
 baseline.
 
-Last static snapshot: 2026-07-02 (re-run the script for current state).
+Last static snapshot: 2026-07-03 (re-run the script for current state).
 
 `v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
 persona thread memory) was released on 2026-07-02. The supported baseline remains
 `v0.1.0` until the operator moves it; a worker on a newer release tag is conformant
 under the survey's newer-tag rule from PR #108.
 
-| Worker repo | Pin as of 2026-07-02 | Status |
+| Worker repo | Pin as of 2026-07-03 | Status |
 |---|---|---|
 | Auto-Orchestrator | `v0.1.0` | OK (on supported baseline) |
 | auto-admissions | `v0.1.0` | OK (on supported baseline) |
-| auto-bookkeeper | `v0.2.0` | OK (newer release tag than `v0.1.0`) |
+| auto-bookkeeper | `v0.3.0` | OK (newer release tag than `v0.1.0`) |
 | auto-hr | `v0.1.0` | OK (on supported baseline) |
 | auto-inspector | `v0.1.0` | OK (on supported baseline) |
 | auto-marketer | `v0.1.0` | OK (on supported baseline) |

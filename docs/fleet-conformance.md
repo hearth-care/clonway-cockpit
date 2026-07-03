@@ -1,6 +1,6 @@
 # Fleet Cockpit Conformance Tracker
 
-> Survey source: `origin/main` of each worker repo, read 2026-07-02.
+> Survey source: `origin/main` of each worker repo, read 2026-07-03.
 > For the supported cockpit tag and worker update recipe, see [pin-sync.md](pin-sync.md).
 
 ## Rule: a row is not green without a verified commit
@@ -21,7 +21,7 @@ Short SHAs are first 7 chars of the full commit hash. "Observed pin" = the `rev 
 
 | Worker | Repo | Cockpit command | Observed cockpit pin | Contract test present | Dynamic drive path | Last verified | Known exceptions |
 |---|---|---|---|---|---|---|---|
-| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.2.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `549d69d` · 2026-07-02 | On newer release tag than the supported baseline; accepted by the pin survey |
+| xbook | hearth-care/auto-bookkeeper | `uv run xbook --agent-stdio` | `v0.3.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py` plus walk coverage in `tests/cockpit/test_agent_walk_coverage.py` | `e48b8e6` · 2026-07-03 | On newer release tag than the supported baseline; accepted by the pin survey |
 | xhr | hearth-care/auto-hr | `uv run xhr --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/cockpit/test_agent_contract.py`; opens shelves and walks deep (`["b","q"]`, `["h","x","q"]`, capability-key paths) | `e20f14a` · 2026-07-02 | First-frame SLA is now documented as <=2s warm cache / <=5s cold start; see open gaps |
 | xletter | hearth-care/auto-marketer | `uv run xletter --agent-stdio` | `v0.1.0` | Yes | `assert_drives_clean` in `tests/test_cockpit_contract.py` | `759054c` · 2026-07-02 | — |
 | xquill | hearth-care/auto-secretary | `uv run xquill --agent-stdio` | `v0.1.0` | Yes | `assert_render_model_parity` and `assert_drives_clean` in `tests/test_cockpit_contract.py` | `317a7b4` · 2026-07-02 | — |

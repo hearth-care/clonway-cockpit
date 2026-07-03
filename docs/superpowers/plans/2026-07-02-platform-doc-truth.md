@@ -43,7 +43,7 @@ repo's own pin-survey script as the evidence trail.
 
 | Worker | Repo | Cockpit pin observed | `--agent-stdio` | Notes |
 |---|---|---|---|---|
-| xbook | auto-bookkeeper | `v0.2.0` (pyproject `[tool.uv.sources]`) | yes | pin bumped ~2026-07-01; only worker on v0.2.0 |
+| xbook | auto-bookkeeper | `v0.2.0` (pyproject `[tool.uv.sources]`) | yes | pin bumped ~2026-07-01; final evidence later observed `v0.3.0` |
 | xhr | auto-hr | `v0.1.0` | yes | pin-sync PR 2026-06-21 (`8c51f82`) |
 | xletter | auto-marketer | `v0.1.0` | **yes** — added 2026-06-12 18:23, commit `855d980` (`src/xletter/cli/__init__.py`) | tracker's 06-12 row predates the same-day add |
 | xquill | auto-secretary | `v0.1.0` | **yes** — added 2026-06-15, commit `43d94ea` (`src/xquill/cockpit.py`) | read-only status surface |
@@ -69,7 +69,7 @@ the tracker's own rule ("a row is not green without a verified commit").
 
 Worked example of the verification arithmetic (HR7, pinned to the recon fixture — builder replaces
 with observed values): `python3 scripts/check_fleet_pins.py` at recon time is expected to report
-**8/8 workers on release tags — 7 × `v0.1.0` + 1 × `v0.2.0` (xbook, newer-than-baseline: accepted
+**8/8 workers on release tags — 7 × `v0.1.0` + 1 × `v0.3.0` (xbook, newer-than-baseline: accepted
 per PR #108) — exit code 0**. If the run reports anything else, the observed report is what goes
 in the docs.
 
@@ -122,7 +122,7 @@ sha/date where this plan shows recon values):
   `Last verified` sha · date). Observed pin cell `4c63daf` → `v0.1.0`.
 - [x] xquill row: same correction shape as xletter (`uv run xquill --agent-stdio`, observed
   contract-test cell, pin `4c63daf` → `v0.1.0`, fresh stamp).
-- [x] xbook row: observed pin `8449c2d` → `v0.2.0`; fresh stamp.
+- [x] xbook row: observed pin `8449c2d` → `v0.3.0`; fresh stamp.
 - [x] xhr row: observed pin `a75f7a0` → `v0.1.0`; fresh stamp; keep the 60s first-frame exception
   unless Task 1 finds it resolved.
 - [x] xadmissions row: plan expected `Partial` + parity-gap exception, but live evidence showed
@@ -145,7 +145,7 @@ sha/date where this plan shows recon values):
 - [x] Replace the "Last static snapshot: 2026-06-14" table (rows claiming
   `4c63daf…` / `1c86802…` / `a75f7a0…` raw-SHA pins, "9/70/122 commits behind/ahead") with a fresh
   static snapshot dated at build time, generated from the Task 1 `check_fleet_pins.py` output —
-  expected shape: 7 workers `v0.1.0` (at baseline), xbook `v0.2.0` (newer release tag — accepted,
+  expected shape: 7 workers `v0.1.0` (at baseline), xbook `v0.3.0` (newer release tag — accepted,
   note PR #108), plus the "re-run the script for current state" line retained.
 - [x] Add one narrative sentence to the snapshot section: `v0.2.0` was released 2026-06-14; the
   supported baseline remains `v0.1.0` until the operator moves it; a worker on a newer release
@@ -199,7 +199,7 @@ sha/date where this plan shows recon values):
   cells — QA re-runs the same commands and diffs (no trust in builder claims).
 - HR6: one adoption source of truth (fleet-conformance.md) + `check_fleet_pins.py` as the
   validator; getting-started matrix demoted to a pointer.
-- HR7: the expected survey outcome (7×v0.1.0 + 1×v0.2.0, exit 0) is pinned, with the observed-wins
+- HR7: the expected survey outcome (7×v0.1.0 + 1×v0.3.0, exit 0) is pinned, with the observed-wins
   rule stated.
 - Gates: `make lint` / `make format` / `make typecheck` / `make test` + the survey script,
   verbatim (HR2).
@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T004447Z-60518-112
-  re-verified final gates at 2026-07-03T00:47:53Z, then fixed final read-only review findings
-  against newer live worker heads.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T005616Z-60518-115
+  re-ran the pin survey and full gates at 2026-07-03T01:00:10Z, then refreshed the xbook
+  pin/stamp after auto-bookkeeper advanced on live `main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
   used fresh shallow clones under `/tmp/pr110-evidence` after `gh search code` hit search-rate
@@ -224,7 +224,8 @@ sha/date where this plan shows recon values):
   tracker stamps were refreshed to `549d69d`, `f7843b1`, and `72d1166` after confirming pins and
   contract evidence still matched the tracker. `v0.3.0` (chat_addon transport + bounded persona
   thread memory) released 2026-07-02 after this plan was written; noted in pin-sync.md and the
-  getting-started checklist; no worker pins changed yet, supported baseline still `v0.1.0`. Final
+  getting-started checklist; auto-bookkeeper now pins `v0.3.0` on live `main`, supported baseline
+  still `v0.1.0`. Final
   review found one stale advisory recon sentence for auto-admissions; it was corrected to match
   the observed contract-gate truth. Builder 60518-99 final review found §C still duplicated worker
   pin/channel facts; §C now points back to the conformance tracker and keeps only platform/persona
@@ -234,8 +235,8 @@ sha/date where this plan shows recon values):
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
-  `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.2.0;
+  `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.50s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.66s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
