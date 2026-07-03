@@ -210,8 +210,8 @@ sha/date where this plan shows recon values):
 ## HANDOFF NOTES
 
 - Current phase: implementation and review fixes complete; builder-codex-20260703T062913Z-60518-193 re-ran
-  the pin survey, live shallow-clone evidence pass, rebase check, and focused doc-truth checks by
-  2026-07-03T06:42:00Z.
+  the pin survey, live shallow-clone evidence pass, rebase check, full local gates, and
+  pre-commit by 2026-07-03T06:32:57Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
@@ -266,6 +266,6 @@ sha/date where this plan shows recon values):
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 30.01s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 33.31s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
