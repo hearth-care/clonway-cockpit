@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T062314Z-60518-191 re-ran
-  the pin survey, drift guard, rebase check, full local gates, and pre-commit by
-  2026-07-03T06:26:31Z.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T062913Z-60518-193 re-ran
+  the pin survey, live shallow-clone evidence pass, rebase check, and focused doc-truth checks by
+  2026-07-03T06:42:00Z.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this final handoff refresh, run finish protocol, then worktree cleanup.
@@ -256,6 +256,10 @@ sha/date where this plan shows recon values):
   observed pins, live HEAD stamps, `agent_stdio` files, and contract-test evidence still match the
   docs. An attempted direct API helper failed after accidentally shadowing zsh `path`; it did not
   change any repo state, and the shallow-clone pass replaced it as the evidence source.
+  This builder used fresh shallow clones under `/tmp/pr110-evidence-builder-codex-193`; the
+  observed pins and contract evidence still match the docs, with auto-admissions and
+  auto-orchestrator dates refreshed to 2026-07-03 for their unchanged `f7843b1` and `72d1166`
+  commits.
 - Known failing tests: none. Final gates after this builder's evidence refresh:
   `git rebase origin/main` → current; `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
