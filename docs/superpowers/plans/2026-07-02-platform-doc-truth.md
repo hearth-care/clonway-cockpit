@@ -338,3 +338,28 @@ sha/date where this plan shows recon values):
   `v0.3.0`, `--agent-stdio` remained wired, and both `assert_render_model_parity` and
   `assert_drives_clean` remained present. The xbook tracker stamp was refreshed to
   `8155694` · 2026-07-03; no other doc-truth defects were found.
+- Final convergence check: builder-codex-20260703T103825Z-60518-239 verified the dispatcher claim,
+  created the mandated `.claude/worktrees/pr-110` worktree, rebased/current-checked against
+  `origin/main`, and reran the evidence pass. `python3 scripts/check_fleet_pins.py` still exits 0
+  with seven workers on `v0.1.0` and auto-bookkeeper on accepted newer `v0.3.0`. The tracker
+  recipe's `gh api repos/hearth-care/<repo>/commits/main` output still matches every row:
+  auto-orchestrator `72d1166` · 2026-07-02, auto-admissions `f7843b1` · 2026-07-02,
+  auto-bookkeeper `8155694` · 2026-07-03, auto-hr `e20f14a` · 2026-07-02,
+  auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` · 2026-07-02,
+  auto-secretary `317a7b4` · 2026-07-02, Auto-Procurer `24d0ac9` · 2026-07-02. Fresh shallow
+  clones under `/tmp/pr110-evidence-builder-codex-239` confirmed all eight workers still pin
+  release tags, expose agent-stdio evidence, and contain both framework contract assertions.
+  Final audit found one stale duplicate adoption snapshot outside the original four target
+  surfaces: `docs/adopting-the-agent-channel.md` still said xletter/xquill lacked
+  `--agent-stdio` and xhr had a ~60s first-frame violation. That page now points back to
+  `docs/fleet-conformance.md` as the authoritative running record and carries only the current
+  summary; this is a doc-truth scope extension, still Markdown-only and not operator-facing.
+  Latest gates after that audit fix: `python3 scripts/check_fleet_pins.py` → exit 0,
+  7×v0.1.0 + auto-bookkeeper v0.3.0; extended drift guard including
+  `docs/adopting-the-agent-channel.md` → zero hits; `git diff origin/main --name-only` →
+  README.md, docs/adopting-the-agent-channel.md, docs/fleet-conformance.md,
+  docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan; `make lint` → All
+  checks passed!; `make format` → 162 files already formatted; `make typecheck` → Success: no
+  issues found in 67 source files; `make test` → 1114 passed in 30.36s; `uv run pre-commit run
+  --all-files` → all Passed. Acceptance re-check after the audit fix passed with no remaining
+  contradictory adoption/pin/channel claims in the named docs.

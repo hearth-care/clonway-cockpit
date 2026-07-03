@@ -304,13 +304,9 @@ failure, not a silent pass.
 
 ### Current fleet adoption status
 
-The conformance tracker (separate planning artifact) records per-worker status. At the time
-this recipe was written (2026-06-12 fleet audit):
+The conformance tracker records per-worker status and is the authoritative running record. Do not
+copy its per-worker cells here; refresh [fleet-conformance.md](fleet-conformance.md) instead.
 
-- **Have `--agent-stdio`:** xbook, xadmissions, xcqc, xsource, the xops bridge.
-- **Do not yet have `--agent-stdio`:** xletter, xquill.
-- **Have `--agent-stdio` but with first-frame latency violation:** xhr (~60s before first
-  frame; to be fixed as part of that worker's adoption PR, following Step 3/6 above).
-
-These rows are starting state for the tracker; the tracker is the authoritative running
-record.
+As of the 2026-07-03 tracker refresh, all eight fleet workers pin release tags, expose
+`--agent-stdio`, and run the framework contract gate. `auto-bookkeeper` is on the accepted newer
+`v0.3.0` tag; the other seven workers are on `v0.1.0`.
