@@ -209,9 +209,9 @@ sha/date where this plan shows recon values):
 
 ## HANDOFF NOTES
 
-- Current phase: implementation and review fixes complete; builder-codex-20260703T090957Z-60518-224
-  re-ran the pin survey, live worker HEAD check, fresh shallow-clone evidence for all eight
-  workers, drift guard, doc-only diff check, and local gates on 2026-07-03.
+- Current phase: implementation and review fixes complete; builder-codex-20260703T102142Z-60518-236
+  re-ran the pin survey, live xbook API evidence, drift guard, doc-only diff check, full local
+  gates, and read-only final audit on 2026-07-03.
   auto-bookkeeper remains on `v0.3.0`, the other seven workers remain on `v0.1.0`, and the branch
   is current with `origin/main`.
 - Next concrete step: push this handoff refresh, run finish protocol, then worktree cleanup.
@@ -284,18 +284,16 @@ sha/date where this plan shows recon values):
   results for several known-conformant repos, so the clone fallback remained the reliable evidence
   source. The tracker keeps the recipe's UTC committer-date stamps from
   `gh api repos/hearth-care/<repo>/commits/main`.
-- Known failing tests: none. Latest gates from builder-codex-20260703T090957Z-60518-224:
+- Known failing tests: none. Latest gates from builder-codex-20260703T102142Z-60518-236:
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
-  live worker HEAD check → auto-orchestrator `72d1166` · 2026-07-02, auto-admissions
-  `f7843b1` · 2026-07-02, auto-bookkeeper `449396e` · 2026-07-03, auto-hr `e20f14a` ·
-  2026-07-02, auto-inspector `b6302ec` · 2026-07-02, auto-marketer `759054c` · 2026-07-02,
-  auto-secretary `317a7b4` · 2026-07-02, Auto-Procurer `24d0ac9` · 2026-07-02;
+  live xbook API check → auto-bookkeeper `8155694` · 2026-07-03, pin `v0.3.0`,
+  `--agent-stdio`, `assert_render_model_parity`, and `assert_drives_clean` still present;
   `grep drift-guard` → no matches (exit 1 / zero hits);
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
   `make typecheck` → Success: no issues found in 67 source files;
-  `make test` → 1114 passed in 35.20s; `pre-commit run --all-files` → all Passed.
+  `make test` → 1114 passed in 32.44s; `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none. No RUNBOOK DELTA — doc-only, no operator-facing change (HR1).
 - Finish: builder-claude-20260703T093230Z-60518-230 found the branch already fully implemented,
   even with `origin/main` (0 behind), and the drift guard clean. Re-ran all gates fresh rather than
@@ -333,3 +331,10 @@ sha/date where this plan shows recon values):
   rerunning the full gate suite and finish protocol. Architect audit found auto-bookkeeper had
   advanced again during finish from `449396e` to `9ea4648`; the xbook tracker stamp was refreshed
   after confirming the pin stayed `v0.3.0` and the agent/contract evidence remained present.
+- Final convergence check: builder-codex-20260703T102142Z-60518-236 verified the dispatcher claim,
+  reused the mandated `.claude/worktrees/pr-110` worktree, rebased/current-checked against
+  `origin/main`, and reran the full local gates. Read-only final audit found auto-bookkeeper had
+  advanced again from `9ea4648` to `8155694`; direct GitHub API reads confirmed the pin stayed
+  `v0.3.0`, `--agent-stdio` remained wired, and both `assert_render_model_parity` and
+  `assert_drives_clean` remained present. The xbook tracker stamp was refreshed to
+  `8155694` · 2026-07-03; no other doc-truth defects were found.
