@@ -517,3 +517,13 @@ sha/date where this plan shows recon values):
   having outstanding work. Running the finish protocol once more; flagging the loop explicitly
   in the DONE comment so the operator can inspect the dispatch supervisor rather than have
   agents keep re-verifying the same finished doc set indefinitely.
+- Final convergence check: builder-claude-20260703T134243Z-60518-272 confirmed the claim
+  (most recent CLAIM comment matches this agent id), reused the mandated
+  `.claude/worktrees/pr-110` worktree, and found branch 0 behind `origin/main` (81 ahead), same
+  seven doc-only surfaces. Did not repeat the fleet re-clone evidence (last refreshed minutes
+  earlier by builder 271 with no state change) — re-ran gates only: `make lint`/`make
+  typecheck`/`make test` (1114 passed)/`uv run pre-commit run --all-files` all green;
+  `python3 scripts/check_fleet_pins.py` still exits 0, matching the tracker cell-for-cell. Concurs
+  with every prior pass: the 6 plan tasks are complete and this is a **dispatcher-side loop**
+  (agent:needs-qa keeps getting reset to agent:claimed and re-dispatched), not outstanding branch
+  work. Running the finish protocol once more per instructions.
