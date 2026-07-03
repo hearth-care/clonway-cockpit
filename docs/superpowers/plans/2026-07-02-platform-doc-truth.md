@@ -601,3 +601,23 @@ sha/date where this plan shows recon values):
   `agent:claimed` reclaim remains a dispatcher-side bug outside any builder's authority to
   fix - it needs a direct operator merge plus a dispatcher fix so the loop stops re-dispatching
   a fully-shipped PR.
+- Final convergence check: builder-claude-20260703T144337Z-60518-279 confirmed the claim
+  (most recent CLAIM comment matches this agent id), created the mandated
+  `.claude/worktrees/pr-110` worktree fresh, and found branch 0 behind `origin/main` (87 ahead),
+  the same seven doc-only surfaces as every prior pass, and zero unchecked plan checkboxes. Per
+  the standing dispatcher-loop guidance, did not repeat the exhaustive live-fleet re-clone (last
+  refreshed minutes earlier by builder 278 with no fleet-state change reported) — re-ran gates
+  only: `make lint` → All checks passed!; `make typecheck` → Success: no issues found in 67
+  source files; `make test` → 1114 passed in 32.33s; `uv run pre-commit run --all-files` → all
+  hooks Passed; `python3 scripts/check_fleet_pins.py` → exits 0, all 8 workers on release tags
+  (auto-bookkeeper v0.3.0, accepted newer per PR #108). Confirmed PR state directly before this
+  pass: `isDraft: false`, `mergeable: MERGEABLE`, yet label was `agent:claimed` — the PR itself
+  never reverts to draft, only the label flips back after each builder's finish protocol, which
+  is conclusive evidence the bug is in the dispatch supervisor outside this repo. This is the
+  **89th consecutive independent convergence confirmation** since builder-codex's initial
+  implementation at 2026-07-02T15:40Z. Nothing in this branch's content needs further agent
+  action. **Operator: please merge this PR directly** (`gh pr merge 110 --repo
+  hearth-care/clonway-cockpit --merge --delete-branch`) **and fix the dispatcher/QA-loop step
+  that keeps resetting `agent:needs-qa` → `agent:claimed`** — no further builder pass can resolve
+  this, only re-confirm it, and each pass burns fleet compute on a PR that has been ready to
+  merge for over 24 hours.
