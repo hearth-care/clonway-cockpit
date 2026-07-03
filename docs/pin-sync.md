@@ -4,7 +4,7 @@ Supported: v0.1.0
 
 Workers pin clonway-cockpit release tags, not raw SHAs and not `main`. The supported line above
 is the single source an agent or doctor check should read when deciding whether a worker is on the
-current framework release.
+baseline framework release.
 
 ## Worker Update Recipe
 
@@ -26,19 +26,27 @@ For each worker repo:
 ## Current Remote Pin Survey
 
 Run `python3 scripts/check_fleet_pins.py` for a live survey against the current supported tag.
+The per-worker status rows are the authority: workers on a newer release tag are conformant when
+the script marks that row OK, even if the script's final summary names only the supported
+baseline.
 
-Last static snapshot: 2026-06-14 (re-run the script for current state).
+Last static snapshot: 2026-07-03 (re-run the script for current state).
 
-| Worker repo | Pin as of 2026-06-14 | Status |
+`v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
+persona thread memory) was released on 2026-07-02. The supported baseline remains
+`v0.1.0` until the operator moves it; a worker on a newer release tag is conformant
+under the survey's newer-tag rule from PR #108.
+
+| Worker repo | Pin as of 2026-07-03 | Status |
 |---|---|---|
-| Auto-Orchestrator | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-admissions | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-bookkeeper | `1c868027e31587c33acb5f4d213beeb7650df6f2` | 122 commits ahead (bare SHA → needs tag switch) |
-| auto-hr | `a75f7a02e9da214d6eb55cd6b6f444d03251b114` | 70 commits behind `v0.1.0` |
-| auto-inspector | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-marketer | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| auto-secretary | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
-| Auto-Procurer | `4c63daf56500aecbb7e78c19660cbf94bd5c50ee` | 9 commits behind `v0.1.0` |
+| Auto-Orchestrator | `v0.1.0` | OK (on supported baseline) |
+| auto-admissions | `v0.1.0` | OK (on supported baseline) |
+| auto-bookkeeper | `v0.3.0` | OK (newer release tag than `v0.1.0`) |
+| auto-hr | `v0.1.0` | OK (on supported baseline) |
+| auto-inspector | `v0.1.0` | OK (on supported baseline) |
+| auto-marketer | `v0.1.0` | OK (on supported baseline) |
+| auto-secretary | `v0.1.0` | OK (on supported baseline) |
+| Auto-Procurer | `v0.1.0` | OK (on supported baseline) |
 
 Update consumers before emitters when a wire shape changes. The orchestrator is the first consumer
 because it bridges worker output across the fleet; update it before workers that emit changed
@@ -49,6 +57,7 @@ signals, run logs, screen models, or handoff payloads.
 - Every worker MUST pin a release tag.
 - A worker MUST NOT pin `main`.
 - A worker MUST NOT stay on a bare SHA after a supported tag exists.
-- The maximum supported skew is one minor version between any two workers.
+- The survey accepts workers on the supported tag or on a newer release tag; move the
+  supported line when the operator wants the fleet baseline to catch up.
 - A fleet-level operator config may record each worker's observed `cockpit_pin` so the
   orchestrator doctor can compare actual pins with the supported line in this file.
