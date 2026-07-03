@@ -205,12 +205,12 @@ sha/date where this plan shows recon values):
   verbatim (HR2).
 - Operator-facing: no — explicitly no RUNBOOK DELTA (HR1).
 - Dependencies: none; no wave (HR11).
-- Deferred: moving the supported baseline to v0.2.0 (operator/release decision).
+- Deferred: moving the supported baseline to a newer release tag (operator/release decision).
 
 ## HANDOFF NOTES
 
 - Current phase: implementation and review fixes complete; builder-codex-20260703T005616Z-60518-115
-  re-ran the pin survey and full gates at 2026-07-03T01:00:10Z, then refreshed the xbook
+  re-ran the pin survey and full gates at 2026-07-03T01:04:33Z, then refreshed the xbook
   pin/stamp after auto-bookkeeper advanced on live `main`.
 - Next concrete step: finish protocol, then worktree cleanup.
 - Decisions taken: live-remote truth wins over this plan's recon; supported line untouched. Task 1
@@ -230,13 +230,15 @@ sha/date where this plan shows recon values):
   the observed contract-gate truth. Builder 60518-99 final review found §C still duplicated worker
   pin/channel facts; §C now points back to the conformance tracker and keeps only platform/persona
   decisions. Builder 60518-112 review found the adoption matrix still repeated channel/conformance
-  wording in worker notes; those notes now stay persona/platform-only.
+  wording in worker notes; those notes now stay persona/platform-only. Builder 60518-115 final
+  review found stale `v0.2.0` baseline-target wording and a README duplicate verification date;
+  both were corrected.
 - Known failing tests: none. Final gates after review fixes: `git rebase origin/main` → current;
   `grep drift-guard` → no matches;
   `git diff origin/main --name-only` → README.md, docs/fleet-conformance.md,
   docs/persona-platform-getting-started.md, docs/pin-sync.md, this plan;
   `python3 scripts/check_fleet_pins.py` → exit 0, 7×v0.1.0 + auto-bookkeeper v0.3.0;
   `make lint` → All checks passed!; `make format` → 162 files already formatted;
-  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 29.66s;
+  `make typecheck` → no issues in 67 files; `make test` → 1114 passed in 27.26s;
   `pre-commit run --all-files` → all Passed.
 - Dependencies/operator TODOs: none.
