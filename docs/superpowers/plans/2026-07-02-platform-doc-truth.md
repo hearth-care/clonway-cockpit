@@ -501,3 +501,19 @@ sha/date where this plan shows recon values):
   and the branch diff remains Markdown-only. No content edits were needed beyond this handoff
   refresh; next step is the full gate suite, rebase/current check, force-with-lease push, and
   finish protocol.
+- Final convergence check: builder-claude-20260703T133702Z-60518-271 confirmed the claim
+  (most recent CLAIM comment matches this agent id) and reused the mandated
+  `.claude/worktrees/pr-110` worktree. Branch is 0 commits behind `origin/main` (80 ahead); the
+  diff remains the same seven doc-only surfaces as every prior pass. Did not repeat the
+  exhaustive live fleet re-clone (it was last refreshed 2026-07-03T13:17:17Z by builder 269,
+  <30 minutes prior, with no fleet state change reported) — instead re-ran the local gates only:
+  `make lint` → All checks passed!; `make format` → 162 files already formatted; `make typecheck`
+  → Success: no issues found in 67 source files; `make test` → 1114 passed in 33.14s; `uv run
+  pre-commit run --all-files` → all hooks Passed. This concurs with builder 265's diagnosis: the
+  plan's 6 tasks are all ticked, the implementation is complete, and the repeating
+  claim → verify → DONE → reclaim cycle (this doc alone now has 269+ builder passes recorded) is
+  a **dispatcher/supervisor bug outside this repo** — something is repeatedly resetting
+  `agent:needs-qa` back to `agent:claimed` and re-dispatching a finished PR, not this branch
+  having outstanding work. Running the finish protocol once more; flagging the loop explicitly
+  in the DONE comment so the operator can inspect the dispatch supervisor rather than have
+  agents keep re-verifying the same finished doc set indefinitely.
