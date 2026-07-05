@@ -31,7 +31,7 @@ from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
 from clonway_cockpit.audit_log import AuditEvent, AuditSink
-from clonway_cockpit.model import ScreenModel
+from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
 
