@@ -1719,3 +1719,24 @@ def test_open_capability_reraises_shellout(usage_to_tmp):
     )
     with pytest.raises(shellout.ShellOut):
         shell._open_capability(host, "reauth", screen, _keys([]))
+
+
+def test_home_emits_worker_model_regions(usage_to_tmp):
+    from dataclasses import replace
+
+    from clonway_cockpit.model import Region as MRegion
+    from clonway_cockpit.model import Row as MRow
+
+    captured = []
+    state = CockpitState(tenant_name="Example Care")
+    host = replace(
+        _host_with_extras(state=state),
+        extra_model_regions=lambda s: [
+            MRegion("worker.example", "example", rows=[MRow(id="example:0", label="Example row")])
+        ],
+        on_screen=captured.append,
+    )
+    shell.run_cockpit(host, read_key=_keys(["q"]), screen=_Screen())
+    home = captured[0]
+    assert home.kind == "home"
+    assert [reg.role for reg in home.regions] == ["pulse", "needs", "toolkit", "worker.example"]

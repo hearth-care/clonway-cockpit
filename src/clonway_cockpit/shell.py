@@ -185,6 +185,11 @@ class Host:
         default=lambda state: []
     )
     extra_regions: Callable[[CockpitState], list[RenderableType]] = field(default=lambda state: [])
+    # Model twin of ``extra_regions``: the worker returns ready-made model Regions
+    # (clonway_cockpit.model.Region) for its extra home panels; they are appended to
+    # the home ScreenModel's regions after "toolkit". None (the default) keeps the
+    # panels render-only — agents see only the ``meta.extra_regions`` count.
+    extra_model_regions: Callable[[CockpitState], list[Region]] | None = None
     handle_extra_key: Callable[
         [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
         bool,
@@ -424,6 +429,9 @@ def _home(
         if dirty and not keys.pending():
             caps = host.get_capabilities()
             extra = host.extra_regions(state)
+            extra_models = (
+                host.extra_model_regions(state) if host.extra_model_regions is not None else None
+            )
             screen.update(
                 r.render_cockpit_screen(
                     state,
@@ -433,7 +441,14 @@ def _home(
                 )
             )
             _safe_emit(
-                host, r.model_cockpit_screen(state, caps, selection=items[sel], extra_regions=extra)
+                host,
+                r.model_cockpit_screen(
+                    state,
+                    caps,
+                    selection=items[sel],
+                    extra_regions=extra,
+                    extra_model_regions=extra_models,
+                ),
             )
             dirty = False
         key = read_key()

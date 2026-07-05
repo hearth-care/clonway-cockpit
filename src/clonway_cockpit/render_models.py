@@ -56,12 +56,14 @@ def model_cockpit_screen(
     *,
     selection: tuple[str, object] | None = None,
     extra_regions: list[RenderableType] | None = None,
+    extra_model_regions: list[MRegion] | None = None,
 ) -> ScreenModel:
     """The semantic twin of :func:`render_cockpit_screen`. Same inputs; structured out.
 
     Worker ``extra_regions`` are arbitrary Rich renderables (worker-owned), so they are
-    not semanticised here — their count is recorded in ``meta`` and they become
-    structured when the worker adopts the model (M3)."""
+    not semanticised here — their count is recorded in ``meta``. A worker that wants
+    those panels structured for an agent passes ``extra_model_regions`` instead: ready-made
+    model ``Region``s, appended to ``regions`` after ``toolkit``."""
     present = {s.shelf for s in specs}
     shelf_map = state.shelves or SHELVES
     sel_id = _selection_id(selection)
@@ -115,14 +117,16 @@ def model_cockpit_screen(
     }
     if state.breadcrumb:
         meta["breadcrumb"] = list(state.breadcrumb)
+    regions = [
+        MRegion("pulse", "pulse", rows=pulse_rows),
+        MRegion("needs", "needs you", rows=needs_rows),
+        MRegion("toolkit", state.toolkit_label, rows=toolkit_rows),
+    ]
+    regions.extend(extra_model_regions or [])
     return ScreenModel(
         kind="home",
         title=state.app_label,
-        regions=[
-            MRegion("pulse", "pulse", rows=pulse_rows),
-            MRegion("needs", "needs you", rows=needs_rows),
-            MRegion("toolkit", state.toolkit_label, rows=toolkit_rows),
-        ],
+        regions=regions,
         selection=sel_id,
         actions=_home_actions(state),
         meta=meta,
