@@ -226,26 +226,26 @@ Commit message: `agent: serve_stdio re-emits the current frame after a no-draw k
 
 **Production call site (HR9):** n/a — documentation of behaviour shipped in Tasks 1-2; `docs/agent-screen-model.md` is this repo's protocol doc and runbook analogue (HR1 discharged here; no other operator-facing runbook exists).
 
-- [ ] **Step 1-3 (doc-only; no failing test):** make exactly these four edits:
+- [x] **Step 1-3 (doc-only; no failing test):** make exactly these four edits:
   1. **Cadence paragraph** (the "Cadence:" paragraph in "Subprocess protocol — `agent.serve_stdio` (M2)", `docs/agent-screen-model.md:141-144`): replace the sentence "Inert keys may not redraw (use `snapshot` to re-poll);" with: "Every `{"key":…}` message is answered by ≥1 frame: a handled key emits its redraw; a key the screen's loop ignores re-emits the current screen unchanged, so a driver never blocks on a silent key. A key that unwinds the cockpit (`q`/`esc` at home) ends the session — EOF is that reply;".
   2. **Protocol versioning** section (`docs/agent-screen-model.md:187-195`): append: "Appending a new region to an existing screen's `regions` list (e.g. a worker's `extra_model_regions` on `home`) is likewise additive and does not bump the version."
   3. **New subsection** "Worker home panels: `Host.extra_model_regions`" (after "Wiring a worker to the agent channel") stating: the hook is the model twin of `Host.extra_regions`; returned `Region`s are appended after `toolkit` (region order in the model is not a position contract — the three framework regions keep stable indices; agents key on `role`/`Row.id`; the human render places the panel between needs-you and toolkit); `meta.extra_regions` remains the RENDERABLE count; setting `extra_regions` without `extra_model_regions` leaves that panel agent-invisible and is NOT a contract failure (`assert_render_model_parity` checks `render_*`/`model_*` function twins, not Host hooks; `assert_drives_clean` emits no `unstructured` for it) — workers adopt incrementally, and a future drives-clean-style helper may warn.
   4. `docs/onboarding-a-worker.md:548` (the `extra_regions(state)` bullet): add the sibling bullet "`extra_model_regions(state)` for the model twins of those panels — set both, or the panel is invisible to agent drivers."
-- [ ] **Step 4: Verify** the doc-truth suites still pass.
+- [x] **Step 4: Verify** the doc-truth suites still pass.
 Command: `uv run pytest tests/test_docs_delivery_truth.py tests/test_adoption_playbook_docs.py -q`
 Expected pass signal: all passed.
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: `docs: agent protocol — worker model regions + frame-per-key guarantee`
 
 ### Task 4: full gates
 
 **Files:** none new — run the canonical gates and paste output tails into the PR.
 
-- [ ] **Step 1:** `make lint` — expected tail: `All checks passed!`
-- [ ] **Step 2:** `make format` — expected tail: `N files already formatted` (no reformat needed).
-- [ ] **Step 3:** `make typecheck` — expected tail: `Success: no issues found in N source files`.
-- [ ] **Step 4:** `make test` — expected tail: `N passed` with zero failures (full suite; includes the unmodified I1/I7/I8 regressions).
-- [ ] **Step 5: Commit** (this plan file with all boxes ticked). Commit message: `plan: tick cockpit agent-parity plan`
+- [x] **Step 1:** `make lint` — expected tail: `All checks passed!`
+- [x] **Step 2:** `make format` — expected tail: `N files already formatted` (no reformat needed).
+- [x] **Step 3:** `make typecheck` — expected tail: `Success: no issues found in N source files`.
+- [x] **Step 4:** `make test` — expected tail: `N passed` with zero failures (full suite; includes the unmodified I1/I7/I8 regressions).
+- [x] **Step 5: Commit** (this plan file with all boxes ticked). Commit message: `plan: tick cockpit agent-parity plan`
 
 ---
 
@@ -261,8 +261,17 @@ Commit message: `docs: agent protocol — worker model regions + frame-per-key g
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 DONE (`74ede0b`) and Task 2 DONE (`e4e4d4a`). Starting Task 3 (doc-only).
-- Next concrete step: Task 3 Steps 1-3 (four edits to `docs/agent-screen-model.md` + `docs/onboarding-a-worker.md`).
+- Current phase: ALL TASKS DONE. Task 1 (`74ede0b`), Task 2 (`e4e4d4a`), Task 3 (`739aced`),
+  lint fix (`d32cc0a`), Task 4 gates all green. Plan fully implemented and ticked.
+- Next concrete step: none — ready for QA. If re-dispatched, just re-run the gates below to
+  reconfirm and finish the PR protocol.
 - Decisions taken (binding, do not relitigate): append model regions AFTER `toolkit`; `meta.extra_regions` stays the renderable count; NO `schema_version` bump (additive); no contract-gate hard failure for render-only extra panels; re-emit implemented at the pump (`read_key` seam), not per-screen.
-- Known failing tests: none — full suite green (`uv run pytest -q` → 1121 passed) after Task 1 + Task 2.
-- Dependencies/operator TODOs: none — no unmerged dependencies. Remember this repo's CI needs the `run-ci` label on the PR.
+- Deviation from plan: `shell.py`'s `from clonway_cockpit.model import Region, ScreenModel`
+  import was dropped by this repo's post-write ruff hook mid-edit (added the import before
+  the field that references it landed in a separate tool call) — re-added once `Region` was
+  actually referenced; `d32cc0a` fixes it. No other deviations from the plan's exact diffs.
+- Known failing tests: none. Full suite green (`uv run pytest -q` → 1121 passed). `make lint` →
+  `All checks passed!`; `make format` → `162 files already formatted`; `make typecheck` →
+  `Success: no issues found in 67 source files`.
+- Dependencies/operator TODOs: none — no unmerged dependencies, no operator-facing step changes
+  (no RUNBOOK DELTA needed). Remember this repo's CI needs the `run-ci` label on the PR.
