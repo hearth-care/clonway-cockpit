@@ -42,7 +42,7 @@
 
 **Interfaces produced/changed:** `Host.extra_model_regions: Callable[[CockpitState], list[Region]] | None = None` (new optional field; `Region` is `clonway_cockpit.model.Region`); `model_cockpit_screen(..., extra_model_regions: list[MRegion] | None = None)`.
 
-- [ ] **Step 1: Write the failing tests.** Append to `tests/test_screen_models.py` (helpers `_PILLS`, `render`, `CockpitState` already imported there):
+- [x] **Step 1: Write the failing tests.** Append to `tests/test_screen_models.py` (helpers `_PILLS`, `render`, `CockpitState` already imported there):
 ```python
 def test_home_model_appends_worker_model_regions_after_toolkit():
     from clonway_cockpit.model import Field as MField, Region as MRegion, Row as MRow
@@ -108,10 +108,10 @@ def test_home_emits_worker_model_regions(usage_to_tmp):
     assert home.kind == "home"
     assert [reg.role for reg in home.regions] == ["pulse", "needs", "toolkit", "worker.example"]
 ```
-- [ ] **Step 2: Run the focused tests and confirm the expected failures**
+- [x] **Step 2: Run the focused tests and confirm the expected failures**
 Command: `uv run pytest tests/test_screen_models.py -q -k "model_regions or counts_renderables" && uv run pytest tests/test_shell.py::test_home_emits_worker_model_regions -q`
 Expected failures: `TypeError: model_cockpit_screen() got an unexpected keyword argument 'extra_model_regions'` (first three); `TypeError: … got an unexpected keyword argument 'extra_model_regions'` from `dataclasses.replace` (fourth — the Host field doesn't exist yet).
-- [ ] **Step 3: Implement AND wire at the call site.**
+- [x] **Step 3: Implement AND wire at the call site.**
   1. `shell.py:35`: extend the import to `from clonway_cockpit.model import Region, ScreenModel`.
   2. `shell.py` after the `extra_regions` field (`shell.py:187`), inside `Host`:
 ```python
@@ -139,10 +139,10 @@ Expected failures: `TypeError: model_cockpit_screen() got an unexpected keyword 
     regions.extend(extra_model_regions or [])
 ```
   and pass `regions=regions`. `meta["extra_regions"]` stays `len(extra_regions or [])` (I3). Append-after-toolkit (not the render's between-needs-and-toolkit position) is deliberate: the three framework regions keep stable indices for existing agent scripts; region order in the model is not a position contract — agents key on `role`/`Row.id` (Task 3 documents this).
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 Command: `uv run pytest tests/test_screen_models.py tests/test_shell.py -q`
 Expected pass signal: all passed, zero failures (existing I1 regression `test_default_host_extras_are_noops` included).
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: `shell+render_models: worker-modelled extra home regions (Host.extra_model_regions)`
 
 ### Task 2: `serve_stdio` frame-per-key re-emit
@@ -261,8 +261,8 @@ Commit message: `docs: agent protocol — worker model regions + frame-per-key g
 
 ## HANDOFF NOTES
 
-- Current phase: not started.
-- Next concrete step: start Task 1 Step 1.
+- Current phase: Task 1 DONE and committed (`74ede0b`). Starting Task 2.
+- Next concrete step: Task 2 Step 1 (write failing test + guards in `tests/test_serve_stdio.py`).
 - Decisions taken (binding, do not relitigate): append model regions AFTER `toolkit`; `meta.extra_regions` stays the renderable count; NO `schema_version` bump (additive); no contract-gate hard failure for render-only extra panels; re-emit implemented at the pump (`read_key` seam), not per-screen.
-- Known failing tests: none yet (Task 1/2 Step 1 create them).
+- Known failing tests: none — Task 1's three new `test_screen_models.py` tests + one new `test_shell.py` test all pass (102 passed in that focused run).
 - Dependencies/operator TODOs: none — no unmerged dependencies. Remember this repo's CI needs the `run-ci` label on the PR.
