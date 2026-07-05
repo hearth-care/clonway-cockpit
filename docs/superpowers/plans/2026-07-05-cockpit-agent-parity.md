@@ -153,7 +153,7 @@ Commit message: `shell+render_models: worker-modelled extra home regions (Host.e
 
 **Interfaces produced/changed:** none public — internal pump behaviour. Wire guarantee: any `{"key":…}` message is answered by ≥1 frame.
 
-- [ ] **Step 1: Write the failing test + guards.** Append to `tests/test_serve_stdio.py` (helpers `_host`, `_drive` at `tests/test_serve_stdio.py:20-41`). The first test is red-first; the second and third pass on old code and are guards pinning I5/I6 against an over-eager re-emit implementation — state this in the commit.
+- [x] **Step 1: Write the failing test + guards.** Append to `tests/test_serve_stdio.py` (helpers `_host`, `_drive` at `tests/test_serve_stdio.py:20-41`). The first test is red-first; the second and third pass on old code and are guards pinning I5/I6 against an over-eager re-emit implementation — state this in the commit.
 ```python
 def test_inert_key_still_replies_with_a_frame():
     # 'z' is not a shelf letter (default SHELVES = A-G) nor any home hotkey, so the
@@ -182,10 +182,10 @@ def test_quit_messages_emit_no_extra_frame():
         frames = _drive(_host(state), [quit_msg])
         assert [f.get("kind") for f in frames] == ["home"], frames
 ```
-- [ ] **Step 2: Run the focused tests and confirm the expected failure**
+- [x] **Step 2: Run the focused tests and confirm the expected failure**
 Command: `uv run pytest tests/test_serve_stdio.py -q -k "inert_key or one_frame_not_two or no_extra_frame"`
 Expected failure: `test_inert_key_still_replies_with_a_frame` fails `assert len(homes) == 2` with `AssertionError: ['home']` (the inert key produced no frame). The two guards pass.
-- [ ] **Step 3: Implement the minimal pump change.** In `serve_stdio` (`agent.py:106-152`): add two one-cell trackers beside `last`; count draws in `on_screen`; mark key dispatches; re-emit at the top of `read_key`. Exact deltas (builders paste verbatim; surrounding code unchanged):
+- [x] **Step 3: Implement the minimal pump change.** In `serve_stdio` (`agent.py:106-152`): add two one-cell trackers beside `last`; count draws in `on_screen`; mark key dispatches; re-emit at the top of `read_key`. Exact deltas (builders paste verbatim; surrounding code unchanged):
 ```python
     last: list[ScreenModel | None] = [None]
     frames_written = [0]  # draws written via on_screen — the no-draw detector
@@ -214,10 +214,10 @@ Expected failure: `test_inert_key_still_replies_with_a_frame` fails `assert len(
                 return key
 ```
   The `{"cmd":"quit"}` branch (`agent.py:150-151`) and EOF path (`agent.py:124-125`) return `"q"` WITHOUT setting `key_mark` — that is the no-emit-on-quit guard (I6). The re-emit writes via `_write`, not `on_screen`, so it neither bumps `frames_written` nor rewrites `last` — same frame shape as the `snapshot` branch (`agent.py:146-148`). `authorize_apply` / `agent_input` / `agent_confirm` read stdin directly mid-dispatch; any frames they trigger flow through `on_screen` and advance the counter, which is exactly right.
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 Command: `uv run pytest tests/test_serve_stdio.py tests/test_agent_hardening.py tests/test_agent_capture_input.py tests/test_apply_authorization.py tests/test_cockpit_client.py -q`
 Expected pass signal: all passed, zero failures (the apply-handshake and capture suites prove the mark logic doesn't leak into the gate/capture reads).
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 Commit message: `agent: serve_stdio re-emits the current frame after a no-draw key dispatch`
 
 ### Task 3: protocol doc update (REQUIRED) + parity-guard statement
@@ -261,8 +261,8 @@ Commit message: `docs: agent protocol — worker model regions + frame-per-key g
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 DONE and committed (`74ede0b`). Starting Task 2.
-- Next concrete step: Task 2 Step 1 (write failing test + guards in `tests/test_serve_stdio.py`).
+- Current phase: Task 1 DONE (`74ede0b`) and Task 2 DONE (`e4e4d4a`). Starting Task 3 (doc-only).
+- Next concrete step: Task 3 Steps 1-3 (four edits to `docs/agent-screen-model.md` + `docs/onboarding-a-worker.md`).
 - Decisions taken (binding, do not relitigate): append model regions AFTER `toolkit`; `meta.extra_regions` stays the renderable count; NO `schema_version` bump (additive); no contract-gate hard failure for render-only extra panels; re-emit implemented at the pump (`read_key` seam), not per-screen.
-- Known failing tests: none — Task 1's three new `test_screen_models.py` tests + one new `test_shell.py` test all pass (102 passed in that focused run).
+- Known failing tests: none — full suite green (`uv run pytest -q` → 1121 passed) after Task 1 + Task 2.
 - Dependencies/operator TODOs: none — no unmerged dependencies. Remember this repo's CI needs the `run-ci` label on the PR.
