@@ -261,17 +261,41 @@ Commit message: `docs: agent protocol — worker model regions + frame-per-key g
 
 ## HANDOFF NOTES
 
-- Current phase: ALL TASKS DONE. Task 1 (`74ede0b`), Task 2 (`e4e4d4a`), Task 3 (`739aced`),
-  lint fix (`d32cc0a`), Task 4 gates all green. Plan fully implemented and ticked.
+- Current phase: ALL TASKS DONE, including the QA-FAIL follow-up. Task 1 (`74ede0b`), Task 2
+  (`e4e4d4a`), Task 3 (`739aced`), lint fix (`d32cc0a`), Task 4 gates all green, plus a Task 1b
+  fix (`3fdc506`) for a QA-caught worker-template gap (below). Plan fully implemented and ticked.
+- QA-FAIL follow-up (fixer-claude-20260705T173801Z-99602-42): QA correctly found that
+  `docs/onboarding-a-worker.md:544-550` documents generated workers as shipping an
+  `extra_model_regions(state)` home hook, but `worker-template/` still only generated/wired the
+  old three hooks (`extra_selectables`, `extra_regions`, `handle_extra_key`) — a new worker
+  following the doc would add the hook to its `home_hooks.py` and have `_host()` silently drop
+  it. Fixed by mirroring the `extra_regions` pattern: added a no-op
+  `extra_model_regions(state) -> list[Region]` to
+  `worker-template/src/{{ package_name }}/cli/home_hooks.py.jinja`, wired
+  `extra_model_regions=home_hooks.extra_model_regions` into `shell.Host(...)` in
+  `worker-template/src/{{ package_name }}/cli/cockpit.py.jinja`, and extended
+  `tests/test_worker_template.py` (`test_template_home_hooks_are_generic_noops`,
+  `test_template_host_wires_generic_home_hooks`, plus new
+  `test_template_home_model_regions_reach_the_home_screen_model`) to assert the hook exists,
+  returns `[]`, is wired by identity on `_host()`, and reaches the home `ScreenModel` when
+  populated. Confirmed red-first: the template-smoke test harness (`_generate` in
+  `tests/test_worker_template.py`) generates via `copier` at `vcs_ref=git rev-parse HEAD`, so the
+  new assertions failed against uncommitted template edits until the fix was committed — expected
+  copier behaviour (it clones the repo at that ref), not a bug.
 - Next concrete step: none — ready for QA. If re-dispatched, just re-run the gates below to
   reconfirm and finish the PR protocol.
-- Decisions taken (binding, do not relitigate): append model regions AFTER `toolkit`; `meta.extra_regions` stays the renderable count; NO `schema_version` bump (additive); no contract-gate hard failure for render-only extra panels; re-emit implemented at the pump (`read_key` seam), not per-screen.
+- Decisions taken (binding, do not relitigate): append model regions AFTER `toolkit`; `meta.extra_regions` stays the renderable count; NO `schema_version` bump (additive); no contract-gate hard failure for render-only extra panels; re-emit implemented at the pump (`read_key` seam), not per-screen; generated workers wire `extra_model_regions` by default (mirrors `extra_regions`), starting as a no-op.
 - Deviation from plan: `shell.py`'s `from clonway_cockpit.model import Region, ScreenModel`
   import was dropped by this repo's post-write ruff hook mid-edit (added the import before
   the field that references it landed in a separate tool call) — re-added once `Region` was
   actually referenced; `d32cc0a` fixes it. No other deviations from the plan's exact diffs.
-- Known failing tests: none. Full suite green (`uv run pytest -q` → 1121 passed). `make lint` →
-  `All checks passed!`; `make format` → `162 files already formatted`; `make typecheck` →
-  `Success: no issues found in 67 source files`.
+  The QA-FAIL follow-up (worker-template wiring) was not itself in the original task list but is
+  the same deliverable (generated workers must match the onboarding contract shipped in Task 3).
+- Known failing tests: none. Full suite green (`uv run pytest -q` → 1122 passed, up from 1121 —
+  one new template test). `make lint` -> `All checks passed!`; `make format` ->
+  `162 files already formatted`; `make typecheck` -> `Success: no issues found in 67 source
+  files`; `uv run pre-commit run --all-files` -> all hooks Passed.
 - Dependencies/operator TODOs: none — no unmerged dependencies, no operator-facing step changes
-  (no RUNBOOK DELTA needed). Remember this repo's CI needs the `run-ci` label on the PR.
+  (no RUNBOOK DELTA needed: `extra_model_regions` is a new optional hook a worker's own
+  `home_hooks.py` may implement, not a command/flag/provisioning step the operator runs).
+  Remember this repo's CI needs the `run-ci` label on the PR.
