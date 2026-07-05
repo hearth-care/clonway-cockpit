@@ -546,6 +546,8 @@ framework `Host` by default. It starts as three no-ops:
 
 - `extra_selectables(state)` for worker-owned rows in the home cursor order.
 - `extra_regions(state)` for worker-owned Rich panels between needs-you and toolkit.
+- `extra_model_regions(state)` for the model twins of those panels — set both, or the panel
+  is invisible to agent drivers.
 - `handle_extra_key(state, selection, key, screen, read_key)` for keys on rows the worker owns.
 
 This is the generic hook path for domain-specific home panels, including statutory heads-up cards.
