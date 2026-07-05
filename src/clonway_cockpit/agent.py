@@ -104,6 +104,8 @@ def serve_stdio(
     message must be exactly ``{"apply":true,"token":<token>}`` to post — anything else
     declines. With it False (the default) the gate stays pure dry-run and NEVER posts."""
     last: list[ScreenModel | None] = [None]
+    frames_written = [0]  # draws written via on_screen — the no-draw detector
+    key_mark = [-1]  # frames_written value when the last {"key":…} was dispatched; -1 = none
 
     def _write(obj: dict) -> None:
         # Best-effort: a broken downstream pipe must unwind cleanly (EOF on the next
@@ -114,9 +116,19 @@ def serve_stdio(
 
     def on_screen(model: ScreenModel) -> None:
         last[0] = model
+        frames_written[0] += 1
         _write(model.to_dict())
 
     def read_key() -> str:
+        # Frame-per-key guarantee: if the PREVIOUS dispatched key produced no draw
+        # (the screen's key loop ignored it), re-emit the current model so the reply
+        # to any {"key":…} is >=1 frame — a driver never blocks on a silent key.
+        # A key that drew advances frames_written (no double emit); a key that
+        # unwound the loop never re-enters here (EOF is that reply); cmd:"quit"
+        # never sets key_mark.
+        if key_mark[0] == frames_written[0] and last[0] is not None:
+            _write(last[0].to_dict())
+        key_mark[0] = -1
         while True:
             # Cap the line so a hostile/buggy peer can't force unbounded buffering;
             # an over-long line just fails to parse and is reported.
@@ -141,6 +153,7 @@ def serve_stdio(
                 if not isinstance(key, str):
                     _write({"error": "key must be a string"})
                     continue
+                key_mark[0] = frames_written[0]
                 return key
             cmd = msg.get("cmd")
             if cmd == "snapshot":

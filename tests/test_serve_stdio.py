@@ -270,3 +270,31 @@ def test_non_string_key_rejected():
     frames = _drive(_host(state), [{"key": 5}, {"key": "q"}])
     assert any(f.get("error") == "key must be a string" for f in frames)
     assert any(f.get("kind") == "home" for f in frames)
+
+
+def test_inert_key_still_replies_with_a_frame():
+    # 'z' is not a shelf letter (default SHELVES = A-G) nor any home hotkey, so the
+    # home loop ignores it with no redraw (shell.py "else: continue"). The pump must
+    # still answer with the current screen — a driver must never block on silence.
+    state = CockpitState(tenant_name="Example Care")
+    frames = _drive(_host(state), [{"key": "z"}, {"key": "q"}])
+    homes = [f for f in frames if f.get("kind") == "home"]
+    assert len(homes) == 2, [f.get("kind") for f in frames]
+    assert homes[0] == homes[1]  # a re-emit of the SAME model, not a new draw
+
+
+def test_handled_key_emits_one_frame_not_two():
+    # 'down' moves the cursor -> the loop redraws. Exactly ONE new frame (the redraw).
+    state = CockpitState(tenant_name="Example Care")
+    frames = _drive(_host(state), [{"key": "down"}, {"key": "q"}])
+    homes = [f for f in frames if f.get("kind") == "home"]
+    assert len(homes) == 2, [f.get("kind") for f in frames]
+    assert homes[0]["selection"] == "shelf:A"  # boot cursor: first shelf (no pills/needs)
+    assert homes[1]["selection"] == "shelf:B"
+
+
+def test_quit_messages_emit_no_extra_frame():
+    state = CockpitState(tenant_name="Example Care")
+    for quit_msg in ({"cmd": "quit"}, {"key": "q"}):
+        frames = _drive(_host(state), [quit_msg])
+        assert [f.get("kind") for f in frames] == ["home"], frames
