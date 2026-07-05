@@ -198,3 +198,53 @@ def test_walk_result_model_failure():
     assert m.meta["ok"] is False
     assert m.meta["links"] == []
     assert "boom" in txt  # the model's message agrees with the rendered failure screen
+
+
+def test_home_model_appends_worker_model_regions_after_toolkit():
+    from clonway_cockpit.model import Field as MField
+    from clonway_cockpit.model import Region as MRegion
+    from clonway_cockpit.model import Row as MRow
+
+    state = CockpitState(tenant_name="Example Care", app_label="worker")
+    worker_region = MRegion(
+        "worker.bills",
+        "example bills",
+        rows=[
+            MRow(
+                id="bill:B-1",
+                label="Example bill",
+                fields=[MField("amount", "100.00", "currency")],
+            )
+        ],
+    )
+    m = render.model_cockpit_screen(
+        state, [], selection=None, extra_regions=None, extra_model_regions=[worker_region]
+    )
+    assert [reg.role for reg in m.regions] == ["pulse", "needs", "toolkit", "worker.bills"]
+    assert m.regions[3].rows[0].id == "bill:B-1"
+    assert m.meta["extra_regions"] == 0  # meta counts RENDERABLES, not model regions
+
+
+def test_home_model_without_extra_model_regions_is_unchanged():
+    state = CockpitState(tenant_name="Example Care", pills=_PILLS)
+    base = render.model_cockpit_screen(state, [], selection=None, extra_regions=None)
+    off = render.model_cockpit_screen(
+        state, [], selection=None, extra_regions=None, extra_model_regions=None
+    )
+    assert base.to_dict() == off.to_dict()
+    assert [reg.role for reg in base.regions] == ["pulse", "needs", "toolkit"]
+
+
+def test_home_model_counts_renderables_not_model_regions():
+    from rich.text import Text
+
+    state = CockpitState(tenant_name="Example Care")
+    m = render.model_cockpit_screen(
+        state,
+        [],
+        selection=None,
+        extra_regions=[Text("RENDER-ONLY PANEL")],
+        extra_model_regions=None,
+    )
+    assert m.meta["extra_regions"] == 1
+    assert [reg.role for reg in m.regions] == ["pulse", "needs", "toolkit"]

@@ -137,10 +137,13 @@ frame; a missing/false confirm is a safe NO. In agent mode the shell swaps the w
 `input_fn`/`confirm_fn` for these — the live human cockpit keeps the worker's own terminal prompts.
 
 Cadence: under piped (non-tty) stdin the loop emits one frame per draw before each
-blocking read — request/response. Inert keys may not redraw (use `snapshot` to re-poll);
-animated `walk.progress` pushes frames unsolicited, so treat app→agent as a stream.
-Malformed input degrades to an `{"error":…}` reply and the screen is held; a single
-message is capped (~1 MB) and over-deep/over-long JSON is reported, never crashes.
+blocking read — request/response. Every `{"key":…}` message is answered by ≥1 frame: a
+handled key emits its redraw; a key the screen's loop ignores re-emits the current screen
+unchanged, so a driver never blocks on a silent key. A key that unwinds the cockpit
+(`q`/`esc` at home) ends the session — EOF is that reply; animated `walk.progress` pushes
+frames unsolicited, so treat app→agent as a stream. Malformed input degrades to an
+`{"error":…}` reply and the screen is held; a single message is capped (~1 MB) and
+over-deep/over-long JSON is reported, never crashes.
 
 **Safety — `agent_mode` contract (read before wiring a worker `--agent`):**
 `serve_stdio` runs in `Host.agent_mode`, which the shell threads as `dry_run=True` into
@@ -192,7 +195,8 @@ branches on it. The version bumps ONLY on a **breaking** wire change (a removed 
 key, or a changed type); additive keys (a new optional `meta` field) do **not** bump it. The
 shape-pin test in `tests/test_model.py` (`test_to_dict_carries_schema_version`) fails on an
 accidental breaking change to the top-level shape, forcing a deliberate bump + this doc's
-update.
+update. Appending a new region to an existing screen's `regions` list (e.g. a worker's
+`extra_model_regions` on `home`) is likewise additive and does not bump the version.
 
 ## Wiring a worker to the agent channel
 
@@ -220,6 +224,26 @@ The discipline is enforced, not optional: `clonway_cockpit.contract.assert_rende
 (static) + `assert_drives_clean` (dynamic, drives the real loop and asserts no `unstructured`
 reaches the agent) run in the worker's CI. Drive and verify via `--agent-stdio` /
 `CockpitClient` / `CockpitDriver` — never scrape `export_text()`.
+
+## Worker home panels: `Host.extra_model_regions`
+
+`Host.extra_model_regions` is the model twin of `Host.extra_regions`: instead of an
+arbitrary Rich renderable, the worker returns ready-made `clonway_cockpit.model.Region`s,
+which are appended to the home `ScreenModel`'s `regions` after `toolkit`. Region order in
+the model is not a position contract — the three framework regions (`pulse`/`needs`/
+`toolkit`) keep stable indices for existing agent scripts, and agents key on `role` /
+`Row.id`, not position. The human render is unaffected: `extra_regions` still places the
+panel between needs-you and toolkit on screen.
+
+`meta.extra_regions` on the home model remains the RENDERABLE count (from `extra_regions`),
+not the count of model regions — the two hooks are independent. Setting `extra_regions`
+without also setting `extra_model_regions` leaves that panel agent-invisible; this is **not**
+a contract failure. `assert_render_model_parity` checks `render_*`/`model_*` function-name
+twins, not `Host` hooks, so it cannot see the gap; `assert_drives_clean` emits no
+`unstructured` for an unmodelled extra panel either — the home model simply omits it.
+Workers adopt `extra_model_regions` incrementally. A future drives-clean-style helper MAY
+warn on `extra_regions`-without-`extra_model_regions`; building that helper is out of scope
+here.
 
 ## Coverage: what the gate actually proves
 

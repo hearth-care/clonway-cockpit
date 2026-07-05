@@ -26,6 +26,7 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -294,6 +295,7 @@ def test_template_home_hooks_are_generic_noops(tmp_path: Path) -> None:
 
         assert hooks.extra_selectables(state) == []
         assert hooks.extra_regions(state) == []
+        assert hooks.extra_model_regions(state) == []
         assert (
             hooks.handle_extra_key(state, ("shelf", "A"), keys.ENTER, object(), lambda: "q")
             is False
@@ -313,8 +315,43 @@ def test_template_host_wires_generic_home_hooks(tmp_path: Path) -> None:
 
         assert host.extra_selectables is hooks.extra_selectables
         assert host.extra_regions is hooks.extra_regions
+        assert host.extra_model_regions is hooks.extra_model_regions
         assert host.handle_extra_key is hooks.handle_extra_key
         assert host.extra_selectables(state) == []
+
+
+def test_template_home_model_regions_reach_the_home_screen_model(tmp_path: Path) -> None:
+    """A generated worker's ``extra_model_regions`` must be wired all the way to the home
+    ScreenModel — not just present on ``Host`` — or its panel stays agent-invisible."""
+    from clonway_cockpit import render
+    from clonway_cockpit.model import Region as MRegion
+    from clonway_cockpit.model import Row as MRow
+    from clonway_cockpit.state import CockpitState
+
+    dst = _generate(tmp_path, worker_id="xgenmodelregion")
+    with _importable(dst, "xgenmodelregion"):
+        cockpit = importlib.import_module("xgenmodelregion.cli.cockpit")
+
+        state = CockpitState(tenant_name="Clonway")
+        host = cockpit._host()
+        worker_region = MRegion(
+            "worker.example", "example", rows=[MRow(id="example:0", label="Example row")]
+        )
+        host = replace(host, extra_model_regions=lambda s: [worker_region])
+
+        model = render.model_cockpit_screen(
+            state,
+            [],
+            selection=None,
+            extra_regions=host.extra_regions(state),
+            extra_model_regions=host.extra_model_regions(state),
+        )
+        assert [reg.role for reg in model.regions] == [
+            "pulse",
+            "needs",
+            "toolkit",
+            "worker.example",
+        ]
 
 
 def test_template_host_wires_framework_audit_sink(tmp_path: Path) -> None:

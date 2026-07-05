@@ -4,6 +4,8 @@ The framework owns the generic extension seam:
 
 - ``extra_selectables`` adds worker-owned rows to the home cursor order.
 - ``extra_regions`` adds worker-owned Rich renderables between needs-you and toolkit.
+- ``extra_model_regions`` adds the model twins of those panels — set both, or the panel
+  is invisible to agent drivers.
 - ``handle_extra_key`` lets the worker claim keys for rows it owns.
 
 The generated worker starts with no extensions. Keep shared framework/template code
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from clonway_cockpit.model import Region
 from clonway_cockpit.state import CockpitState
 from rich.console import RenderableType
 
@@ -26,6 +29,11 @@ def extra_selectables(state: CockpitState) -> list[tuple[str, object]]:
 
 def extra_regions(state: CockpitState) -> list[RenderableType]:
     """Additional home regions owned by {{ worker_id }}."""
+    return []
+
+
+def extra_model_regions(state: CockpitState) -> list[Region]:
+    """Model twins of ``extra_regions``, owned by {{ worker_id }}."""
     return []
 
 

@@ -216,6 +216,7 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         audit_worker="{{ worker_id }}",
         extra_selectables=home_hooks.extra_selectables,
         extra_regions=home_hooks.extra_regions,
+        extra_model_regions=home_hooks.extra_model_regions,
         handle_extra_key=home_hooks.handle_extra_key,
     )
 
