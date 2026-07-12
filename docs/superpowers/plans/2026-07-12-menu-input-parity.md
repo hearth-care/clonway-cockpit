@@ -57,7 +57,23 @@ equivalent key.
   multi-character ordinal compatibility branch.
 - [ ] Run focused GREEN and commit: `fix(menu): share one rendered and dispatched action map`.
 
-## Task 4 — contract, agent and real-shape acceptance
+## Task 4 — RED/GREEN: let workers declare Home action facts
+
+**Modify first:** `tests/test_model.py`, `tests/test_screen_models.py`, new focused state/model tests.
+
+- [ ] RED legacy constructor matrix plus empty action declarations; preserve every positional field.
+- [ ] RED state with `home_actions=("z",)` and Needs `actions=("enter", "z")`; assert global/row
+  facts, order, dedupe and selection without changing other fields.
+- [ ] Matrix duplicates, whitespace/control/invalid types and collisions with base actions. Invalid
+  worker hints cannot crash Home or remove framework actions.
+- [ ] Implement additive `NeedsItem.actions` and `CockpitState.home_actions`; normalize only in the
+  pure model projection. Do not import worker code or add callbacks/I/O.
+- [ ] Assert workers with empty defaults remain model-shape compatible.
+- [ ] Use xbook #1015's worktree/candidate pin to drive real active/deferred `z`; assert the
+  declaration matches handler behavior and only the reversible local park store changes.
+- [ ] Commit: `feat(model): expose worker-declared home actions`.
+
+## Task 5 — contract, agent and real-shape acceptance
 
 - [ ] Drive a 16-item framework host through human-shaped injected keys and `serve_stdio`; compare
   ordered titles, row IDs, shortcuts, actions, selection and exact opened capability.
@@ -65,15 +81,16 @@ equivalent key.
 - [ ] Assert usage/audit open exactly once and any nested write still reaches existing gate/default
   denial; navigation itself creates no completion receipt.
 - [ ] Run contract/model shape tests and old-agent legacy alias regression.
-- [ ] Create a temporary consumer install/pin or use Auto-Bookkeeper #1014's worktree after this
-  branch is published; drive its real 16-item shelf and root Backspace without live effects.
+- [ ] Create a temporary consumer install/pin or use Auto-Bookkeeper #1014/#1015 worktrees after
+  this branch is published; drive the real 16-item shelf, root Backspace and `z` facts without live
+  provider/accounting effects.
 - [ ] Rebase against #114 if it merged; resolve shell/model overlap semantically and rerun Doctor
   remedy tests. It is not a product dependency.
 - [ ] Run independent acceptance, architecture, agent-parity, security and operability QA; fix all
   blockers and rerun.
 - [ ] Commit: `test(menu): prove human and agent navigation parity`.
 
-## Task 5 — gates, consumer handoff and release
+## Task 6 — gates, consumer handoff and release
 
 - [ ] Run at minimum:
 
@@ -85,6 +102,7 @@ equivalent key.
     tests/test_screen_models_rest.py \
     tests/test_render_primitives.py \
     tests/test_model.py \
+    tests/test_state.py \
     tests/test_agent_driver.py \
     tests/test_contract.py
   uv run ruff check src tests
@@ -100,8 +118,8 @@ equivalent key.
 - [ ] Update HANDOFF NOTES with RED/GREEN commits, final symbols, compatibility/shape verdict,
   Auto-Bookkeeper real-shape proof, gates and independent QA.
 - [ ] Push and verify live head/diff/mergeability/checks; hand to independent Foundry QA.
-- [ ] On merge, post exact merge SHA to Auto-Bookkeeper #1014. That PR, not this one, owns pinning
-  and deployed xbook observation.
+- [ ] On merge, post exact merge SHA to Auto-Bookkeeper #1014/#1015. The consumers coordinate one
+  pin and own deployed xbook observations.
 
 ## Stop conditions
 

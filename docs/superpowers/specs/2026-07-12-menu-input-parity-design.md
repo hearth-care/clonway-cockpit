@@ -4,7 +4,7 @@
 
 **Base:** `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`
 
-**First consumer:** Auto-Bookkeeper #1014
+**First consumers:** Auto-Bookkeeper #1014 and #1015
 
 **Compatibility:** additive internal menu model; stable existing row identity and accepted inputs
 
@@ -139,7 +139,48 @@ alias remains accepted but undiscoverable.
 Sending root `"backspace"` must produce another valid response/snapshot rather than EOF. The
 existing no-draw frame re-emission remains the liveness owner; do not add a second agent-only draw.
 
-## 7. Acceptance matrix
+## 7. Worker-declared Home action facts
+
+The framework's `_home_actions()` currently knows only its own keys. Worker `handle_extra_key`
+extensions can therefore be live for humans but invisible to agents. Do not hardcode worker keys in
+the framework and do not ask workers to monkey-patch model output.
+
+Append backward-compatible fields to the shared state shapes:
+
+```python
+@dataclass(frozen=True)
+class NeedsItem:
+    # existing fields unchanged and in the same order
+    actions: tuple[str, ...] = ()
+
+@dataclass(frozen=True)
+class CockpitState:
+    # existing fields unchanged and in the same order
+    home_actions: tuple[str, ...] = ()
+```
+
+Actions are semantic key tokens such as `enter`, `backspace` or `z`. Normalize by trimming,
+rejecting whitespace/control-only values and de-duplicating in first-seen order. Base framework
+actions win ordering; worker `home_actions` append only when absent.
+
+`model_cockpit_screen()`:
+
+- merges normalized `state.home_actions` into global `actions`;
+- appends an `actions` field to a Needs row only when `NeedsItem.actions` is non-empty; and
+- derives both from the exact state snapshot already rendered, with no callback/I/O.
+
+This is additive wire data, not a schema break: legacy constructors default empty and legacy frames
+remain unchanged. The framework cannot prove a worker handler implements the declaration, so each
+consumer must drive every declared action through its real `handle_extra_key` seam. Invalid action
+data must not crash Home or silently remove base actions.
+
+For xbook #1015, active and deferred Needs declare `("enter", "z")`; Home declares `("z",)` only
+when at least one parkable/wakeable row exists. The existing deferred extra region stops hardcoding
+its own string and reads the item actions. `z` remains a reversible local attention-state operation;
+the xbook consumer acceptance must prove it touches only the needs-park store, re-captures to the
+opposite projection and performs no provider, accounting or money effect.
+
+## 8. Acceptance matrix
 
 ### Root navigation
 
@@ -175,6 +216,17 @@ replaced or amended so its key sequence actually contains Backspace and proves a
 - single-spec/direct shelf behavior, Home need digits and shelf letters remain unchanged; and
 - nested write capabilities still encounter the same effect/approval gate.
 
+### Worker Home actions
+
+- legacy positional `NeedsItem`/`CockpitState` constructors and empty declarations;
+- global base+worker de-duplication/order and malformed/control values;
+- per-Needs-row action field present only when declared;
+- Home model action and row fact agree from one snapshot;
+- real xbook active/deferred `z` actions and human help agree;
+- agent `z` drive changes only the reversible park projection/store and emits the refreshed Home;
+- no `z` when no parkable/wakeable rows exist; and
+- workers with no extension remain byte-compatible.
+
 ### Real consumer
 
 After framework merge, Auto-Bookkeeper #1014 pins the exact SHA and drives its 16-item shelf G:
@@ -187,18 +239,20 @@ After framework merge, Auto-Bookkeeper #1014 pins the exact SHA and drives its 1
 No live provider/config/accounting effect is required; use agent dry-run and inert/reference or
 stubbed capability opens.
 
-## 8. Ownership and composition
+## 9. Ownership and composition
 
 - This shared PR owns generic root Backspace and menu shortcut normalization/dispatch.
 - Auto-Bookkeeper #1014 owns the dependency pin, real 16-item catalog acceptance and deployment
   observation. It must not copy framework shell/render code.
+- Auto-Bookkeeper #1015 consumes the same pin, declares xbook's `z` action truth and proves the
+  park/wake model plus disabled-xadmit copy. It must not add a second framework pin/fork.
 - Open clonway-cockpit #114 owns Doctor remedy actions and is orthogonal. Rebase conflicts in
   `shell.py`/models must preserve both contracts; neither PR blocks the other semantically.
 - Worker catalog order/titles remain worker-owned. The token derives from order but does not reorder.
 - No runtime receipt is created: usage/audit opens already evidence routed capabilities; CI/subprocess
   acceptance evidences navigation correctness.
 
-## 9. Stop conditions
+## 10. Stop conditions
 
 Return to SOL authoring if stable row IDs cannot be preserved, a schema bump becomes necessary,
 existing agent multi-digit inputs cannot remain accepted, the normalized model would require worker

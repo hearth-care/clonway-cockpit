@@ -4,10 +4,11 @@
 
 ## Why a shared PR is required
 
-Auto-Bookkeeper #1014's generic draft points at `clonway_cockpit/shell.py` and rendering, but a
-builder working only on that xbook branch cannot correctly change the pinned dependency. A local
-override would fork the fleet's navigation contract. This companion is the single shared owner;
-#1014 becomes the pin plus real-consumer acceptance slice.
+Auto-Bookkeeper #1014's generic draft points at `clonway_cockpit/shell.py` and rendering, while
+#1015 needs a worker Home-action seam the current framework does not expose. Builders working only
+on either xbook branch cannot correctly change the pinned dependency. A local override would fork
+the fleet contract. This companion is the single shared owner; #1014/#1015 coordinate one pin plus
+their real-consumer acceptance slices.
 
 ## Generic-plan gaps corrected
 
@@ -24,7 +25,8 @@ The replacement:
 - advertises only one-key human/agent actions while accepting legacy multi-digit agent aliases;
 - keeps overflow arrow/Enter-accessible without fake tokens or crashes;
 - preserves capability order, open usage/audit and nested effect gates; and
-- requires Auto-Bookkeeper's real 16-item pin/stdio acceptance before value is claimed.
+- adds backward-compatible worker-declared global/per-Needs Home action facts; and
+- requires Auto-Bookkeeper's real 16-item/root/`z` pin/stdio acceptance before value is claimed.
 
 ## Evidence inspected
 
@@ -35,6 +37,7 @@ The replacement:
   Backspace;
 - current framework main/pinned SHA and all open framework PRs (#114 only, orthogonal);
 - Auto-Bookkeeper pinned dependency, 16-item shelf-G catalog and real stdio probes; and
+- xbook `z` handler/help/deferred model plus the missing global/active-Needs action facts; and
 - focused framework baseline: **204 passed in 0.47 seconds**.
 
 Live-shaped xbook proof: shelf G advertised actions `10`–`16`; `g`,`1`,`0` opened item 1; semantic
@@ -44,8 +47,9 @@ root `backspace` ended after one Home frame. No provider/config/accounting write
 
 Independent QA must prove root/nested Backspace, q/Esc, sizes 1/2/9/10/16/capacity/overflow, every
 token route, stable row identity, Rich/model parity, legacy `"10"`, unknown/reserved inputs,
-usage/audit counts, nested write gates, stdio liveness and Auto-Bookkeeper real-shape behavior. No
-live worker effect is authorised.
+usage/audit counts, worker Home action defaults/normalization, real xbook active/deferred `z`, stdio
+liveness and Auto-Bookkeeper real-shape behavior. No live provider/accounting effect is authorised;
+the hermetic reversible park store is the only consumer write in the `z` acceptance.
 
 Blueprint only. Value arrives after framework implementation/QA/merge, #1014 pin/acceptance/merge,
 deployment and one natural operator session where root Backspace stays open and item 10+ opens from
