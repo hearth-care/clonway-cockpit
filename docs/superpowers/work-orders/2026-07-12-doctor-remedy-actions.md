@@ -1,5 +1,7 @@
 # Work order — make Doctor remedies navigable and verifiable
 
+**PR:** `hearth-care/clonway-cockpit#114`
+
 > **Fleet Foundry routing:** implement the linked design and plan on this same branch. This is a
 > shared framework contract, not a worker-specific diagnosis. Build each task RED/GREEN, preserve
 > backward compatibility for existing workers, then hand the code-bearing draft to independent QA.
@@ -118,7 +120,8 @@ Foundry completes only when hermetic public-path tests prove:
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in
   35.58 seconds.
-- First consumer: Auto-Bookkeeper #1008; it must pin the merged framework revision.
+- First consumer: Auto-Bookkeeper #1008; it is blocked on this PR and must pin the merged framework
+  revision.
 - No current framework PR exposes this seam; this package is the sole proposed owner.
 - No code, worker state or external system was mutated during authoring.
 - `RUNBOOK DELTA: none` — framework contract only; consuming workers document their operator copy.

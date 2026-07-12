@@ -1,6 +1,7 @@
 # Doctor remedy actions — Foundry readiness receipt
 
 - **Repository:** `hearth-care/clonway-cockpit`
+- **PR:** #114
 - **Branch:** `Codex/doctor-remedy-actions-plan`
 - **Base:** `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`
 - **Mode:** new doc-only framework foundation, personally SOL-authored
