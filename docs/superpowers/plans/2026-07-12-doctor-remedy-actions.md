@@ -1,0 +1,484 @@
+# Doctor remedy actions — Fleet Foundry implementation plan
+
+> **Builder instruction:** execute in order on this PR branch. Every task starts with the named RED
+> test and ends with focused GREEN plus a commit. Preserve all existing positional constructors and
+> do not add worker/domain imports to the framework.
+
+**Goal:** let Doctor classify report failures, open existing capabilities with focus and verify the
+same probe after a remedy, identically for human and agent drivers.
+
+**Architecture:** extend the framework's existing `Probe`/`Fix`/`Host` contracts additively;
+capability remedies delegate to `_open_capability`; callback safety remains; one pure comparison
+builds a typed receipt delivered through an optional worker callback.
+
+**Binding design:**
+`docs/superpowers/specs/2026-07-12-doctor-remedy-actions-design.md`
+
+**Base:** `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`
+
+## Execution rules
+
+- Keep `Fix` first five and `Probe` first four positional fields unchanged.
+- Do not infer worker failure class or redact worker exceptions in framework code.
+- Do not execute `Fix.cmd`; it remains presentation/equivalent CLI.
+- Do not add a second capability router, navigation stack, effect policy or approval gate.
+- Capability remedies must call `_open_capability` exactly once.
+- Agent mode may navigate capability remedies; arbitrary callbacks remain disabled.
+- Use deterministic injected models; no clock, filesystem or network in receipt comparison.
+- Every new page-framing render has a `model_*` twin and a real-path drive.
+- Update `HANDOFF NOTES` in the work order with each commit/gate.
+
+---
+
+## Task 1 — add backward-compatible action and receipt contracts
+
+**Files:**
+
+- Modify: `src/clonway_cockpit/doctor.py`
+- Modify: `src/clonway_cockpit/__init__.py` only for intentional exports
+- Modify: `tests/test_doctor.py`
+- Create: `tests/test_doctor_receipt.py`
+
+### Step 1.1 — RED: legacy and new constructor matrix
+
+Write tests proving:
+
+- `Fix("title", "cmd")`, all existing five-position forms and
+  `Probe("name", "ok", "detail", None)` retain equal field values;
+- legacy display/callback fixes classify as `DISPLAY_ONLY`/`CALLBACK`;
+- a capability fix classifies as `OPEN_CAPABILITY`;
+- `run` plus `capability_key` rejects;
+- `focus` without capability rejects;
+- `confirm` on capability/display-only rejects for newly identified fixes while legacy behavior is
+  documented/kept where required by existing tests;
+- whitespace/control-only IDs/keys reject;
+- frozen models cannot mutate; and
+- enum serialized values exactly match the design.
+
+Run:
+
+```bash
+uv run pytest -q tests/test_doctor.py tests/test_doctor_receipt.py
+```
+
+Expected RED: additive fields/types do not exist.
+
+### Step 1.2 — GREEN: implement additive models
+
+Append fields after existing ones. Add:
+
+- `DoctorActionKind`;
+- `DoctorActionResult`;
+- `DoctorClosure`;
+- `DoctorRemedyReceipt`;
+- `action_kind(fix)`; and
+- normalization/validation helpers.
+
+Do not change shell/render code yet. `fixes_for()` and `verdict()` remain byte-for-byte behaviorally
+compatible.
+
+### Step 1.3 — RED/GREEN: pure closure comparison
+
+In `tests/test_doctor_receipt.py`, build probes with stable IDs/revisions and assert:
+
+- absent after probe -> resolved;
+- same ID/level/revision -> still present;
+- same ID with different level or revision -> changed;
+- empty/legacy ID -> unknown;
+- rebuild unavailable -> unknown;
+- receipt includes exact action kind/result/capability/focus/before/after; and
+- `safe_message` is bounded and never accepts raw exception text.
+
+Implement a pure `build_remedy_receipt(...)`. No datetime or I/O.
+
+### Step 1.4 — gates and commit
+
+```bash
+uv run pytest -q tests/test_doctor.py tests/test_doctor_receipt.py
+uv run ruff check src/clonway_cockpit/doctor.py tests/test_doctor.py tests/test_doctor_receipt.py
+uv run mypy src/clonway_cockpit/doctor.py
+```
+
+Commit:
+
+```text
+feat(doctor): define typed remedy actions and receipts
+```
+
+---
+
+## Task 2 — classify report-build failures and thread Doctor focus
+
+**Files:**
+
+- Modify: `src/clonway_cockpit/shell.py`
+- Modify: `src/clonway_cockpit/doctor.py`
+- Modify: `src/clonway_cockpit/render_models.py`
+- Modify: `src/clonway_cockpit/render_panels.py`
+- Modify: `tests/test_shell.py`
+- Modify: `tests/test_model.py`
+- Modify: `tests/test_screen_models_rest.py` if the shape pin lives there
+- Modify: `worker-template/{{project_slug}}/...` Host wiring only where required
+- Modify: generated-worker snapshot tests as required
+
+### Step 2.1 — RED: typed failure path
+
+Add shell tests where `doctor_build_report` raises a worker-defined exception and
+`doctor_classify_report_failure` returns a probe with stable ID/remedy. Assert:
+
+- classifier receives the same exception object once;
+- Doctor emits a `doctor` model, never `unstructured`;
+- human/model contain the same probe/remedy/action fields;
+- the worker remedy, not generic unconfigured copy, is visible;
+- classifier missing retains legacy fallback unchanged;
+- classifier raising/returning invalid data yields one modeled internal Doctor failure with no
+  runnable remedy; and
+- the same behavior applies on initial build and post-action rebuild.
+
+Run:
+
+```bash
+uv run pytest -q tests/test_shell.py -k 'doctor and (failure or unconfigured)'
+```
+
+Expected RED: Host has no classifier and exceptions become unstructured fallback.
+
+### Step 2.2 — GREEN: optional Host callback and build helper
+
+Append optional callbacks to `Host` with defaults so existing workers compile unchanged. Add one
+private `_build_doctor` helper used by initial/rebuild paths. Do not duplicate try/except branches.
+
+Classified failures become an ordinary one-probe Doctor snapshot. Legacy fallback exists only when
+the callback is absent. Sanitize framework-internal classifier-failure copy to exception class.
+
+### Step 2.3 — RED: focus from capability open
+
+Write tests:
+
+- `_open_capability(..., key="doctor", focus="probe.b")` passes focus to `_doctor`;
+- matching `probe_id` selects its actionable remedy;
+- remedy-ID fallback matches when probe ID does not;
+- unknown focus selects first runnable without hiding rows;
+- model metadata contains requested/matched values; and
+- Home Need activation with `capability_key="doctor"`/focus drives this same path.
+
+Expected RED: current special case discards focus.
+
+### Step 2.4 — GREEN: thread/select focus
+
+Add optional `focus` to `_doctor`, preserve through rebuilds and selection. Reuse the current
+selection IDs; expose stable identity in fields/meta. Do not add another entry point.
+
+### Step 2.5 — gates and commit
+
+```bash
+uv run pytest -q tests/test_shell.py tests/test_model.py tests/test_screen_models_rest.py
+uv run pytest -q tests/test_worker_template.py tests/test_generated_worker.py
+```
+
+Use actual generated-worker test filenames found in the repo; record the mapping if names differ.
+
+Commit:
+
+```text
+feat(doctor): classify build failures and honor focus
+```
+
+---
+
+## Task 3 — route capability remedies through the existing chokepoint
+
+**Files:**
+
+- Modify: `src/clonway_cockpit/shell.py`
+- Modify: `src/clonway_cockpit/render_models.py`
+- Modify: `src/clonway_cockpit/render_panels.py`
+- Modify: `tests/test_shell.py`
+- Modify: `tests/test_contract.py`
+- Create: `tests/test_doctor_capability_action.py`
+
+### Step 3.1 — RED: selection/action kinds
+
+Build a Doctor fixture with display-only, callback and capability fixes. Assert:
+
+- display-only is visible/nonselectable;
+- callback and capability remedies are selectable in probe order;
+- arrow/number selection aligns with rendered rows;
+- model remedy fields include action kind, remedy/probe IDs, capability/focus and confirm; and
+- invalid/unknown capability cannot run `cmd` or a fallback callback.
+
+Expected RED: only `run is not None` is selectable.
+
+### Step 3.2 — RED: exact capability route
+
+Register a pure test capability with focus-aware walk handler. Enter the Doctor capability remedy
+and assert:
+
+- `_open_capability` path records one normal open usage/audit event;
+- handler receives exact focus;
+- nested Rich/model frames emit;
+- returning re-enters Doctor;
+- no callback/command execution occurred; and
+- unknown key yields a safe modeled result.
+
+Spy at public seams, not by checking implementation line calls only.
+
+### Step 3.3 — GREEN: implement capability action
+
+Refactor `_run_doctor_fix` into an action executor that can return a typed result. For
+`OPEN_CAPABILITY`, call `_open_capability` with the existing host/screen/read-key/navigation stack.
+Do not call `spec.run` directly. Keep the current callback confirmation/progress/result behavior.
+
+### Step 3.4 — RED/GREEN: agent-mode safety
+
+Using `CockpitClient`/`serve_stdio`, prove:
+
+- capability remedy opens in agent mode and emits structured nested frames;
+- a nested reversible read route succeeds;
+- a nested write route reaches the existing `walk.gate` and defaults to decline;
+- a callback remedy emits `skipped_agent_mode` and callback call count remains zero; and
+- no `unstructured` frame appears.
+
+Do not create a Doctor-specific apply handshake.
+
+### Step 3.5 — gates and commit
+
+```bash
+uv run pytest -q tests/test_doctor_capability_action.py tests/test_shell.py tests/test_contract.py
+uv run ruff check src/clonway_cockpit/shell.py src/clonway_cockpit/doctor.py tests/test_doctor_capability_action.py
+uv run mypy src/clonway_cockpit/shell.py src/clonway_cockpit/doctor.py
+```
+
+Commit:
+
+```text
+feat(doctor): open capability remedies through the shell
+```
+
+---
+
+## Task 4 — verify the probe and emit exactly one receipt
+
+**Files:**
+
+- Modify: `src/clonway_cockpit/shell.py`
+- Modify: `src/clonway_cockpit/doctor.py`
+- Modify: `tests/test_doctor_receipt.py`
+- Modify: `tests/test_shell.py`
+- Create: `tests/test_doctor_receipt_integration.py`
+
+### Step 4.1 — RED: before/action/after matrix
+
+Parameterize public-path tests across:
+
+- callback ran and probe resolved;
+- capability opened and probe resolved;
+- capability opened and same probe/revision remains;
+- same probe changes level/revision;
+- confirmation declined;
+- callback skipped in agent mode;
+- callback failed;
+- capability missing;
+- rebuild fails/classification succeeds;
+- rebuild/classification itself fails; and
+- legacy empty IDs.
+
+Assert exact action result, closure, before/after fields, capability/focus and one callback call.
+Assert rebuild count: once after attempted action, zero only for a documented zero-effect decline
+where existing facts are reused.
+
+Expected RED: no receipt/correlation callback.
+
+### Step 4.2 — GREEN: orchestration and callback
+
+Carry the selected fix and originating probe together; do not recover the relationship by string
+or list index after execution. Execute, rebuild, compare and call `doctor_on_receipt` exactly once.
+
+Wrap receipt callback failure. Log only receipt IDs/result/closure and exception class; never raw
+worker probe detail.
+
+### Step 4.3 — RED/GREEN: race and repeat
+
+Prove:
+
+- a changed probe revision is `CHANGED`, not resolved;
+- a second user attempt emits a second receipt tied to the new before revision;
+- one action cannot emit two receipts because nested capability emits frames;
+- selection remains valid if the remedy disappears after rebuild; and
+- report rebuild happens after nested capability returns, not before.
+
+### Step 4.4 — gates and commit
+
+```bash
+uv run pytest -q tests/test_doctor_receipt.py tests/test_doctor_receipt_integration.py tests/test_shell.py
+```
+
+Commit:
+
+```text
+feat(doctor): verify remedies and emit closure receipts
+```
+
+---
+
+## Task 5 — prove one Rich/ScreenModel/agent contract
+
+**Files:**
+
+- Modify: `src/clonway_cockpit/render_models.py`
+- Modify: `src/clonway_cockpit/render_panels.py`
+- Modify: `tests/test_model.py`
+- Modify: `tests/test_contract.py`
+- Modify: `tests/test_screen_models_rest.py`
+- Create: `tests/test_doctor_drive.py`
+- Modify: `docs/agent-screen-model.md`
+
+### Step 5.1 — RED: projection parity
+
+Create one mixed Doctor snapshot and assert Rich/model semantic parity for:
+
+- every probe and remedy in order;
+- selected remedy;
+- action kind and stable IDs;
+- capability/focus;
+- confirmation/display-only state;
+- warning/error verdict; and
+- requested/matched Doctor focus.
+
+If the contract helper compares semantic fields rather than text, extend the smallest shared seam.
+Do not add string-scraping tests.
+
+### Step 5.2 — RED: real agent drive
+
+Drive:
+
+```text
+Home need focused on probe X
+  -> Doctor frame selected on X capability remedy
+  -> Enter
+  -> nested capability model(s)
+  -> Back/return
+  -> refreshed Doctor
+  -> receipt callback observed once
+```
+
+Assert `kind`, stable row IDs/fields/meta and gate status. Reject any `unstructured` frame.
+
+### Step 5.3 — GREEN: render/model/docs
+
+Add compact human copy and additive model fields. Document:
+
+- worker construction of stable IDs/revisions;
+- display vs callback vs capability remedies;
+- focus routing;
+- agent-mode behavior; and
+- receipt callback responsibility/redaction.
+
+Do not document Auto-Bookkeeper-specific examples as framework requirements; one clearly labelled
+example may use generic `reconcile` names.
+
+### Step 5.4 — gates and commit
+
+```bash
+uv run pytest -q tests/test_doctor_drive.py tests/test_model.py tests/test_contract.py tests/test_screen_models_rest.py
+```
+
+Commit:
+
+```text
+test(doctor): prove human and agent remedy parity
+```
+
+---
+
+## Task 6 — template compatibility, full gates and release handoff
+
+**Files:**
+
+- Modify: worker-template Host wiring/tests only if optional fields require explicit examples
+- Modify: `docs/onboarding-a-worker.md` if Doctor callbacks are part of worker adoption
+- Modify: `docs/superpowers/work-orders/2026-07-12-doctor-remedy-actions.md`
+- Modify: `docs/findings/2026-07-12-doctor-remedy-actions-readiness.md`
+
+### Step 6.1 — generated-worker compatibility
+
+Regenerate the worker fixture using the repo's canonical command/test. Prove:
+
+- existing template without optional callbacks starts and drives unchanged;
+- opt-in classifier/receipt callback type-checks;
+- protocol version remains unchanged because fields are additive; and
+- every generated Doctor failure page has a model twin.
+
+Do not hand-edit generated golden output without running the generator.
+
+### Step 6.2 — full verification
+
+From a clean worktree run:
+
+```bash
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src
+uv run pre-commit run --all-files
+git diff --check
+```
+
+Record exact counts/duration. Then run a subprocess `CockpitClient` acceptance drive for both:
+
+- legacy worker fallback; and
+- opt-in focused capability remedy + receipt.
+
+### Step 6.3 — consumer handoff
+
+In the PR body/readiness receipt record:
+
+- final public imports/fields;
+- merge commit/release revision once merged;
+- compatibility decision and protocol version;
+- exact worker pin-bump steps;
+- Auto-Bookkeeper #1008 as first consumer; and
+- no worker may copy `_doctor` or bypass `_open_capability` while waiting.
+
+### Step 6.4 — independent QA
+
+QA rejects if:
+
+- legacy worker construction breaks;
+- classified report failure becomes `unstructured`;
+- a capability remedy calls `spec.run` directly;
+- agent mode runs an arbitrary callback;
+- nested writes bypass the existing gate;
+- opening a capability is claimed resolved without re-probe;
+- raw exception text enters a receipt/model; or
+- receipt callback failure crashes/changes Doctor.
+
+Commit:
+
+```text
+docs(doctor): record framework remedy handoff
+```
+
+---
+
+## Final completion checklist
+
+- [ ] Existing `Fix`/`Probe` positional calls remain green.
+- [ ] Action-kind validation is strict and additive.
+- [ ] Worker classifier renders modeled report failures.
+- [ ] Legacy unconfigured fallback remains when classifier absent.
+- [ ] Doctor focus threads from a normal capability open.
+- [ ] Capability remedies use `_open_capability` once with exact focus.
+- [ ] Display-only fixes stay nonselectable.
+- [ ] Callbacks preserve confirmation/progress and agent denial.
+- [ ] Nested write routes preserve the one guarded-apply gate.
+- [ ] Stable before/after probe comparison produces one typed receipt.
+- [ ] Receipt callback failure is isolated.
+- [ ] Rich/model/agent projections share action/identity metadata.
+- [ ] No real path emits `unstructured` for classified failure/remedy navigation.
+- [ ] Generated workers and old Host constructions remain compatible.
+- [ ] Protocol version decision is explicitly tested/documented.
+- [ ] Full pytest/static/pre-commit/diff gates pass.
+- [ ] Consumer pin-bump/public contract handoff is recorded.
+
+Completion is the public-path agent/human drive and receipt proof, not merely new dataclass fields.
