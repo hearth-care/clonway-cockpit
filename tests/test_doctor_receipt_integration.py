@@ -224,10 +224,26 @@ def test_callback_non_success_results_emit_one_still_present_receipt(
         remedy_id="remedy.health",
         probe_id="probe.health",
     )
-    host = _host(lambda report: [_probe(fix)], receipts, agent_mode=agent_mode)
+    builds = 0
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        return object()
+
+    host = _host(
+        lambda report: [_probe(fix)], receipts, build_report=build_report, agent_mode=agent_mode
+    )
 
     shell._doctor(host, _Screen(), _keys(keys_in))
 
+    # Plan Step 4.1: rebuild happens exactly once for an ATTEMPTED action — decline,
+    # agent-mode skip and a failed callback are all attempts (the operator/agent
+    # engaged the remedy), so each still rebuilds once to refresh the probe facts,
+    # on top of the one build Doctor always does on entry (contrast with the
+    # capability_missing branch below, which never attempted anything and stays
+    # at the entry build alone).
+    assert builds == 2
     assert len(receipts) == 1
     assert receipts[0].action_result is result
     assert receipts[0].closure is DoctorClosure.STILL_PRESENT
@@ -358,7 +374,7 @@ def test_repeat_attempts_use_each_new_before_revision() -> None:
     assert all(receipt.closure is DoctorClosure.CHANGED for receipt in receipts)
 
 
-def test_receipt_callback_failure_does_not_change_doctor_outcome() -> None:
+def test_receipt_callback_failure_does_not_change_doctor_outcome(caplog) -> None:
     delivered = []
     fix = Fix(
         "Repair",
@@ -377,6 +393,17 @@ def test_receipt_callback_failure_does_not_change_doctor_outcome() -> None:
         doctor_on_receipt=fail_delivery,
     )
 
-    shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+    with caplog.at_level("WARNING", logger="clonway_cockpit.shell"):
+        shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    # A broken receipt sink must not go silently unobserved (nit: zero signal on a
+    # permanently-broken sink) — but the log carries only IDs/result/closure and the
+    # exception CLASS, never the raw exception text (which may hold worker detail).
+    assert len(caplog.records) == 1
+    message = caplog.records[0].getMessage()
+    assert "remedy.health" in message
+    assert "probe.health" in message
+    assert "RuntimeError" in message
+    assert "observability-secret" not in message
 
     assert len(delivered) == 1

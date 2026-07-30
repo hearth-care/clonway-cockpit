@@ -91,9 +91,37 @@ def test_receipt_with_legacy_empty_identity_is_unknown() -> None:
     assert receipt.closure is DoctorClosure.UNKNOWN
 
 
+def test_receipt_with_no_originating_probe_is_unknown_not_a_crash() -> None:
+    """Finding 3's flip side at the receipt layer: an unpaired remedy (no probe)
+    still gets a receipt — probe_id empty, closure unknown — instead of the caller
+    needing to special-case a missing `before`."""
+    fix = Fix("Global resync", "worker resync", run=lambda: "ok")
+    receipt = build_remedy_receipt(
+        fix=fix,
+        before=None,
+        after=None,
+        action_result=DoctorActionResult.RAN,
+    )
+
+    assert receipt.probe_id == ""
+    assert receipt.before_level == ""
+    assert receipt.before_revision == ""
+    assert receipt.closure is DoctorClosure.UNKNOWN
+
+
 def test_receipt_safe_message_is_framework_generated_and_frozen() -> None:
-    before = _probe()
     secret = "raw-provider-exception-with-sensitive-detail"
+    fix = Fix(
+        "Review gap",
+        "worker review",
+        remedy_id="remedy.gap.review",
+        probe_id="probe.gap",
+        capability_key="review",
+        focus="gap",
+    )
+    # The secret flows in through the only worker-controlled text on a probe
+    # (`detail`) — build_remedy_receipt must never fold it into safe_message.
+    before = Probe("Gap", "error", secret, fix, "probe.gap", "rev-1")
     receipt = build_remedy_receipt(
         fix=before.fix,
         before=before,

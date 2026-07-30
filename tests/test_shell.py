@@ -1245,6 +1245,107 @@ def test_doctor_display_only_fix_is_not_runnable(usage_to_tmp):
     assert "run in a terminal" in joined
 
 
+def test_doctor_unpaired_remedy_runs_its_own_rendered_row(usage_to_tmp):
+    """Finding 1/3: a probe-independent remedy returned by doctor_fixes_for keeps
+    its rendered row number and stays runnable. Before the fix, pressing the
+    number key of the unpaired first row ran the SECOND (paired) remedy instead —
+    _runnable_remedies dropped the unpaired fix from the dispatch list while
+    render_doctor/model_doctor still numbered it as row 1."""
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    lock_fix = Fix(
+        "Remove stale lock",
+        "cw unlock",
+        run=lambda: ran.append("REMOVE-LOCK") or "ok",
+        remedy_id="remedy.lock",
+        probe_id="probe.lock",
+    )
+    probe = Probe("Lock held", "error", "detail", lock_fix, "probe.lock", "rev-1")
+    host = shell.replace(
+        _FakeHost(probes=[probe]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix, lock_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys(["1", "q"]))
+    assert ran == ["GLOBAL"]
+
+
+def test_doctor_paired_remedy_after_an_unpaired_one_still_dispatches_correctly(usage_to_tmp):
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    lock_fix = Fix(
+        "Remove stale lock",
+        "cw unlock",
+        run=lambda: ran.append("REMOVE-LOCK") or "ok",
+        remedy_id="remedy.lock",
+        probe_id="probe.lock",
+    )
+    probe = Probe("Lock held", "error", "detail", lock_fix, "probe.lock", "rev-1")
+    host = shell.replace(
+        _FakeHost(probes=[probe]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix, lock_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys(["2", "q"]))
+    assert ran == ["REMOVE-LOCK"]
+
+
+def test_doctor_unpaired_remedy_is_also_selectable_via_enter(usage_to_tmp):
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    host = shell.replace(
+        _FakeHost(probes=[]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]))
+    assert ran == ["GLOBAL"]
+
+
+def test_doctor_unpaired_remedy_receipt_has_unknown_closure_not_a_dropped_row(usage_to_tmp):
+    receipts = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: "ok")
+    host = shell.replace(
+        _FakeHost(probes=[]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix],
+        doctor_on_receipt=receipts.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == ""
+    assert receipts[0].closure.value == "unknown"
+
+
+def test_doctor_duplicate_equal_fix_across_two_probes_attributes_receipt_to_the_selected_one(
+    usage_to_tmp,
+):
+    """Finding 4: when a worker's doctor_fixes_for rebuilds Fix objects each frame
+    (breaking Python identity) and two probes carry equal Fix values, the receipt
+    for the row the operator actually selected must name THAT probe — not whichever
+    equal probe happens to come first, which is what the old `==` fallback did."""
+    from dataclasses import replace as dc_replace
+
+    ran = []
+    sync = Fix("Sync now", "cw sync", run=lambda: ran.append("sync") or "ok")
+    probe_a = Probe("Ledger stale", "warn", "da", sync, "probe.ledger", "rev-A")
+    probe_b = Probe("Payouts stale", "error", "db", dc_replace(sync), "probe.payouts", "rev-B")
+    receipts = []
+    host = shell.replace(
+        _FakeHost(probes=[probe_a, probe_b]).as_host(),
+        doctor_fixes_for=lambda probes: [dc_replace(p.fix) for p in probes if p.fix],
+        doctor_on_receipt=receipts.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys(["2", "q"]))
+
+    assert ran == ["sync"]
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == "probe.payouts"
+    assert receipts[0].before_revision == "rev-B"
+
+
 def test_doctor_lock_fix_confirms_then_removes(usage_to_tmp):
     removed = []
     probes = [
@@ -1340,6 +1441,63 @@ def test_doctor_degrades_when_unconfigured(usage_to_tmp):
 
 
 # --- the animated-progress helper ---------------------------------------------
+
+
+def test_runnable_remedies_pairs_every_non_display_only_fix_across_the_pairing_matrix():
+    """Finding 1/3/4 defect class, closed at the root (`_runnable_remedies`) rather
+    than per-cell: it must never drop a non-display-only fix, and must attribute the
+    correct probe (or None) whether the pairing is recoverable by identity, by
+    equality fallback (identity broken by a worker that rebuilds its Fix objects),
+    by consume-on-match when two probes share equal Fix values (ambiguous without
+    consuming), or not at all (a probe-independent remedy) — interleaved with
+    display-only fixes that must be skipped and must not disturb ordering."""
+    from dataclasses import replace as dc_replace
+
+    identity_fix = Fix("Identity", "cw identity", run=lambda: "ok")
+    identity_probe = Probe("Identity probe", "warn", "d", identity_fix, "probe.identity", "rev-1")
+
+    equal_fix = Fix("Equality", "cw equality", run=lambda: "ok")
+    equality_probe = Probe("Equality probe", "warn", "d", equal_fix, "probe.equality", "rev-1")
+    equality_fix_rebuilt = dc_replace(equal_fix)  # same value, different identity
+
+    shared_fix = Fix("Shared", "cw shared", run=lambda: "ok")
+    shared_probe_a = Probe("Shared A", "warn", "da", shared_fix, "probe.shared-a", "rev-A")
+    shared_probe_b = Probe(
+        "Shared B", "error", "db", dc_replace(shared_fix), "probe.shared-b", "rev-B"
+    )
+
+    unpaired_fix = Fix("Unpaired", "cw unpaired", run=lambda: "ok")
+    display_fix = Fix("Display", "cw display")  # no run => display-only, must be skipped
+
+    probes = [identity_probe, equality_probe, shared_probe_a, shared_probe_b]
+    fixes = [
+        display_fix,
+        unpaired_fix,
+        identity_fix,
+        display_fix,
+        equality_fix_rebuilt,
+        dc_replace(shared_fix),  # equal-value #1 -> the first still-available equal probe
+        dc_replace(shared_fix),  # equal-value #2 -> must NOT re-match the same probe
+        display_fix,
+    ]
+
+    remedies = shell._runnable_remedies(probes, fixes)
+
+    assert [fix for _, fix in remedies] == [
+        unpaired_fix,
+        identity_fix,
+        equality_fix_rebuilt,
+        fixes[5],
+        fixes[6],
+    ]
+    got_probe_ids = [probe.probe_id if probe is not None else None for probe, _ in remedies]
+    assert got_probe_ids == [
+        None,  # unpaired: no probe carries this fix, but it is NOT dropped
+        "probe.identity",  # matched by object identity
+        "probe.equality",  # matched by equality fallback (identity broken)
+        "probe.shared-a",  # first equal-value probe consumed
+        "probe.shared-b",  # second equal-value probe — not re-matched to shared-a
+    ]
 
 
 def test_run_with_progress_returns_worker_result():

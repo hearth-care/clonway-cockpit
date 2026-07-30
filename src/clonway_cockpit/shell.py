@@ -24,6 +24,7 @@ stdlib — never a worker package."""
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -47,6 +48,8 @@ from clonway_cockpit.doctor import (
 from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
+
+_log = logging.getLogger(__name__)
 
 # How long the cockpit sleeps between progress frames — ~8 redraws/second, fast
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
@@ -910,24 +913,44 @@ def _doctor_probes(host: Host, build: DoctorBuild) -> list[Probe]:
     return host.doctor_build_probes(build.report)
 
 
-def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe, Any]]:
-    remedies = []
+def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe | None, Any]]:
+    """Pair every non-display-only fix with its originating probe, in ``fixes``
+    order — the exact order/count ``render_doctor``/``model_doctor`` number rows
+    in, so the shell's dispatch list can never diverge from what's on screen.
+    Never drop an entry: a fix with no (or no longer resolvable) originating
+    probe stays in the list with ``probe=None`` and remains runnable.
+
+    Each probe is matched to at most one fix (identity first, falling back to
+    equality only among probes not already claimed by an earlier fix) so two
+    probes carrying equal ``Fix`` values — or a worker that rebuilds its fixes
+    each frame and loses object identity — resolve to distinct probes instead
+    of every equal fix collapsing onto the first match."""
+    available = list(probes)
+    remedies: list[tuple[Probe | None, Any]] = []
     for fix in fixes:
         if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
             continue
-        probe = next((item for item in probes if item.fix is fix), None)
-        if probe is None:
-            probe = next((item for item in probes if item.fix == fix), None)
-        if probe is not None:
-            remedies.append((probe, fix))
+        probe = None
+        for index, candidate in enumerate(available):
+            if candidate.fix is fix:
+                probe = available.pop(index)
+                break
+        else:
+            for index, candidate in enumerate(available):
+                if candidate.fix == fix:
+                    probe = available.pop(index)
+                    break
+        remedies.append((probe, fix))
     return remedies
 
 
-def _focused_remedy(runnable: list[tuple[Probe, Any]], focus: str | None) -> tuple[int, str | None]:
+def _focused_remedy(
+    runnable: list[tuple[Probe | None, Any]], focus: str | None
+) -> tuple[int, str | None]:
     if focus is None:
         return 0, None
     for index, (probe, fix) in enumerate(runnable):
-        if probe.probe_id == focus or fix.probe_id == focus:
+        if (probe is not None and probe.probe_id == focus) or fix.probe_id == focus:
             return index, focus
     for index, (_, fix) in enumerate(runnable):
         if fix.remedy_id == focus:
@@ -938,8 +961,20 @@ def _focused_remedy(runnable: list[tuple[Probe, Any]], focus: str | None) -> tup
 def _deliver_doctor_receipt(host: Host, receipt: DoctorRemedyReceipt) -> None:
     if host.doctor_on_receipt is None:
         return
-    with contextlib.suppress(Exception):
+    try:
         host.doctor_on_receipt(receipt)
+    except Exception as exc:  # noqa: BLE001 — isolate a broken receipt sink from Doctor
+        # Only receipt IDs/result/closure and the exception CLASS — never worker
+        # probe detail, which may carry sensitive text (see safe_message's contract).
+        _log.warning(
+            "doctor receipt callback failed: remedy_id=%r probe_id=%r "
+            "action_result=%s closure=%s (%s)",
+            receipt.remedy_id,
+            receipt.probe_id,
+            receipt.action_result.value,
+            receipt.closure.value,
+            type(exc).__name__,
+        )
 
 
 def _doctor(
@@ -986,11 +1021,21 @@ def _doctor(
         runnable_remedies = _runnable_remedies(probes, fixes)
         runnable = [fix for _, fix in runnable_remedies]
         if runnable:
+            # focus_matched is recomputed against the CURRENT remedy list every
+            # frame — a stale True after the focused probe/remedy rebuilds away
+            # would tell an agent driving by this field that `selection` still
+            # names its focus when it has silently retargeted (finding: focus
+            # survives a rebuild it shouldn't). Only the initial cursor jump is
+            # gated by focus_pending — subsequent arrow moves must not be
+            # overridden back onto the focus target.
+            index, focus_matched = _focused_remedy(runnable_remedies, focus)
             if focus_pending:
-                sel, focus_matched = _focused_remedy(runnable_remedies, focus)
+                sel = index
                 focus_pending = False
             else:
                 sel %= len(runnable)
+        else:
+            focus_matched = None
         # Render only when something changed AND no more input is queued — coalesces
         # held-arrow repeat into one repaint (pending() is False off a raw session).
         if dirty and not keys.pending():
@@ -1095,13 +1140,13 @@ def _doctor(
             _deliver_doctor_receipt(host, receipt)
             return
         after_probes = _doctor_probes(host, rebuilt)
-        after_probe = next(
-            (
-                probe
-                for probe in after_probes
-                if selected_probe.probe_id and probe.probe_id == selected_probe.probe_id
-            ),
-            None,
+        after_probe = (
+            next(
+                (probe for probe in after_probes if probe.probe_id == selected_probe.probe_id),
+                None,
+            )
+            if selected_probe is not None and selected_probe.probe_id
+            else None
         )
         comparison_available = not (rebuilt.failure_probe is not None and after_probe is None)
         receipt = build_remedy_receipt(

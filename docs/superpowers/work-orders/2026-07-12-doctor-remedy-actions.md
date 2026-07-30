@@ -152,3 +152,42 @@ Foundry completes only when hermetic public-path tests prove:
 - No current framework PR exposes this seam; this package is the sole proposed owner.
 - No code, worker state or external system was mutated during authoring.
 - `RUNBOOK DELTA: none` — framework contract only; consuming workers document their operator copy.
+
+### QA FAIL round (qa-claude-20260730T084851Z-65419-1) — fixer-claude-20260730T141659Z-27593-1
+
+- Root cause of findings 1/3/4: `_runnable_remedies` (`src/clonway_cockpit/shell.py`) recovered
+  the probe<->fix pairing by searching `probes` per fix and dropping any fix it couldn't pair,
+  while `render_doctor`/`model_doctor` number every non-display-only fix straight from `fixes`
+  with no such condition — the two projections could diverge in both row count and index.
+  Rewritten to a single pass over `fixes` (the same order/count the render/model use) that pairs
+  each entry against a shrinking pool of `probes` — identity match first, falling back to equality
+  only among probes not already claimed by an earlier fix (a stable "consume-on-match") — and
+  never drops an entry; an unpaired fix now carries `probe=None` and stays runnable.
+- Finding 2: `Fix.__post_init__`'s `confirm` guard now only rejects `confirm=True` with `run=None`
+  for fixes that opt into the new identity contract (`remedy_id`/`probe_id`/`capability_key` set).
+  A bare legacy `Fix(title, cmd, note, None, True)` — and the equivalent kwargs shape — construct
+  unchanged, matching main and this work order's own "positional constructors remain supported"
+  claim (no doc/changelog correction needed since the claim is now true rather than aspirational).
+- Finding 5: Doctor's per-frame loop recomputes `focus_matched` against the CURRENT remedy list on
+  every repaint (previously computed once on the first frame and reused verbatim); the initial
+  cursor jump onto the focused remedy is still gated by `focus_pending` so arrow-key navigation
+  after the jump is not overridden back onto the focus target on later frames.
+- `build_remedy_receipt` now accepts `before: Probe | None` — an unpaired remedy still delivers a
+  receipt (`probe_id=""`, closure `unknown`) instead of the caller needing to special-case a
+  missing probe or silently drop the row.
+- Non-blocking nits also closed: `_validate_identity` now rejects any non-printable/control
+  character anywhere in an identifier, not just leading/trailing whitespace; `_deliver_doctor_receipt`
+  logs a receipt-sink failure (remedy_id/probe_id/action_result/closure/exception class only, never
+  raw exception text) instead of silently suppressing it; the vacuous `secret not in safe_message`
+  assertion in `tests/test_doctor_receipt.py` now actually routes the secret through probe `detail`;
+  the decline/skip/failed parametrized receipt test now pins the rebuild count.
+- RECURRENCE on the QA FAIL was `none`, so no AXES/MATRIX block is required in the completion
+  comment; the pairing-defect class (findings 1/3/4) is still closed at the root and covered by a
+  dedicated parametrized unit test over the full pairing matrix (identity / equality-fallback /
+  shared-instance-consume-order / unpaired, crossed with display-only interleaving) in
+  `tests/test_shell.py::test_runnable_remedies_pairs_every_non_display_only_fix_across_the_pairing_matrix`.
+- Gates after this round: `uv run pytest -q` -> `1186 passed`; `uv run ruff check .` -> all passed;
+  `uv run ruff format --check .` -> `167 files already formatted`; `uv run mypy src` -> no issues in
+  67 source files; `uv run pre-commit run --all-files` -> all 8 hooks passed.
+- `RUNBOOK DELTA: none` — this round is fixes to framework-internal Doctor logic and tests only; no
+  operator-facing step changed.

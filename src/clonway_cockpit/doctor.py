@@ -37,8 +37,12 @@ class DoctorClosure(StrEnum):
 def _validate_identity(value: str, field_name: str, *, allow_empty: bool = True) -> None:
     if not value and allow_empty:
         return
-    if not value or value != value.strip() or any(char.isspace() for char in value):
-        raise ValueError(f"{field_name} must be a non-whitespace identifier")
+    if (
+        not value
+        or value != value.strip()
+        or any(char.isspace() or not char.isprintable() for char in value)
+    ):
+        raise ValueError(f"{field_name} must be a non-whitespace, non-control identifier")
 
 
 @dataclass(frozen=True)
@@ -58,7 +62,13 @@ class Fix:
             raise ValueError("run and capability_key are mutually exclusive")
         if self.focus is not None and self.capability_key is None:
             raise ValueError("focus requires capability_key")
-        if self.confirm and self.run is None:
+        # Legacy positional construction (title, cmd, note, run, confirm) predates
+        # remedy_id/probe_id/capability_key and must keep constructing unchanged —
+        # confirm=True with run=None was inert-but-legal on main. Only reject the
+        # combination for fixes that opt into the new identity contract, where a
+        # confirm with nothing to run is an author mistake, not a legacy shape.
+        newly_identified = bool(self.remedy_id or self.probe_id or self.capability_key)
+        if self.confirm and self.run is None and newly_identified:
             raise ValueError("confirm applies only to callback fixes")
         _validate_identity(self.remedy_id, "remedy_id")
         _validate_identity(self.probe_id, "probe_id")
@@ -110,14 +120,18 @@ def action_kind(fix: Fix) -> DoctorActionKind:
 def build_remedy_receipt(
     *,
     fix: Fix,
-    before: Probe,
+    before: Probe | None,
     after: Probe | None,
     action_result: DoctorActionResult,
     rebuild_available: bool = True,
 ) -> DoctorRemedyReceipt:
-    """Compare stable before/after probe facts without clocks, I/O or worker text."""
-    stable_identity = bool(before.probe_id)
-    if not rebuild_available or not stable_identity:
+    """Compare stable before/after probe facts without clocks, I/O or worker text.
+
+    ``before`` is ``None`` for a remedy that has no originating probe (a global,
+    probe-independent fix) — the receipt still gets delivered, just with an
+    ``unknown`` closure and no probe identity to report."""
+    stable_identity = before is not None and bool(before.probe_id)
+    if not rebuild_available or not stable_identity or before is None:
         closure = DoctorClosure.UNKNOWN
     elif after is None:
         closure = DoctorClosure.RESOLVED
@@ -135,13 +149,13 @@ def build_remedy_receipt(
     return DoctorRemedyReceipt(
         schema_version=1,
         remedy_id=fix.remedy_id,
-        probe_id=before.probe_id,
+        probe_id=before.probe_id if before is not None else "",
         action_kind=action_kind(fix),
         action_result=action_result,
         capability_key=fix.capability_key,
         focus=fix.focus,
-        before_level=before.level,
-        before_revision=before.evidence_revision,
+        before_level=before.level if before is not None else "",
+        before_revision=before.evidence_revision if before is not None else "",
         after_level=after.level if after is not None else None,
         after_revision=after.evidence_revision if after is not None else None,
         closure=closure,

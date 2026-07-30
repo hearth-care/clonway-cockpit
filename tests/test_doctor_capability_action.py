@@ -163,6 +163,81 @@ def test_capability_remedy_uses_normal_router_once_with_exact_focus() -> None:
     assert [model.kind for model in models].count("doctor") == 3
 
 
+def test_focus_matched_clears_once_the_focused_probe_resolves_mid_session() -> None:
+    """Finding 5: focus_matched must be recomputed against the CURRENT remedy list
+    on every frame, not cached from the first match. Open the focused capability
+    remedy, resolve its probe while it's open (as the nested handler would after a
+    real fix), and assert the refreshed Doctor frame reports focus_matched=None
+    rather than continuing to claim a match on a remedy that is no longer there."""
+    models = []
+    fix_a = Fix("Open A", "worker a", remedy_id="remedy.a", probe_id="probe.a", capability_key="a")
+    fix_b = Fix("Open B", "worker b", remedy_id="remedy.b", probe_id="probe.b", capability_key="b")
+    probe_a = Probe("A", "warn", "a", fix_a, "probe.a", "rev-1")
+    probe_b = Probe("B", "error", "b", fix_b, "probe.b", "rev-1")
+    probes_holder = {"list": [probe_a, probe_b]}
+
+    def handler(ctx: WizardContext) -> None:
+        probes_holder["list"] = [probe_a]  # probe.b resolved while its remedy was open
+        ctx.on_screen(render.model_note("Nested", "resolved"))
+
+    register_capability(
+        CapabilitySpec(key="a", shelf="C", title="A", summary="a", equivalent_cli="worker a")
+    )
+    register_capability(
+        CapabilitySpec(
+            key="b", shelf="C", title="B", summary="b", equivalent_cli="worker b", run=handler
+        )
+    )
+    host = replace(
+        _host([]),
+        doctor_build_probes=lambda report: probes_holder["list"],
+        on_screen=models.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER]), focus="probe.b")
+
+    doctor_models = [m for m in models if m.kind == "doctor"]
+    assert doctor_models[0].meta["focus_matched"] == "probe.b"
+    assert doctor_models[0].selection == "fix:1"
+
+    final = doctor_models[-1]
+    assert final.meta["focus_requested"] == "probe.b"
+    assert final.meta["focus_matched"] is None
+    assert final.selection == "fix:0"  # only A remains — not the stale probe.b row
+
+
+def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> None:
+    models = []
+    fix_a = Fix("Open A", "worker a", remedy_id="remedy.a", probe_id="probe.a", capability_key="a")
+    fix_b = Fix("Open B", "worker b", remedy_id="remedy.b", probe_id="probe.b", capability_key="b")
+    probe_a = Probe("A", "warn", "a", fix_a, "probe.a", "rev-1")
+    probe_b = Probe("B", "error", "b", fix_b, "probe.b", "rev-1")
+    probes_holder = {"list": [probe_a, probe_b]}
+
+    def handler(ctx: WizardContext) -> None:
+        ctx.on_screen(render.model_note("Nested", "still open"))
+
+    register_capability(
+        CapabilitySpec(key="a", shelf="C", title="A", summary="a", equivalent_cli="worker a")
+    )
+    register_capability(
+        CapabilitySpec(
+            key="b", shelf="C", title="B", summary="b", equivalent_cli="worker b", run=handler
+        )
+    )
+    host = replace(
+        _host([]),
+        doctor_build_probes=lambda report: probes_holder["list"],
+        on_screen=models.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER]), focus="probe.b")
+
+    final = [m for m in models if m.kind == "doctor"][-1]
+    assert final.meta["focus_matched"] == "probe.b"
+    assert final.selection == "fix:1"
+
+
 def test_missing_capability_is_safe_and_never_runs_a_command() -> None:
     models = []
     fix = Fix(
