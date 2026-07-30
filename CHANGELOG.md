@@ -11,6 +11,20 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+### Added
+
+- Stable worker integration seams for nested cockpit screens: public
+  `clonway_cockpit.shell` session/wrapper APIs (`PROGRESS_TICK`, `CallbackScreen`,
+  `ShellSession`, `emit_model`, `show_and_wait`, `activate_need`, `run_home`,
+  `activate_item`, `open_capability`, and `run_doctor`), plus opt-in
+  `Host.activate_pill_with_session` and `Host.handle_extra_key_with_session` callbacks.
+- Public `clonway_cockpit.walk` helpers (`PROGRESS_TICK`, `present`, `emit`, `await_key`, and
+  `first_blocked_remedy`) and `clonway_cockpit.render_panels.DEFAULT_HELP_LINES` for generated
+  and pinned workers.
+- Scoped telemetry observation through `clonway_cockpit.obs.EventBufferScope`,
+  `event_buffer`, and the test-only `isolated_event_buffers` seam without exposing private
+  `ContextVar` state.
+
 ## [0.3.0] - 2026-07-02
 
 ### Added

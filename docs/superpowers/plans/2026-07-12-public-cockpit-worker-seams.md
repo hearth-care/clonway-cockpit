@@ -238,7 +238,7 @@ git diff --check
   a deliberate missing-reset mutation that makes the named test RED.
 - [x] Task 6 guards: reject every `_host(...)` spelling in framework Markdown callback guidance
   and scan every generated Jinja file, including `worker-template/README.md.jinja`.
-- [ ] Task 7 docs: add the stable worker seams to the changelog's Unreleased section.
+- [x] Task 7 docs: add the stable worker seams to the changelog's Unreleased section.
 - [ ] Rebase onto current `origin/main`, rerun every focused and full local gate, push, and hand
   the exact head to independent QA.
 
@@ -254,8 +254,8 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: QA fix round 2, Task 7 docs. Next: add the stable shell/walk/help/obs worker seams and
-  opt-in session callbacks to the changelog's Unreleased section.
+- Phase: QA fix round 2, final integration. Next: fetch and rebase onto current `origin/main`,
+  then run focused tests and every repository gate on the rebased exact head.
 - Round-2 decision: support repeated sequential sessions inside one public buffer. Each session
   flushes only records appended after its own boundary; records emitted in the public scope before,
   between, or after sessions remain visible in `scope.events` but are not attributed to a run.
@@ -270,6 +270,8 @@ or claims product value before #1046 lands.
 - Round-2 guard RED/GREEN: the generated README inventory plus four `_host(...)` spellings first
   failed `5 failed`; the bounded fenced-callback rule and whole-template scan pass `16 passed`,
   including 2 callback families × 4 rebuild spellings.
+- Round-2 changelog: Unreleased now names every stable shell/walk/help/obs seam and both opt-in
+  session-aware Host callbacks.
 - Round-2 known failing tests: none.
 - QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
   tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
