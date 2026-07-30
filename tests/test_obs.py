@@ -462,6 +462,37 @@ def test_event_buffer_run_session_flush_ownership_matrix(
         assert scopes[1][1].owner is False
 
 
+def test_isolated_event_buffers_restores_live_run_session_ownership(monkeypatch) -> None:
+    """A nested isolation cannot turn a same-worker session join into a new run."""
+    import clonway_cockpit.obs._telemetry as obs_mod
+
+    flushed: list[list[str]] = []
+    monkeypatch.setattr(
+        obs_mod,
+        "flush_buffer",
+        lambda buffer, **kwargs: flushed.append([record["event"] for record in buffer]) or True,
+    )
+    event, run_session = make_obs(worker_id="alpha")
+
+    with isolated_event_buffers(), run_session(trigger="outer", run_id="outer"):
+        event("outer.before")
+        with isolated_event_buffers():
+            pass
+        with run_session(trigger="joined", run_id="joined"):
+            event("outer.joined")
+        event("outer.after")
+
+    assert flushed == [
+        [
+            "run.started",
+            "outer.before",
+            "outer.joined",
+            "outer.after",
+            "run.finished",
+        ]
+    ]
+
+
 # ---- run_session: runtime flush gate -----------------------------------------
 
 

@@ -234,7 +234,7 @@ git diff --check
   scope contents.
 - [x] Task 4 GREEN: segment a pre-bound public event list at each `run_session` boundary so every
   flush contains only that run's lifecycle and payload records.
-- [ ] Task 4 contract pin: prove nested isolation restores live run-session ownership, including
+- [x] Task 4 contract pin: prove nested isolation restores live run-session ownership, including
   a deliberate missing-reset mutation that makes the named test RED.
 - [ ] Task 6 guards: reject every `_host(...)` spelling in framework Markdown guidance and scan
   every generated Jinja file, including `worker-template/README.md.jinja`.
@@ -254,8 +254,8 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: QA fix round 2, Task 4 contract pin. Next: add the nested-isolation live-session
-  restoration test and prove a missing session-token reset makes it RED.
+- Phase: QA fix round 2, Task 6 guards. Next: add RED guard rows for alternate `_host(...)`
+  spellings and the generated README inventory, then broaden the bounded scanner.
 - Round-2 decision: support repeated sequential sessions inside one public buffer. Each session
   flushes only records appended after its own boundary; records emitted in the public scope before,
   between, or after sessions remain visible in `scope.events` but are not attributed to a run.
@@ -264,6 +264,9 @@ or claims product value before #1046 lands.
   the pre-bound list boundary and flushing only the appended slice made all 300 cells pass.
 - Round-2 focused GREEN: `uv run pytest -q tests/test_obs.py` -> `330 passed in 0.29s`;
   touched-file ruff and `git diff --check` passed.
+- Round-2 isolation mutation: deleting `_RUN_SESSION_WORKERS.reset(session_token)` makes
+  `tests/test_obs.py::test_isolated_event_buffers_restores_live_run_session_ownership` fail with
+  two flushes and duplicated nested lifecycle records; restoring it returns `1 passed`.
 - Round-2 known failing tests: none.
 - QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
   tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
