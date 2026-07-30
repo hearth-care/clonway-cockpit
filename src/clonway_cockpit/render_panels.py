@@ -30,9 +30,11 @@ from clonway_cockpit.render_chrome import (
     _KEY_STYLE,
     ACCENT,
     DIM,
+    MenuItem,
     _highlight_not,
     _marker_cell,
     chip,
+    normalize_menu_items,
     page,
     screen_header,
 )
@@ -44,15 +46,20 @@ if TYPE_CHECKING:
 
 def render_menu(
     title: str,
-    options: list[tuple[str, str, str]],
+    options: Sequence[MenuItem | tuple[str, str, str]],
     *,
     label: str = "browse",
     selected: int | None = None,
     opens: list[int] | None = None,
     peak: int = 0,
 ) -> RenderableType:
-    """A shelf/filter picker in the cockpit's language: amber ❯-marked numbers,
-    cream titles, dim summaries. ``options`` is a list of (key, title, summary).
+    """A shelf/filter picker in the cockpit's language: amber ❯-marked shortcuts,
+    cream titles, dim summaries. ``options`` is a list of ``MenuItem`` (or a
+    legacy ``(key, title, summary)`` tuple, normalized once at this boundary —
+    see :func:`normalize_menu_items`), so the shortcut cell renders EXACTLY the
+    token the shell's dispatch map honours. A row with no shortcut (shelf-
+    capacity overflow) renders a blank marker cell — never a fake multi-
+    character token — and stays reachable by arrow + Enter.
 
     ``opens`` (optional, parallel to ``options``) carries each capability's
     lifetime open count; ``peak`` is the global max across ALL capabilities, so the
@@ -60,6 +67,7 @@ def render_menu(
     relative to the busiest tool. A zero-open row renders NO glyph (blank), so
     "never used" reads as absence; the notch is a single trailing char that never
     pushes or wraps the title/summary. ``opens=None`` → no notch (today's look)."""
+    items = normalize_menu_items(options)
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(no_wrap=True)
     table.add_column(no_wrap=True)
@@ -69,18 +77,19 @@ def render_menu(
     show_notch = opens is not None and peak > 0
     if show_notch:
         table.add_column(no_wrap=True, justify="right", style=_DIM_INFO)
-    for i, (key, otitle, summary) in enumerate(options):
+    for i, item in enumerate(items):
         is_sel = selected == i
+        marker = f"{item.shortcut}." if item.shortcut else ""
         cells: list[RenderableType] = [
-            _marker_cell(f"{key}.", selected=is_sel),
-            Text(otitle, style="bold" if is_sel else ""),
-            summary,
+            _marker_cell(marker, selected=is_sel),
+            Text(item.title, style="bold" if is_sel else ""),
+            item.summary,
         ]
         if show_notch:
             n = opens[i] if opens is not None and i < len(opens) else 0
             cells.append(Text(usage_notch(n, peak), style=_DIM_INFO))
         table.add_row(*cells)
-    back_sel = selected == len(options)
+    back_sel = selected == len(items)
     table.add_row(
         _marker_cell("q.", selected=back_sel),
         Text("Back", style="bold" if back_sel else DIM),

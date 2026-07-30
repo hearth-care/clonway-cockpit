@@ -24,7 +24,7 @@ from clonway_cockpit.model import Row as MRow
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import BlastRadius, CapabilitySpec
 from clonway_cockpit.render_chrome import *
-from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES
+from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES, MenuItem, normalize_menu_items
 from clonway_cockpit.render_panels import *
 from clonway_cockpit.render_panels import _DEFAULT_HELP_LINES, _FilterRow
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
@@ -135,35 +135,45 @@ def model_cockpit_screen(
 
 def model_menu(
     title: str,
-    options: list[tuple[str, str, str]],
+    options: Sequence[MenuItem | tuple[str, str, str]],
     *,
     label: str = "browse",
     selected: int | None = None,
 ) -> ScreenModel:
-    """The semantic twin of :func:`render_menu`. ``options`` is ``(key, title, summary)``;
-    a trailing ``back`` row mirrors the rendered Back option. ``selected`` indexes the
-    options, or ``len(options)`` for the Back row (matching the render)."""
+    """The semantic twin of :func:`render_menu`. ``options`` is normalized the SAME
+    way (see :func:`normalize_menu_items`) so the agent's advertised ``actions`` are
+    exactly the shortcuts Rich renders — no `10`/`11`… fake multi-character tokens
+    once a shelf passes nine items. A trailing ``back`` row mirrors the rendered
+    Back option. ``selected`` indexes the normalized items, or ``len(items)`` for
+    the Back row (matching the render). Row id stays the stable ``option:<ordinal>``
+    even though the rendered/dispatched shortcut may differ from the ordinal
+    (e.g. ordinal 10 → shortcut ``"a"``)."""
+    items = normalize_menu_items(options)
     rows = [
         MRow(
-            id=f"option:{key}",
-            label=otitle,
-            fields=[MField("summary", summary)],
+            id=f"option:{item.ordinal}",
+            label=item.title,
+            fields=(
+                [MField("summary", item.summary)]
+                + ([MField("shortcut", item.shortcut)] if item.shortcut else [])
+            ),
             selected=selected == i,
         )
-        for i, (key, otitle, summary) in enumerate(options)
+        for i, item in enumerate(items)
     ]
-    rows.append(MRow(id="back", label="Back", selected=selected == len(options)))
+    rows.append(MRow(id="back", label="Back", selected=selected == len(items)))
     sel_id: str | None = None
-    if selected == len(options):
+    if selected == len(items):
         sel_id = "back"
-    elif selected is not None and 0 <= selected < len(options):
-        sel_id = f"option:{options[selected][0]}"
+    elif selected is not None and 0 <= selected < len(items):
+        sel_id = f"option:{items[selected].ordinal}"
+    actions = ["up", "down", "enter", "q"] + [item.shortcut for item in items if item.shortcut]
     return ScreenModel(
         kind="shelf_menu",
         title=title,
         regions=[MRegion("menu", label, rows=rows)],
         selection=sel_id,
-        actions=["up", "down", "enter", "q"] + [key for key, _, _ in options],
+        actions=actions,
         meta={"label": label},
     )
 
