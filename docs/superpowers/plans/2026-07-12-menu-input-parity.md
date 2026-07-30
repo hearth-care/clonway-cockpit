@@ -14,85 +14,99 @@ equivalent key.
 
 **Modify first:** `tests/test_shell.py`, `tests/test_agent_driver.py`.
 
-- [ ] Replace/amend the misleading back-from-walk test so the script actually presses Backspace,
+- [x] Replace/amend the misleading back-from-walk test so the script actually presses Backspace,
   then a second observable action, then q.
-- [ ] RED: empty-stack root Backspace followed by Down/Enter remains in one run; assert frame/capture/
+- [x] RED: empty-stack root Backspace followed by Down/Enter remains in one run; assert frame/capture/
   activation counts and final q exit.
-- [ ] RED: two root Backspaces followed by a valid action; neither exits or recaptures.
-- [ ] RED: `serve_stdio` receives `backspace`, snapshot and quit; assert a post-Backspace Home frame,
-  valid JSON and clean exit rather than early EOF.
-- [ ] Preserve non-empty back-pop cursor, nested shelf/filter Backspace and q/Esc quit tests.
-- [ ] Record RED: current `_home` returns from the only top-level call.
-- [ ] Change only the empty-stack branch to `continue`; keep real-frame recursion/return.
-- [ ] Run focused GREEN and commit: `fix(shell): keep root backspace in session`.
+- [x] RED: two root Backspaces followed by a valid action; neither exits or recaptures.
+- [x] RED: `serve_stdio` receives `backspace`, snapshot and quit; assert a post-Backspace Home frame,
+  valid JSON and clean exit rather than early EOF. (Landed in `tests/test_serve_stdio.py`, not
+  `test_agent_driver.py` — that's the file that actually exercises `serve_stdio`; see deviation note
+  in HANDOFF NOTES.)
+- [x] Preserve non-empty back-pop cursor, nested shelf/filter Backspace and q/Esc quit tests.
+- [x] Record RED: current `_home` returns from the only top-level call.
+- [x] Change only the empty-stack branch to `continue`; keep real-frame recursion/return.
+- [x] Run focused GREEN and commit: `fix(shell): keep root backspace in session`.
 
 ## Task 2 — RED/GREEN: normalize stable menu items and tokens
 
 **Modify first:** `tests/test_screen_models.py`, `tests/test_screen_models_rest.py`,
 `tests/test_render_primitives.py`, new `tests/test_menu_input_parity.py`.
 
-- [ ] Specify `MenuItem` validation and legacy tuple normalization.
-- [ ] Matrix sizes 2/9/10/16/capacity/capacity+1 and assert exact shortcut sequence.
-- [ ] Prove ordinal row IDs/selection are unchanged and shortcut is a separate field/fact.
-- [ ] Prove Rich and model advertise the same non-None tokens; all are one character, unique and
+- [x] Specify `MenuItem` validation and legacy tuple normalization.
+- [x] Matrix sizes 2/9/10/16/capacity/capacity+1 and assert exact shortcut sequence.
+- [x] Prove ordinal row IDs/selection are unchanged and shortcut is a separate field/fact.
+- [x] Prove Rich and model advertise the same non-None tokens; all are one character, unique and
   exclude q/control/semantic key names.
-- [ ] Prove overflow renders no fake token and remains selected/arrow-addressable.
-- [ ] Record RED: current option 10 renders/advertises `10`.
-- [ ] Implement additive `MenuItem`, normalizer and deterministic alphabet. Keep legacy tuple API.
-- [ ] Make render/model consume normalized items once. Do not change wire schema.
-- [ ] Run focused GREEN and commit: `feat(menu): assign human-enterable action tokens`.
+- [x] Prove overflow renders no fake token and remains selected/arrow-addressable.
+- [x] Record RED: current option 10 renders/advertises `10`.
+- [x] Implement additive `MenuItem`, normalizer and deterministic alphabet. Keep legacy tuple API.
+- [x] Make render/model consume normalized items once. Do not change wire schema.
+- [x] Run focused GREEN and commit: `feat(menu): assign human-enterable action tokens`.
 
 ## Task 3 — RED/GREEN: route current tokens and legacy aliases once
 
 **Modify first:** `tests/test_shell.py`, `tests/test_menu_input_parity.py`.
 
-- [ ] Register 16 unique capabilities and spy on `_open_capability` public effects (usage/audit/run).
-- [ ] Press each displayed token; assert exact ordinal capability opens once.
-- [ ] Prove `a` opens item 10, `g` opens item 16 and q returns.
-- [ ] Prove human-shaped `1`,`0` never combines into item 10.
-- [ ] Prove agent-shaped legacy `"10"` opens item 10 for compatibility but is absent from actions.
-- [ ] Drive unknown/reserved/uppercase/duplicate/malformed values and overflow Arrow/Enter behavior.
-- [ ] Preserve single-spec direct open, Home need digits, shelf letters, back row and effect gates.
-- [ ] Replace primary `key.isdigit()` dispatch with one normalized shortcut map plus the narrow
+- [x] Register 16 unique capabilities and spy on `_open_capability` public effects (usage/audit/run).
+- [x] Press each displayed token; assert exact ordinal capability opens once.
+- [x] Prove `a` opens item 10, `g` opens item 16 and q returns.
+- [x] Prove human-shaped `1`,`0` never combines into item 10.
+- [x] Prove agent-shaped legacy `"10"` opens item 10 for compatibility but is absent from actions.
+- [x] Drive unknown/reserved/uppercase/duplicate/malformed values and overflow Arrow/Enter behavior.
+- [x] Preserve single-spec direct open, Home need digits, shelf letters, back row and effect gates.
+- [x] Replace primary `key.isdigit()` dispatch with one normalized shortcut map plus the narrow
   multi-character ordinal compatibility branch.
-- [ ] Run focused GREEN and commit: `fix(menu): share one rendered and dispatched action map`.
+- [x] Run focused GREEN and commit: `fix(menu): share one rendered and dispatched action map`.
+  (Landed in the SAME commit as Task 2 — `feat(menu): assign human-enterable action tokens` — since
+  `_shelf()` needed the MenuItem/alphabet to be testable end-to-end; see HANDOFF NOTES.)
 
 ## Task 4 — RED/GREEN: let workers declare Home action facts
 
 **Modify first:** `tests/test_model.py`, `tests/test_screen_models.py`, new focused state/model tests.
 
-- [ ] RED legacy constructor matrix plus empty action declarations; preserve every positional field.
-- [ ] RED state with `home_actions=("z",)` and Needs `actions=("enter", "z")`; assert global/row
+- [x] RED legacy constructor matrix plus empty action declarations; preserve every positional field.
+- [x] RED state with `home_actions=("z",)` and Needs `actions=("enter", "z")`; assert global/row
   facts, order, dedupe and selection without changing other fields.
-- [ ] Matrix duplicates, whitespace/control/invalid types and collisions with base actions. Invalid
+- [x] Matrix duplicates, whitespace/control/invalid types and collisions with base actions. Invalid
   worker hints cannot crash Home or remove framework actions.
-- [ ] Implement additive `NeedsItem.actions` and `CockpitState.home_actions`; normalize only in the
+- [x] Implement additive `NeedsItem.actions` and `CockpitState.home_actions`; normalize only in the
   pure model projection. Do not import worker code or add callbacks/I/O.
-- [ ] Assert workers with empty defaults remain model-shape compatible.
+- [x] Assert workers with empty defaults remain model-shape compatible.
 - [ ] Use xbook #1015's worktree/candidate pin to drive real active/deferred `z`; assert the
   declaration matches handler behavior and only the reversible local park store changes.
-- [ ] Commit: `feat(model): expose worker-declared home actions`.
+  DEFERRED — Auto-Bookkeeper #1015 is a separate repo/consumer PR; this framework PR ships the
+  additive state fields + model projection it depends on, but the real xbook `z` drive is that
+  consumer's own acceptance slice per this plan's ownership section. See HANDOFF NOTES.
+- [x] Commit: `feat(model): expose worker-declared home actions`.
 
 ## Task 5 — contract, agent and real-shape acceptance
 
-- [ ] Drive a 16-item framework host through human-shaped injected keys and `serve_stdio`; compare
+- [x] Drive a 16-item framework host through human-shaped injected keys and `serve_stdio`; compare
   ordered titles, row IDs, shortcuts, actions, selection and exact opened capability.
-- [ ] Assert no `unstructured` frames, no frame-per-key timeout and no early process exit.
-- [ ] Assert usage/audit open exactly once and any nested write still reaches existing gate/default
+- [x] Assert no `unstructured` frames, no frame-per-key timeout and no early process exit.
+- [x] Assert usage/audit open exactly once and any nested write still reaches existing gate/default
   denial; navigation itself creates no completion receipt.
-- [ ] Run contract/model shape tests and old-agent legacy alias regression.
+- [x] Run contract/model shape tests and old-agent legacy alias regression.
 - [ ] Create a temporary consumer install/pin or use Auto-Bookkeeper #1014/#1015 worktrees after
   this branch is published; drive the real 16-item shelf, root Backspace and `z` facts without live
   provider/accounting effects.
-- [ ] Rebase against #114 if it merged; resolve shell/model overlap semantically and rerun Doctor
-  remedy tests. It is not a product dependency.
+  DEFERRED — cross-repo; no Auto-Bookkeeper worktree/checkout exists in this session/workspace. The
+  framework-side 16-item acceptance (contract.assert_drives_clean + serve_stdio parity) is done in
+  `tests/test_contract.py`; the real #1014/#1015 consumer drive is that repo's own PR.
+- [x] Rebase against #114 if it merged; resolve shell/model overlap semantically and rerun Doctor
+  remedy tests. It is not a product dependency. (#114 is still open/unmerged at the time of this
+  implementation — nothing to rebase against yet. Per the design doc §9 it is explicitly orthogonal
+  and neither PR blocks the other; this PR proceeds independently.)
 - [ ] Run independent acceptance, architecture, agent-parity, security and operability QA; fix all
   blockers and rerun.
-- [ ] Commit: `test(menu): prove human and agent navigation parity`.
+  Independent Foundry QA runs after this PR flips to `agent:needs-qa` — not something the builder
+  self-certifies.
+- [x] Commit: `test(menu): prove human and agent navigation parity`.
 
 ## Task 6 — gates, consumer handoff and release
 
-- [ ] Run at minimum:
+- [x] Run at minimum:
 
   ```text
   uv run pytest -q \
@@ -113,13 +127,92 @@ equivalent key.
   git diff --check
   ```
 
-- [ ] Update framework docs only if the advertised menu action grammar is documented; record the
-  exact token alphabet, overflow and legacy agent alias.
-- [ ] Update HANDOFF NOTES with RED/GREEN commits, final symbols, compatibility/shape verdict,
+  (`tests/test_state.py` does not exist in this repo — deviation: the worker-declared home-action
+  tests landed in the new `tests/test_home_actions.py` instead; `tests/test_serve_stdio.py` was
+  added to the focused run since that's the file that actually exercises `serve_stdio`, not
+  `test_agent_driver.py`. See HANDOFF NOTES.)
+- [x] Update framework docs only if the advertised menu action grammar is documented; record the
+  exact token alphabet, overflow and legacy agent alias. (`docs/agent-screen-model.md` — new
+  "Shelf menu action tokens" section; `model.py`'s Row.id docstring updated `option:<key>` →
+  `option:<ordinal>`.)
+- [x] Update HANDOFF NOTES with RED/GREEN commits, final symbols, compatibility/shape verdict,
   Auto-Bookkeeper real-shape proof, gates and independent QA.
-- [ ] Push and verify live head/diff/mergeability/checks; hand to independent Foundry QA.
+- [x] Push and verify live head/diff/mergeability/checks; hand to independent Foundry QA.
 - [ ] On merge, post exact merge SHA to Auto-Bookkeeper #1014/#1015. The consumers coordinate one
-  pin and own deployed xbook observations.
+  pin and own deployed xbook observations. NOT DONE — this PR has not merged yet (builders never
+  merge; independent QA + the operator do). Whoever merges this PR should post the merge SHA to
+  #1014/#1015 per the design doc, or re-dispatch a follow-up to do so.
+
+## HANDOFF NOTES
+
+- **Status:** all six tasks implemented and pushed; full local gates green; PR handed to
+  independent Foundry QA (`agent:needs-qa`).
+- **Commits (RED/GREEN per task), on `Codex/menu-input-parity-plan`:**
+  - `fix(shell): keep root backspace in session` — Task 1.
+  - `feat(menu): assign human-enterable action tokens` — Tasks 2 **and** 3 combined (see
+    deviation below).
+  - `feat(model): expose worker-declared home actions` — Task 4.
+  - `test(menu): prove human and agent navigation parity` — Task 5.
+  - This doc/checkbox/HANDOFF-NOTES update — Task 6.
+- **Final symbols:**
+  - `clonway_cockpit.render_chrome.MenuItem` (frozen dataclass: `ordinal`, `title`, `summary`,
+    `shortcut`), `MENU_SHORTCUT_ALPHABET` (34 slots: `1`-`9` then `a`-`z` excluding `q`),
+    `assign_menu_shortcuts(n)`, `normalize_menu_items(options)` — all re-exported via
+    `clonway_cockpit.render`.
+  - `render_menu`/`model_menu` now take `Sequence[MenuItem | tuple[str,str,str]]` (legacy tuples
+    still accepted, normalized once at the boundary).
+  - `shell._shelf()` builds `MenuItem`s directly and dispatches through one `by_shortcut` map
+    (normalized to lowercase) plus a narrow multi-character-digit legacy ordinal alias branch.
+  - `state.NeedsItem.actions: tuple[str, ...] = ()` (appended last, after `source_id`) and
+    `state.CockpitState.home_actions: tuple[str, ...] = ()` (appended last, after `breadcrumb`).
+  - `render_models._normalize_actions`, `_needs_row_fields` — the normalize/merge helpers behind
+    the worker-declared Home action facts.
+- **Compatibility/shape verdict:** additive throughout — `SCHEMA_VERSION` unchanged (still
+  `"1.0"`), the `test_to_dict_carries_schema_version` shape-pin test untouched and green, every
+  existing positional/keyword construction of `NeedsItem`/`CockpitState`/menu tuples still works.
+  Row ids stay `option:<ordinal>` (never the shortcut). Legacy multi-character digit aliases
+  (e.g. `"10"`) still open the right capability but are never advertised.
+- **Auto-Bookkeeper real-shape proof:** done at the FRAMEWORK level only —
+  `tests/test_contract.py` drives a real 16-item shelf (Auto-Bookkeeper's actual shelf-G shape)
+  both via injected human-shaped keys and the real `serve_stdio` JSON wire, cross-checking
+  titles/row-ids/shortcuts/actions/selection and the exact opened capability (`a`→ordinal 10,
+  `g`→ordinal 16), a write-gated 16th capability declining over both channels, usage/audit
+  opening exactly once, and plain navigation minting zero audit events. The actual
+  Auto-Bookkeeper #1014/#1015 consumer pin+drive is out of scope for this repo/session (no
+  xbook checkout exists here) — that is those repos' own consumer-acceptance PRs per this design's
+  §9 ownership split.
+- **Gates (this session, on this branch's HEAD):**
+  - `uv run pytest -q` (focused list from Task 6, substituting `test_home_actions.py` for the
+    non-existent `test_state.py` and adding `test_serve_stdio.py`) → 274 passed.
+  - `uv run pytest -q` (full suite) → 1177 passed.
+  - `uv run ruff check src tests` → All checks passed.
+  - `uv run ruff format --check src tests` → 160 files already formatted.
+  - `uv run mypy` → Success: no issues found in 67 source files.
+  - `uv run pre-commit run --all-files` → all hooks passed.
+  - `git diff --check` → clean (no whitespace errors).
+  - Rebase check: `origin/main` (`8694e30`) is an ancestor of this branch's HEAD — no rebase
+    needed.
+- **Independent QA:** not yet run — this PR flips to `agent:needs-qa` as the next step; the
+  auditor's own exact-head gate re-run is the merge-gate receipt per the dispatch instructions.
+- **Deviations from the plan (all recorded above in-line too):**
+  1. Tasks 2 and 3 landed in ONE commit (`feat(menu): assign human-enterable action tokens`)
+     instead of two — `_shelf()`'s dispatch needed the `MenuItem`/alphabet types to be
+     meaningfully testable end-to-end, so splitting them into separate RED/GREEN commits would
+     have meant an intermediate commit with an unused type. No functional deviation from the
+     design.
+  2. `tests/test_state.py` doesn't exist in this repo; Task 4's new state/model tests landed in
+     the new `tests/test_home_actions.py`.
+  3. Task 1's `serve_stdio` RED test landed in `tests/test_serve_stdio.py` (the file that
+     actually exercises `serve_stdio`) rather than `tests/test_agent_driver.py` (which drives the
+     in-process `CockpitDriver`, not the JSON wire).
+  4. Task 4's real xbook `z` drive and Task 5's real Auto-Bookkeeper #1014/#1015 consumer
+     drive are DEFERRED — cross-repo, no consumer checkout in this workspace; those are the
+     consumer repos' own acceptance slices per the design's ownership section (§9).
+  5. #114 (Doctor remedy actions) is still open/unmerged at the time of this work — nothing to
+     rebase against; the design doc (§9) already declares it orthogonal/non-blocking.
+- **OPERATOR TODO:** after this PR merges, post the exact merge SHA as a comment on
+  Auto-Bookkeeper #1014 and #1015 per the design doc's consumer-handoff step (the consumers
+  coordinate one shared pin).
 
 ## Stop conditions
 

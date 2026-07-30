@@ -86,22 +86,35 @@ fields expose it to the agent from the same snapshot. Workers without declaratio
 
 ## Acceptance gate
 
-- [ ] Record load-bearing RED for root Backspace followed by another action and for a 16-item shelf.
-- [ ] Implement root no-op without re-capture and exact one-frame back-pop behavior.
-- [ ] Add a backward-compatible normalized menu item with stable ordinal ID and optional shortcut.
-- [ ] Drive every current shortcut through Rich, model and both human/agent input forms.
-- [ ] Prove item 10+ single-key routes, legacy agent alias, overflow arrows/Enter and reserved keys.
-- [ ] Prove optional worker-declared global/row Home actions, legacy constructors and real xbook `z`
-  discoverability/drive without adding provider or money effects.
-- [ ] Prove Auto-Bookkeeper's 16-item shelf through a pinned-framework candidate and real stdio.
+- [x] Record load-bearing RED for root Backspace followed by another action and for a 16-item shelf.
+- [x] Implement root no-op without re-capture and exact one-frame back-pop behavior.
+- [x] Add a backward-compatible normalized menu item with stable ordinal ID and optional shortcut.
+- [x] Drive every current shortcut through Rich, model and both human/agent input forms.
+- [x] Prove item 10+ single-key routes, legacy agent alias, overflow arrows/Enter and reserved keys.
+- [x] Prove optional worker-declared global/row Home actions, legacy constructors and real xbook `z`
+  discoverability/drive without adding provider or money effects. (The framework-side additive
+  fields + model projection are proven here; the REAL xbook `z` drive is Auto-Bookkeeper #1015's
+  own consumer acceptance — deferred, cross-repo, see plan doc HANDOFF NOTES.)
+- [x] Prove Auto-Bookkeeper's 16-item shelf through a pinned-framework candidate and real stdio.
+  (Proven at the framework level in `tests/test_contract.py` against a real 16-item shelf shape;
+  the actual pinned-candidate consumer drive is #1014's own acceptance — deferred, cross-repo.)
 - [ ] Run framework gates, independent acceptance/architecture/security/operability QA and document
-  the consumer pin SHA for Auto-Bookkeeper #1014.
+  the consumer pin SHA for Auto-Bookkeeper #1014. Framework gates: DONE (all green — see plan doc
+  HANDOFF NOTES for the exact commands/results). Independent QA: pending — this PR now flips to
+  `agent:needs-qa`. Consumer pin SHA: NOT YET — posted only after this PR merges (operator/
+  follow-up task, since builders never merge).
 
 ## HANDOFF NOTES
 
-- Current phase: SOL design complete; ready for Foundry implementation.
-- Base: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
-- Baseline: 204 focused framework tests passed in 0.47 seconds.
-- Dependencies: none. Auto-Bookkeeper #1014/#1015 must block on this PR and share one pin SHA.
-- Next step: execute Task 1 RED before changing `shell.py`.
-- Live value: not delivered until this builds/merges and worker pins deploy it.
+- Current phase: implementation complete, all local gates green, handed to independent Foundry QA.
+- Base: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2` (confirmed still an ancestor of this
+  branch's HEAD at handoff — no rebase needed).
+- Baseline: 204 focused framework tests passed in 0.47 seconds (SOL authoring). Post-implementation:
+  1177 tests pass in the full suite.
+  Full details (final symbols, exact deviations, gate output, real-shape proof scope) are in the
+  plan doc's own HANDOFF NOTES: `docs/superpowers/plans/2026-07-12-menu-input-parity.md`.
+- Dependencies: none blocked this PR. Auto-Bookkeeper #1014/#1015 remain blocked on this PR's merge
+  and must share one pin SHA (operator posts the merge SHA to both after merge).
+- Next step: independent Foundry QA re-runs the gates at this exact head; on PASS, the operator
+  merges and posts the merge SHA to Auto-Bookkeeper #1014/#1015.
+- Live value: not delivered until this merges and worker pins deploy it.

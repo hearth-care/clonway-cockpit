@@ -8,7 +8,7 @@ structure instead of scraping rendered ANSI text.
 
 ``Row.id`` values are a SEMI-PUBLIC CONTRACT — agents assert on them; keep them
 stable. The ids minted in M1:
-  ``pill:<i>``  ``need:<i>``  ``shelf:<LETTER>``  ``option:<key>``  ``back``
+  ``pill:<i>``  ``need:<i>``  ``shelf:<LETTER>``  ``option:<ordinal>``  ``back``
   ``change:<i>``  ``precond:<i>``
 """
 

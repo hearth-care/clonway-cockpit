@@ -14,7 +14,7 @@ any agent script that asserts on it.
 | Screen (`ScreenModel.kind`) | Row ids | key `meta` |
 |---|---|---|
 | `home` | `pill:<i>`, `need:<i>`, `shelf:<LETTER>` | `app_label`, `tenant_name` |
-| `shelf_menu` | `option:<key>`, `back` | `label` |
+| `shelf_menu` | `option:<ordinal>`, `back` | `label` |
 | `walk.preflight` | `change:<i>`, `precond:<i>` | `ready`, `equivalent_cli`, `remedy` |
 | `walk.result` | (prose region, no rows) | `ok`, `message`, `links` |
 | `card` | (prose region, no rows) | `equivalent_cli` |
@@ -44,6 +44,32 @@ framework `render_*` ships without one.
 `ScreenModel.actions` is a best-effort list of keys/verbs the screen honours.
 `ScreenModel.meta` carries screen-specific facts (e.g. preflight `ready`/`equivalent_cli`,
 result `ok`/`links`).
+
+## Shelf menu action tokens
+
+A `shelf_menu` row's stable identity (`option:<ordinal>`) and its rendered/dispatched
+direct-action key are two different facts — a row's `option:<ordinal>` id never changes,
+but the one-character shortcut it advertises depends on its position:
+
+- ordinals 1–9 get shortcuts `"1"`–`"9"` (byte-compatible with every existing shelf);
+- ordinal 10 onward gets deterministic lowercase letters `a, b, c, …` — **excluding `q`**
+  (reserved for Back) — so ordinal 10 is `"a"`, ordinal 16 is `"g"`, and so on;
+- the alphabet has 34 slots total (`1`-`9` + `a`-`z` minus `q`); a row past capacity
+  (ordinal 35+) advertises **no shortcut** (`shortcut: None` — absent from both the row's
+  `shortcut` field and `ScreenModel.actions`) and is reachable only by `up`/`down`/`enter`.
+  This is a fail-safe for an oversized shelf, not the intended fleet UX — no worker shelf
+  should exceed 34 capabilities.
+- a row's `shortcut` field (when present) is a `Field(label="shortcut", ...)` alongside
+  `summary`, distinct from the stable `id`.
+
+Both channels normalize a one-character input to lowercase before dispatch (an uppercase
+send routes the same as lowercase). **Legacy compatibility alias:** a multi-character
+all-digit message (e.g. `{"key": "10"}`) still opens the capability at that ordinal — this
+is a no-human-equivalent input a raw keypress can never produce in one token, kept ONLY so
+an agent that cached an older framework's advertised `"10"`-style value still works. It is
+never rendered, never appears in `ScreenModel.actions`, and two separate single-character
+presses (`"1"` then `"0"`) can never combine into it — each key dispatches (or doesn't)
+immediately.
 
 ## Driving headlessly
 
