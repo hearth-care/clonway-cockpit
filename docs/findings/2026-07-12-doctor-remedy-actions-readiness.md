@@ -89,7 +89,10 @@ workarounds. Its six-task plan fixes the type contract, interactive shell, agent
 receipt and generated-worker compatibility as one coherent public seam. Auto-Bookkeeper #1008 can
 then pin the merged revision and implement only domain diagnosis/remedies.
 
-`RUNBOOK DELTA: none` — shared framework API; consumer documents operator-visible change.
+`RUNBOOK DELTA` posted on `hearth-care/auto-orchestrator#196`: Doctor remedies are now
+numbered/selectable, focused selection follows stable remedy identity through rebuilds, capability
+actions retain the guarded-write route, attempted actions re-probe and emit one receipt, and
+operators must review a refreshed selection when the target disappears or identity is ambiguous.
 
 ## Implemented public contract
 

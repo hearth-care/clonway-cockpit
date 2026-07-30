@@ -116,9 +116,10 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: all six tasks complete; exact-head receipt commit and finish protocol pending.
-- Next concrete step: push this final receipt, rerun exact-head pytest/pre-commit/diff checks,
-  verify a clean synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
+- Current phase: QA FAIL round 2 behavioral, runbook and history fixes complete; exact-head full
+  gates and finish protocol pending.
+- Next concrete step: run exact-head full gates, update/push this receipt, verify a clean
+  synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -151,7 +152,10 @@ Foundry completes only when hermetic public-path tests prove:
   revision.
 - No current framework PR exposes this seam; this package is the sole proposed owner.
 - No code, worker state or external system was mutated during authoring.
-- `RUNBOOK DELTA: none` — framework contract only; consuming workers document their operator copy.
+- `RUNBOOK DELTA` posted on `hearth-care/auto-orchestrator#196`: numbered/arrow remedy selection,
+  Enter action/open, focused stable selection across rebuilds, guarded capability writes, one
+  post-action re-probe/receipt, bounded failure copy, and explicit review after a disappeared or
+  ambiguous target.
 
 ### QA FAIL round (qa-claude-20260730T084851Z-65419-1) — fixer-claude-20260730T141659Z-27593-1
 
@@ -189,12 +193,13 @@ Foundry completes only when hermetic public-path tests prove:
 - Gates after this round: `uv run pytest -q` -> `1186 passed`; `uv run ruff check .` -> all passed;
   `uv run ruff format --check .` -> `167 files already formatted`; `uv run mypy src` -> no issues in
   67 source files; `uv run pre-commit run --all-files` -> all 8 hooks passed.
-- `RUNBOOK DELTA: none` — this round is fixes to framework-internal Doctor logic and tests only; no
-  operator-facing step changed.
+- Superseded runbook classification: although that fixer round did not add another key, the PR as a
+  whole changes the operator-facing Doctor selection/action rhythm. The required delta is now posted
+  on `hearth-care/auto-orchestrator#196`.
 
 ### QA FAIL round 2 (qa-codex-20260730T143737Z-89916-1) — fixer-codex-20260730T145425Z-89916-5
 
-- Current phase: Task 2 focus-coherence fix complete; Task 3 exception-model safety is next.
+- Current phase: all QA FAIL round 2 findings fixed; exact-head full gates and finish protocol next.
 - Doctor now preserves the remedy the operator actually selected by unique stable remedy/probe
   identity across predecessor insertion/removal and reorder. A manual arrow selection remains
   authoritative after the initial focus jump; a disappeared target is never treated as preserved.
@@ -218,4 +223,7 @@ Foundry completes only when hermetic public-path tests prove:
   `git diff --check` clean.
 - Task 5 parity gates: exact doctor-drive/model/contract/screen-model suite `31 passed`; full-tree
   Ruff and format passed; mypy reported no issues in 67 source files; `git diff --check` clean.
+- Task 6: posted the required runbook delta; rebased onto latest `origin/main`; rewrote the one
+  offending commit message without changing its tree; verified the PR history contains no
+  prohibited co-author/AI trailer; pushed the rewritten history with an exact lease.
 - Known-failing tests: none.
