@@ -116,12 +116,17 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: Task 1 complete.
-- Next concrete step: Task 2 RED tests for classified report-build failures and focused Doctor
-  selection.
+- Current phase: Task 2 complete.
+- Next concrete step: Task 3 RED tests for selectable action kinds, exact capability routing and
+  agent-mode safety.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
+- Task 2 gates: shell/model suite `121 passed`; generated-worker mapping is
+  `tests/test_worker_template.py` (no `tests/test_generated_worker.py` exists) and `25 passed`;
+  Ruff and mypy passed; `git diff --check` clean.
+- Current-main deviation: the plan named a generated-worker test file that is not present; the
+  canonical worker-template subprocess suite is used instead.
 - Known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in

@@ -16,7 +16,7 @@ from rich.console import Console
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.audit_log import AuditEvent
-from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, fixes_for
 from clonway_cockpit.registry import (
     CapabilitySpec,
     WizardContext,
@@ -937,6 +937,254 @@ def test_multi_spec_shelf_still_shows_the_menu(usage_to_tmp):
 
 
 # --- the doctor loop ----------------------------------------------------------
+
+
+def _row_fields(model, region: str, row: int) -> dict[str, str]:
+    selected_region = next(item for item in model.regions if item.role == region)
+    return {field.label: field.value for field in selected_region.rows[row].fields}
+
+
+def test_doctor_classifies_report_failure_as_a_structured_probe(usage_to_tmp):
+    failure = RuntimeError("worker-owned sensitive detail")
+    classified: list[Exception] = []
+    models = []
+    fix = Fix(
+        "Review source",
+        "worker review",
+        remedy_id="remedy.source.review",
+        probe_id="probe.source",
+        capability_key="review",
+        focus="source",
+    )
+    probe = Probe("Source", "error", "Safe worker copy", fix, "probe.source", "rev-1")
+    host = _FakeHost().as_host()
+
+    def raise_failure() -> object:
+        raise failure
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_failure,
+        doctor_classify_report_failure=lambda exc: classified.append(exc) or probe,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    assert classified == [failure]
+    assert [model.kind for model in models] == ["doctor"]
+    model = models[0]
+    assert _row_fields(model, "probes", 0) == {
+        "level": "error",
+        "detail": "Safe worker copy",
+        "probe_id": "probe.source",
+        "evidence_revision": "rev-1",
+        "fix_id": "fix:0",
+    }
+    assert _row_fields(model, "fixes", 0) == {
+        "cmd": "worker review",
+        "remedy_id": "remedy.source.review",
+        "probe_id": "probe.source",
+        "action_kind": DoctorActionKind.OPEN_CAPABILITY.value,
+        "capability_key": "review",
+        "focus": "source",
+        "confirm": "false",
+    }
+
+
+@pytest.mark.parametrize("classifier_result", [None, "not-a-probe"])
+def test_doctor_classifier_invalid_result_is_a_safe_modeled_failure(
+    usage_to_tmp, classifier_result
+):
+    models = []
+    host = _FakeHost().as_host()
+
+    def raise_failure() -> object:
+        raise RuntimeError("must-not-leak")
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_failure,
+        doctor_classify_report_failure=lambda exc: classifier_result,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    assert [model.kind for model in models] == ["doctor"]
+    assert models[0].selection is None
+    fields = _row_fields(models[0], "probes", 0)
+    assert fields["level"] == "error"
+    assert "must-not-leak" not in fields["detail"]
+
+
+def test_doctor_classifier_exception_is_a_safe_modeled_failure(usage_to_tmp):
+    models = []
+    host = _FakeHost().as_host()
+
+    def raise_report_failure() -> object:
+        raise RuntimeError("report-secret")
+
+    def raise_classifier_failure(exc: Exception) -> Probe:
+        raise LookupError("classifier-secret")
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_report_failure,
+        doctor_classify_report_failure=raise_classifier_failure,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    detail = _row_fields(models[0], "probes", 0)["detail"]
+    assert "LookupError" in detail
+    assert "report-secret" not in detail
+    assert "classifier-secret" not in detail
+
+
+def test_doctor_rebuild_uses_the_same_failure_classifier(usage_to_tmp):
+    builds = 0
+    rebuild_failure = RuntimeError("rebuild-secret")
+    classified = []
+    models = []
+    initial_probe = Probe(
+        "Initial",
+        "warn",
+        "stale",
+        Fix("Refresh", "worker refresh", run=lambda: "refreshed"),
+        "probe.initial",
+        "rev-1",
+    )
+    classified_probe = Probe(
+        "Refresh source",
+        "error",
+        "Safe rebuild copy",
+        None,
+        "probe.rebuild",
+        "rev-2",
+    )
+    host = _FakeHost(probes=[initial_probe]).as_host()
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if builds == 2:
+            raise rebuild_failure
+        return object()
+
+    host = shell.replace(
+        host,
+        doctor_build_report=build_report,
+        doctor_classify_report_failure=lambda exc: classified.append(exc) or classified_probe,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, keys.ENTER, "q"]))
+
+    assert classified == [rebuild_failure]
+    assert [model.kind for model in models].count("doctor") == 2
+    assert _row_fields(models[-1], "probes", 0)["probe_id"] == "probe.rebuild"
+
+
+def test_doctor_focus_selects_probe_then_remedy_through_capability_open(usage_to_tmp):
+    models = []
+    probes = [
+        Probe(
+            "First",
+            "warn",
+            "first",
+            Fix(
+                "Open first",
+                "worker first",
+                remedy_id="remedy.first",
+                probe_id="probe.first",
+                capability_key="first",
+            ),
+            "probe.first",
+            "rev-1",
+        ),
+        Probe(
+            "Second",
+            "error",
+            "second",
+            Fix(
+                "Open second",
+                "worker second",
+                remedy_id="remedy.second",
+                probe_id="probe.second",
+                capability_key="second",
+            ),
+            "probe.second",
+            "rev-1",
+        ),
+    ]
+    register_capability(
+        CapabilitySpec(
+            key="doctor",
+            shelf="G",
+            title="Doctor",
+            summary="Health",
+            equivalent_cli="worker doctor",
+        )
+    )
+    host = shell.replace(_FakeHost(probes=probes).as_host(), on_screen=models.append)
+
+    shell._open_capability(host, "doctor", _Screen(), _keys(["q"]), focus="probe.second")
+    assert models[-1].selection == "fix:1"
+    assert models[-1].meta["focus_requested"] == "probe.second"
+    assert models[-1].meta["focus_matched"] == "probe.second"
+
+    models.clear()
+    shell._open_capability(host, "doctor", _Screen(), _keys(["q"]), focus="remedy.second")
+    assert models[-1].selection == "fix:1"
+    assert models[-1].meta["focus_matched"] == "remedy.second"
+
+
+def test_home_need_threads_focus_into_doctor_selection(usage_to_tmp):
+    models = []
+    probe = Probe(
+        "Focused",
+        "error",
+        "focused",
+        Fix(
+            "Open focused",
+            "worker focused",
+            remedy_id="remedy.focused",
+            probe_id="probe.focused",
+            capability_key="focused",
+        ),
+        "probe.focused",
+        "rev-1",
+    )
+    register_capability(
+        CapabilitySpec(
+            key="doctor",
+            shelf="G",
+            title="Doctor",
+            summary="Health",
+            equivalent_cli="worker doctor",
+        )
+    )
+    state = CockpitState(
+        tenant_name="Clonway",
+        needs=(
+            NeedsItem(
+                "Focused failure",
+                "review",
+                "error",
+                capability_key="doctor",
+                focus="probe.focused",
+            ),
+        ),
+    )
+    host = shell.replace(
+        _FakeHost(state=state, probes=[probe]).as_host(),
+        on_screen=models.append,
+    )
+
+    shell.run_cockpit(host, read_key=_keys([keys.ENTER, "q", "q"]), screen=_Screen())
+
+    doctor_model = next(model for model in models if model.kind == "doctor")
+    assert doctor_model.selection == "fix:0"
+    assert doctor_model.meta["focus_requested"] == "probe.focused"
+    assert doctor_model.meta["focus_matched"] == "probe.focused"
 
 
 def test_doctor_runs_the_selected_runnable_fix_on_enter(usage_to_tmp):

@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
+from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, action_kind
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -39,9 +40,6 @@ from clonway_cockpit.render_chrome import (
     screen_header,
 )
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
-
-if TYPE_CHECKING:
-    from clonway_cockpit.doctor import Fix, Probe
 
 
 def render_menu(
@@ -409,6 +407,8 @@ def render_doctor(
     usage: dict | None = None,
     specs: list[CapabilitySpec] | None = None,
     app_label: str = "xbook",
+    focus_requested: str | None = None,
+    focus_matched: str | None = None,
 ) -> RenderableType:
     """The Doctor screen — the same probe table + verdict as the static view, but
     the fixes become a navigable list. ``selected`` indexes the RUNNABLE fixes
@@ -452,12 +452,14 @@ def render_doctor(
         ftable.add_column(overflow="fold")  # chip / tag
         run_i = 0
         for f in fixes:
-            if f.run is not None:
+            kind = action_kind(f)
+            if kind is not DoctorActionKind.DISPLAY_ONLY:
                 is_sel = selected == run_i
                 run_i += 1
+                title = f"Open {f.title}" if kind is DoctorActionKind.OPEN_CAPABILITY else f.title
                 ftable.add_row(
                     _marker_cell(f"{run_i}.", selected=is_sel),
-                    Text(f.title, style="bold" if is_sel else ""),
+                    Text(title, style="bold" if is_sel else ""),
                     chip(f.cmd),
                 )
             else:
@@ -478,7 +480,7 @@ def render_doctor(
         # Show the full move/run footer only when at least one fix is runnable.
         # Display-only fixes (run=None) make ↑↓ and ⏎ no-ops, so advertising them
         # misleads the operator — fall back to the back-only footer in that case.
-        if any(f.run is not None for f in fixes):
+        if any(action_kind(f) is not DoctorActionKind.DISPLAY_ONLY for f in fixes):
             parts.append(_doctor_footer())
         else:
             parts.append(_doctor_back_only_footer())

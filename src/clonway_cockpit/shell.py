@@ -36,6 +36,12 @@ from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
 from clonway_cockpit.audit_log import AuditEvent, AuditSink
+from clonway_cockpit.doctor import (
+    DoctorActionKind,
+    DoctorRemedyReceipt,
+    Probe,
+    action_kind,
+)
 from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
@@ -246,6 +252,11 @@ class Host:
         ]
         | None
     ) = None
+
+    # Optional Doctor extensions. The worker owns failure classification/redaction
+    # and receipt persistence; absent callbacks preserve legacy behavior.
+    doctor_classify_report_failure: Callable[[Exception], Probe] | None = None
+    doctor_on_receipt: Callable[[DoctorRemedyReceipt], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -810,7 +821,7 @@ def _open_capability(
     host.usage.record(key, "open")
     _safe_audit_launch(host, spec, focus=focus)
     if key == "doctor":
-        _doctor(host, screen, read_key)
+        _doctor(host, screen, read_key, focus=focus, _nav=_nav)
         return
     if spec.run is not None:
         ctx = host.build_walk_ctx(screen, read_key, focus=focus)
@@ -859,7 +870,67 @@ def _open_capability(
     _show(screen, r.render_capability_card(spec), read_key)
 
 
-def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
+@dataclass(frozen=True)
+class DoctorBuild:
+    report: object | None
+    failure_probe: Probe | None
+
+
+def _internal_doctor_failure(exc: Exception) -> Probe:
+    return Probe(
+        "Doctor report",
+        "error",
+        f"Failure classification failed ({type(exc).__name__}).",
+        None,
+        "doctor.classifier_failure",
+        "",
+    )
+
+
+def _build_doctor(host: Host) -> DoctorBuild:
+    try:
+        return DoctorBuild(host.doctor_build_report(), None)
+    except Exception as exc:
+        if host.doctor_classify_report_failure is None:
+            raise
+        try:
+            probe = host.doctor_classify_report_failure(exc)
+            if not isinstance(probe, Probe):
+                raise TypeError("classifier must return Probe")
+        except Exception as classifier_exc:
+            probe = _internal_doctor_failure(classifier_exc)
+        return DoctorBuild(None, probe)
+
+
+def _doctor_probes(host: Host, build: DoctorBuild) -> list[Probe]:
+    if build.failure_probe is not None:
+        return [build.failure_probe]
+    return host.doctor_build_probes(build.report)
+
+
+def _focused_remedy(
+    probes: list[Probe], runnable: list, focus: str | None
+) -> tuple[int, str | None]:
+    if focus is None:
+        return 0, None
+    for index, fix in enumerate(runnable):
+        probe = next((item for item in probes if item.fix is fix), None)
+        if (probe is not None and probe.probe_id == focus) or fix.probe_id == focus:
+            return index, focus
+    for index, fix in enumerate(runnable):
+        if fix.remedy_id == focus:
+            return index, focus
+    return 0, None
+
+
+def _doctor(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    focus: str | None = None,
+    _nav: _NavStack | None = None,
+) -> None:
     """The interactive Doctor — the only capability with a custom view (it doesn't
     fit the walk model). The probe table + verdict render as before, but the named
     fixes are a navigable list: ↑↓ moves over the RUNNABLE fixes, ⏎ runs the
@@ -871,12 +942,14 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
     Every runnable fix is READ-ONLY w.r.t. the worker's books and NO-LOGIN (the
     sync fixes reuse the existing token; the lock fix only unlinks a local file)."""
     sel = 0
+    focus_matched: str | None = None
+    focus_pending = True
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
     # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
     # just re-highlight from the cached report, the same per-keypress-work fix as
     # the home loop.
     try:
-        report = host.doctor_build_report()
+        build = _build_doctor(host)
     except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
         _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))
@@ -884,11 +957,15 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         return
     dirty = True
     while True:
-        probes = host.doctor_build_probes(report)
+        probes = _doctor_probes(host, build)
         fixes = host.doctor_fixes_for(probes)
-        runnable = [f for f in fixes if f.run is not None]
+        runnable = [f for f in fixes if action_kind(f) is not DoctorActionKind.DISPLAY_ONLY]
         if runnable:
-            sel %= len(runnable)
+            if focus_pending:
+                sel, focus_matched = _focused_remedy(probes, runnable, focus)
+                focus_pending = False
+            else:
+                sel %= len(runnable)
         # Render only when something changed AND no more input is queued — coalesces
         # held-arrow repeat into one repaint (pending() is False off a raw session).
         if dirty and not keys.pending():
@@ -903,6 +980,8 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     usage=usage_arg,
                     specs=specs_arg,
                     app_label=host.app_label,
+                    focus_requested=focus,
+                    focus_matched=focus_matched,
                 )
             )
             _safe_emit(
@@ -914,6 +993,8 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     usage=usage_arg,
                     specs=specs_arg,
                     app_label=host.app_label,
+                    focus_requested=focus,
+                    focus_matched=focus_matched,
                 ),
             )
             dirty = False
@@ -923,9 +1004,10 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             return
         if not runnable:
             # Nothing to run — any non-quit key just refreshes the probes.
-            report = _rebuild_doctor_report(host, screen, read_key)
-            if report is None:
+            rebuilt = _rebuild_doctor_report(host, screen, read_key)
+            if rebuilt is None:
                 return
+            build = rebuilt
             dirty = True
             continue
         if key == keys.UP:
@@ -943,20 +1025,21 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         else:
             continue  # inert key — no repaint
         # A fix ran → rebuild the report so the probes reflect the change.
-        report = _rebuild_doctor_report(host, screen, read_key)
-        if report is None:
+        rebuilt = _rebuild_doctor_report(host, screen, read_key)
+        if rebuilt is None:
             return
+        build = rebuilt
         dirty = True
 
 
 def _rebuild_doctor_report(
     host: Host, screen: Screen, read_key: Callable[[], str]
-) -> object | None:
+) -> DoctorBuild | None:
     """Re-run the worker's status report after a Doctor fix (or a refresh). Returns
     the fresh report, or ``None`` after showing the unconfigured hint — in which case
     the caller returns out of the Doctor loop (it degraded mid-session)."""
     try:
-        return host.doctor_build_report()
+        return _build_doctor(host)
     except Exception:  # noqa: BLE001 — became unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
         _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))

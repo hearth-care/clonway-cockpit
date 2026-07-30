@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
+from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, action_kind
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -28,9 +29,6 @@ from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES, MenuItem, norma
 from clonway_cockpit.render_panels import *
 from clonway_cockpit.render_panels import _DEFAULT_HELP_LINES, _FilterRow
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
-
-if TYPE_CHECKING:
-    from clonway_cockpit.doctor import Fix, Probe
 
 
 def _selection_id(selection: tuple[str, object] | None) -> str | None:
@@ -393,6 +391,8 @@ def model_doctor(
     usage: dict | None = None,
     specs: list[CapabilitySpec] | None = None,
     app_label: str = "xbook",
+    focus_requested: str | None = None,
+    focus_matched: str | None = None,
 ) -> ScreenModel:
     """The semantic twin of :func:`render_doctor`. ``selected`` indexes the RUNNABLE
     fixes (those with a ``run``), matching the render. The read-only "what you reach
@@ -406,13 +406,23 @@ def model_doctor(
     fix_id_by_obj: dict[int, str] = {}
     run_i = 0
     for i, f in enumerate(fixes):
-        if f.run is not None:
+        kind = action_kind(f)
+        common_fields = [
+            MField("cmd", f.cmd),
+            MField("remedy_id", f.remedy_id),
+            MField("probe_id", f.probe_id),
+            MField("action_kind", kind.value),
+            MField("capability_key", f.capability_key or ""),
+            MField("focus", f.focus or ""),
+            MField("confirm", str(f.confirm).lower()),
+        ]
+        if kind is not DoctorActionKind.DISPLAY_ONLY:
             row_id = f"fix:{run_i}"
             fix_rows.append(
                 MRow(
                     id=row_id,
                     label=f.title,
-                    fields=[MField("cmd", f.cmd)],
+                    fields=common_fields,
                     selected=selected == run_i,
                     enabled=True,
                 )
@@ -424,14 +434,19 @@ def model_doctor(
                 MRow(
                     id=row_id,
                     label=f.title,
-                    fields=[MField("cmd", f.cmd), MField("note", f.note)],
+                    fields=[*common_fields, MField("note", f.note)],
                     enabled=False,
                 )
             )
         fix_id_by_obj[id(f)] = row_id
 
     def _probe_fields(p: Probe) -> list[MField]:
-        fields = [MField("level", p.level, "status"), MField("detail", p.detail)]
+        fields = [
+            MField("level", p.level, "status"),
+            MField("detail", p.detail),
+            MField("probe_id", p.probe_id),
+            MField("evidence_revision", p.evidence_revision),
+        ]
         link = fix_id_by_obj.get(id(p.fix)) if p.fix is not None else None
         if link is not None:
             fields.append(MField("fix_id", link, "id"))
@@ -454,6 +469,8 @@ def model_doctor(
         "warnings": warns,
         "errors": errs,
         "ok": warns == 0 and errs == 0,
+        "focus_requested": focus_requested,
+        "focus_matched": focus_matched,
     }
     if usage:
         meta["usage_present"] = True
