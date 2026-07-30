@@ -21,7 +21,7 @@ any agent script that asserts on it.
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |
 | `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix`) |
-| `doctor` | `probe:<i>`, `fix:<n>` (runnable), `fix:display:<i>` | `warnings`, `errors`, `ok` |
+| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |
 | `walk.review` | per-walk line-item rows (e.g. `window:<date>`/`bill:<id>`/`settle:<i>`) | **`equivalent_cli`** (the apply command — canonical on every review), plus totals/counts + a full per-item detail list in `meta` |
@@ -81,6 +81,45 @@ presses (`"1"` then `"0"`) can never combine into it — each key dispatches (or
 immediately. Leading-zero, Unicode digit-like, mixed, unknown and out-of-range strings are inert.
 An oversized ASCII decimal that Python cannot safely convert is also inert; it cannot crash the
 session.
+
+## Doctor remedy actions
+
+Doctor probe and remedy rows carry stable worker-supplied identity in additive fields. A probe row
+includes `probe_id`, `evidence_revision`, `level`, and its `fix_id` cross-reference. A remedy row
+includes `remedy_id`, `probe_id`, `action_kind`, `capability_key`, `focus`, `confirm`, and `cmd`.
+The row's `cmd` is display/reference copy only; the framework never executes it.
+
+Workers should use stable, namespaced IDs (for example `source.feed.health` and
+`source.feed.review`) and change `evidence_revision` whenever the evidence represented by a probe
+changes. Legacy empty IDs remain accepted, but a remedy receipt cannot correlate them and reports
+closure as `unknown`.
+
+The three action kinds are:
+
+- `display_only`: shown but not selectable; the operator uses the equivalent CLI or documentation;
+- `callback`: invokes the worker callback for a human, preserving its optional confirmation, but is
+  skipped in agent mode because the callback is opaque to capability effect policy; and
+- `open_capability`: routes through the existing registered-capability chokepoint with optional
+  `focus`. It is available to humans and agents. Nested writes still reach the capability's normal
+  `walk.gate`; agent mode remains dry-run/default-declined.
+
+A Home need may target `capability_key="doctor"` with a probe or remedy ID as `focus`. Doctor
+selects the matching probe first, then a matching remedy, and reports the decision through
+`focus_requested`/`focus_matched`; an unknown focus simply leaves the first actionable remedy
+selected.
+
+After any selected action, Doctor re-probes the same stable `probe_id` and constructs one
+`DoctorRemedyReceipt`. `resolved` means the probe is absent from a successful rebuild;
+`still_present` means level and revision are unchanged; `changed` means either differs; and
+`unknown` covers legacy identity or an unavailable comparison. Opening a capability is only
+`action_result="opened"`—it is never itself proof of resolution.
+
+Workers opt into typed report failures with `Host.doctor_classify_report_failure(exception)` and
+receive receipts through `Host.doctor_on_receipt(receipt)`. The classifier owns exception typing,
+safe wording, and redaction. Receipt delivery is best effort; workers own persistence, timestamps,
+and observability. Framework receipts contain bounded framework status rather than raw exception
+text. A classifier-produced failure renders as a normal `doctor` model, not `unstructured`;
+legacy hosts without the callback retain their existing fallback.
 
 ## Driving headlessly
 
@@ -193,10 +232,11 @@ This guarantee covers the framework's own walk path. It does **not** cover:
   `Host()` defaults `agent_mode=False`, dropping dry-run. **A worker adding `--agent` MUST
   preserve `agent_mode` on any host it constructs**, or re-entering `_open_capability`
   through that host can post for real.
-- `activate_pill` (pulse sync / bank re-auth) and Doctor `fix.run()` — **now gated**: in
-  `agent_mode` the shell skips them and emits a `note{"…skipped…"}` frame instead, so an
-  autonomously-driving agent triggers no sync / browser / local side effect. (The live
-  human cockpit, `agent_mode=False`, is unchanged.)
+- `activate_pill` (pulse sync / bank re-auth) and Doctor callback remedies — **now gated**: in
+  `agent_mode` the shell skips them and emits a `note{"…skipped…"}` frame instead. Doctor
+  capability remedies may navigate because they reuse `_open_capability`; any nested write still
+  reaches this same dry-run/guarded-apply gate. (The live human cockpit, `agent_mode=False`, is
+  unchanged.)
 
 For an authoritative audit of applied gates, `serve_stdio(..., on_apply=cb)` invokes `cb`
 with the gate proposal the moment an apply is authorized (before the post) — a worker binds

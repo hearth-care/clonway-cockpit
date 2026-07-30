@@ -116,9 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: Task 4 complete.
-- Next concrete step: Task 5 projection-parity and real agent-drive tests, followed by ScreenModel
-  and worker-facing protocol documentation.
+- Current phase: Task 5 complete.
+- Next concrete step: Task 6 template opt-in compatibility, final handoff documentation, full
+  local gates, rebase, and finish protocol.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -131,6 +131,9 @@ Foundry completes only when hermetic public-path tests prove:
 - Task 4 gates: receipt/unit/shell suite `120 passed`; Ruff and mypy passed;
   `git diff --check` clean. Receipts cover all four closure values, every action result,
   repeat revisions, rebuild/classifier failures, and best-effort delivery.
+- Task 5 gates: real-client/model/contract suite `27 passed`; Ruff and mypy passed;
+  `git diff --check` clean. `CockpitClient` drives focused Home -> Doctor -> nested capability ->
+  refreshed Doctor with one receipt and unchanged schema `1.0`.
 - Current-main deviation: the plan named a generated-worker test file that is not present; the
   canonical worker-template subprocess suite is used instead.
 - Known-failing tests: none.
