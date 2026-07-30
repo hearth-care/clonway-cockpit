@@ -45,6 +45,19 @@ def test_generated_production_uses_only_public_framework_seams() -> None:
     assert findings == []
 
 
+def test_framework_documentation_examples_use_public_worker_seams() -> None:
+    docs = _REPO_ROOT / "docs"
+    findings: list[str] = []
+    for path in sorted(docs.rglob("*.md")):
+        relative = path.relative_to(_REPO_ROOT).as_posix()
+        if relative.startswith(("docs/superpowers/", "docs/findings/")):
+            continue
+        findings.extend(
+            f"{relative}: {item}" for item in _find_forbidden(relative, path.read_text())
+        )
+    assert findings == []
+
+
 def test_private_seam_guard_covers_every_bound_spelling_and_public_equivalents() -> None:
     for forbidden in _FORBIDDEN:
         assert forbidden in _find_forbidden("package/cli/cockpit.py", f"use {forbidden}")

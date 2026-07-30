@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import contextvars
+import inspect
 import logging
+import textwrap
 import threading
 from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
@@ -274,6 +277,34 @@ def test_shell_wrappers_resolve_private_owner_at_call_time(
     monkeypatch.setattr(shell, private_name, lambda *a, **kw: seen.append((a, kw)))
     getattr(shell, public_name)(*args, **kwargs)
     assert seen == [(args, kwargs)]
+
+
+@pytest.mark.parametrize(
+    ("module", "public_name", "private_name"),
+    [
+        (shell, "emit_model", "_safe_emit"),
+        (shell, "show_and_wait", "_show"),
+        (shell, "activate_need", "_activate_need"),
+        (shell, "run_home", "_home"),
+        (shell, "activate_item", "_activate"),
+        (shell, "open_capability", "_open_capability"),
+        (shell, "run_doctor", "_doctor"),
+        (walk, "present", "_present"),
+        (walk, "emit", "_emit"),
+        (walk, "await_key", "_await"),
+        (walk, "first_blocked_remedy", "_first_blocked_remedy"),
+    ],
+)
+def test_public_wrappers_are_one_call_and_keep_private_owner(
+    module: Any, public_name: str, private_name: str
+) -> None:
+    assert hasattr(module, private_name)
+    tree = ast.parse(textwrap.dedent(inspect.getsource(getattr(module, public_name))))
+    assert not any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(tree))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    assert len(calls) == 1
+    assert isinstance(calls[0].func, ast.Name)
+    assert calls[0].func.id == private_name
 
 
 def test_walk_public_constants_and_wrappers_delegate_at_call_time(

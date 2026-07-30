@@ -173,21 +173,21 @@
 
 ### Framework guard
 
-- [ ] Add a bounded AST/import inventory over `worker-template` and framework docs examples; no
+- [x] Add a bounded AST/import inventory over `worker-template` and framework docs examples; no
   blanket private-name ban inside framework implementation/tests.
-- [ ] Assert old private symbols still exist and public wrappers call them; removal is a future
+- [x] Assert old private symbols still exist and public wrappers call them; removal is a future
   coordinated major migration.
-- [ ] Assert legacy Host callbacks still work and the new session callback wins only when explicitly
+- [x] Assert legacy Host callbacks still work and the new session callback wins only when explicitly
   configured.
-- [ ] Assert no new public wrapper contains domain imports, effects or duplicated implementation.
+- [x] Assert no new public wrapper contains domain imports, effects or duplicated implementation.
 
 ### Downstream rehearsal (read-only to xbook)
 
-- [ ] Build/install this exact framework branch into an isolated throwaway environment, import all
+- [x] Build/install this exact framework branch into an isolated throwaway environment, import all
   public names from an unmodified xbook checkout and instantiate `CallbackScreen`/`EventBufferScope`.
-- [ ] Do not claim xbook acceptance: #1046 must pin the merged SHA and run its real tests.
-- [ ] Record framework head and downstream rehearsal command/output in `HANDOFF NOTES`.
-- [ ] Commit `tests: guard public worker API compatibility` if guard changes remain.
+- [x] Do not claim xbook acceptance: #1046 must pin the merged SHA and run its real tests.
+- [x] Record framework head and downstream rehearsal command/output in `HANDOFF NOTES`.
+- [x] Commit `tests: guard public worker API compatibility` if guard changes remain.
 
 ## Task 7 — Full gates, docs and QA
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 5 worker-template migration complete; Task 6 compatibility/rehearsal is next.
+- Phase: Task 6 compatibility/rehearsal complete; Task 7 full gates/rebase/docs is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -247,5 +247,13 @@ or claims product value before #1046 lands.
   reconstruction guidance; its complete forbidden/public-equivalent self-test passes.
 - Task 5 GREEN: 28 template structural/render/import/agent/smoke tests passed. Copier renders from
   committed HEAD, so the GREEN run used exact local commit `8c9e952`.
+- Task 6 guards: 45 public/structural tests and 4 focused generated-worker AST/session tests
+  passed. Public wrappers contain one runtime call to their retained private owner and no imports.
+- Downstream rehearsal: built wheel from framework `a2b65271d3bec47547f78a8ba2df7e2238934267`,
+  installed it (non-editable) into a fresh venv, and ran from a clean unmodified Auto-Bookkeeper
+  checkout at `0580b8593c9529c543293b7a3e613ededd661429`. Importing every bound shell/walk/help/obs
+  name and constructing `CallbackScreen`/`EventBufferScope` printed
+  `downstream rehearsal: all public imports and constructors passed`. This is compatibility
+  rehearsal only; #1046 still owns exact merged-SHA consumer acceptance.
 - Known failing tests: none.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.
