@@ -41,13 +41,57 @@ def _selection_id(selection: tuple[str, object] | None) -> str | None:
     return f"{kind}:{ref}"
 
 
+def _normalize_actions(raw: tuple[str, ...]) -> tuple[str, ...]:
+    """Trim, drop empty/whitespace-only/non-printable/non-string values, and
+    de-duplicate a worker-declared action tuple in first-seen order. Tolerant by
+    design: a malformed worker hint (wrong type, a control character) is
+    silently dropped rather than crashing Home or corrupting the frame — the
+    framework can't prove a worker's declaration matches its handler, but it
+    must never let a bad one take the screen down."""
+    seen: list[str] = []
+    for a in raw:
+        if not isinstance(a, str):
+            continue
+        token = a.strip()
+        if not token or not token.isprintable():
+            continue
+        if token not in seen:
+            seen.append(token)
+    return tuple(seen)
+
+
 def _home_actions(state: CockpitState) -> list[str]:
-    """The keys the home loop honours — a deterministic, stable hint list."""
+    """The keys the home loop honours — a deterministic, stable hint list, plus
+    any additive worker-declared ``state.home_actions`` appended ONLY when the
+    framework doesn't already expose that token (base actions always win
+    ordering/precedence)."""
     letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
     acts = ["up", "down", "left", "right", "enter", "/", "?", "r", "q", "backspace"]
     acts += [letter.lower() for letter in letters]
     acts += [str(i + 1) for i in range(min(9, len(state.needs)))]
+    for extra in _normalize_actions(state.home_actions):
+        if extra not in acts:
+            acts.append(extra)
     return acts
+
+
+def _needs_row_fields(n: NeedsItem) -> list[MField]:
+    """The Field list for one Needs row: the existing detail/level/capability_key/
+    focus facts, plus an ``actions`` field ONLY when the worker declared a
+    non-empty (normalized) action set for this row — so a worker with no
+    extension stays byte-compatible (no field added)."""
+    fields = [
+        MField("detail", n.detail),
+        MField("level", n.level, "status"),
+        # ``capability_key`` tells an agent whether ⏎ launches a walk (non-empty)
+        # or just shows a note (empty); ``focus`` is the subset it opens scoped to.
+        MField("capability_key", n.capability_key or "", "id"),
+        MField("focus", n.focus or "", "id"),
+    ]
+    declared = _normalize_actions(n.actions)
+    if declared:
+        fields.append(MField("actions", ",".join(declared)))
+    return fields
 
 
 def model_cockpit_screen(
@@ -87,14 +131,7 @@ def model_cockpit_screen(
         MRow(
             id=f"need:{i}",
             label=n.title,
-            fields=[
-                MField("detail", n.detail),
-                MField("level", n.level, "status"),
-                # ``capability_key`` tells an agent whether ⏎ launches a walk (non-empty)
-                # or just shows a note (empty); ``focus`` is the subset it opens scoped to.
-                MField("capability_key", n.capability_key or "", "id"),
-                MField("focus", n.focus or "", "id"),
-            ],
+            fields=_needs_row_fields(n),
             selected=sel_id == f"need:{i}",
         )
         for i, n in enumerate(state.needs)
