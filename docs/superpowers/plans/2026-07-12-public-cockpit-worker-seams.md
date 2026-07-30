@@ -98,10 +98,10 @@
 
 ### Implementation and verify
 
-- [ ] Add public wrappers/constant from design §§5–6; private owners/aliases remain.
-- [ ] Update docstrings to describe public consumption; no gate/animation/render behavior change.
-- [ ] Run walk/render/contract/agent tests; compare public/private output/call counts for every row.
-- [ ] Commit `cockpit: expose stable walk and help seams`.
+- [x] Add public wrappers/constant from design §§5–6; private owners/aliases remain.
+- [x] Update docstrings to describe public consumption; no gate/animation/render behavior change.
+- [x] Run walk/render/contract/agent tests; compare public/private output/call counts for every row.
+- [x] Commit `cockpit: expose stable walk and help seams`.
 
 ## Task 4 — GREEN: expose scoped event buffering without the ContextVar
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 2 shell GREEN complete; Task 3 walk/help GREEN is next.
+- Phase: Task 3 walk/help GREEN complete; Task 4 scoped telemetry GREEN is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -239,5 +239,7 @@ or claims product value before #1046 lands.
   absent `EventBufferScope`; isolated import probes also fail on absent shell, walk and help names.
 - Task 2 verification: 15 focused public shell tests passed; 117 shell/agent/gate/audit tests
   passed. Legacy and opt-in session callback rows both passed.
-- Known failing tests: intentional absent walk/help/obs public names pending Tasks 3–4.
+- Task 3 verification: 2 focused public walk/help tests and 44
+  walk/render/contract/agent tests passed.
+- Known failing tests: intentional absent obs public names pending Task 4.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

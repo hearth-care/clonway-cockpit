@@ -2,7 +2,9 @@
 
 A walk runs: explain -> preconditions -> review -> apply (gated) -> summarise.
 Each screen draws ONE framed renderable and reads ONE key (the redraw-in-place
-cockpit model): ``_present`` routes to ``screen.update`` when the context is
+cockpit model): public :func:`present`, :func:`emit`, :func:`await_key` and
+:func:`first_blocked_remedy` are the stable worker seams over the private
+implementation owners. ``_present`` routes to ``screen.update`` when the context is
 bound to the alternate screen, falling back to ``console.print`` for console
 callers/tests. ``preflight()`` renders what-it-does / blast-radius /
 preconditions / equivalent-CLI and blocks if any precondition fails.
@@ -32,6 +34,7 @@ from clonway_cockpit.registry import BlastRadius, Handler, WizardContext
 # How long the loop sleeps between progress frames — ~8 redraws/second, fast
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
 _PROGRESS_TICK = 0.12
+PROGRESS_TICK = _PROGRESS_TICK
 
 # Per-process monotonic nonce for the M4 apply-authorization gate. Each gate gets a
 # fresh ``gate-<n>`` token, so a stale/duplicated apply (a previous gate's token) can
@@ -412,6 +415,26 @@ def _first_blocked_remedy(preconditions: list[Precondition]) -> Remedy | None:
         if not p.ok and p.remedy is not None:
             return p.remedy
     return None
+
+
+def present(ctx: WizardContext, renderable: RenderableType) -> None:
+    """Present one walk frame through the existing private owner."""
+    return _present(ctx, renderable)
+
+
+def emit(ctx: WizardContext, model: ScreenModel) -> None:
+    """Emit one semantic frame through the existing best-effort owner."""
+    return _emit(ctx, model)
+
+
+def await_key(ctx: WizardContext) -> None:
+    """Wait for at most one cockpit key through the existing owner."""
+    return _await(ctx)
+
+
+def first_blocked_remedy(preconditions: list[Precondition]) -> Remedy | None:
+    """Return the existing first actionable blocked remedy selection."""
+    return _first_blocked_remedy(preconditions)
 
 
 def preflight(
