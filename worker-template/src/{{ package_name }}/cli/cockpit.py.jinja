@@ -8,6 +8,10 @@ progress) lives in ``clonway_cockpit.shell``. This module is the THIN
 a pulse pill, runs its Doctor probes, records usage, and what fires on open) and
 threads it into the framework loop.
 
+Worker Home extensions receive a ``ShellSession`` from the active loop. Use its
+``open_capability``, ``activate_need``, ``emit_model`` and ``show_and_wait``
+helpers for nested work; never reconstruct a Host inside a callback.
+
 Scaffolded with ONE example capability, a pulse stub, and a Doctor stub so the
 three-region grammar renders out of the box. Replace these with real {{ worker_id }}
 capabilities + live status as the worker grows.
@@ -194,12 +198,9 @@ def _on_open() -> None:
 def _host(*, agent_mode: bool = False) -> shell.Host:
     """Build {{ worker_id }}'s cockpit Host. ``agent_mode`` (set by ``serve_agent``) threads
     the dry-run + guarded-apply posture through every walk so an agent driving the real
-    cockpit can navigate any flow but never posts off the explicit gate.
-
-    {{ worker_id }} does not rebuild its host mid-loop, so a parameter is enough — no ambient
-    flag needed. A worker that re-invokes ``_host()`` inside its own callbacks should read an
-    ambient ``_AGENT_MODE`` here instead (see clonway-cockpit docs/agent-screen-model.md →
-    'Wiring a worker to the agent channel')."""
+    cockpit can navigate any flow but never posts off the explicit gate. Nested Home work receives
+    the active ``ShellSession`` and must use its public helpers so observer, authorization, audit
+    and prompt callbacks stay attached."""
     return shell.Host(
         capture_state=capture_state,
         build_walk_ctx=build_walk_ctx,
@@ -217,7 +218,7 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         extra_selectables=home_hooks.extra_selectables,
         extra_regions=home_hooks.extra_regions,
         extra_model_regions=home_hooks.extra_model_regions,
-        handle_extra_key=home_hooks.handle_extra_key,
+        handle_extra_key_with_session=home_hooks.handle_extra_key_with_session,
     )
 
 
@@ -227,14 +228,14 @@ def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
     host = _host()
     if screen is not None:
         host.on_open()
-        shell._home(host, screen, read_key)
+        shell.run_home(host, screen, read_key)
         return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
     console = Console()
     host.on_open()
     with console.screen() as scr:
-        shell._home(host, scr, read_key)
+        shell.run_home(host, scr, read_key)
 
 
 def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:

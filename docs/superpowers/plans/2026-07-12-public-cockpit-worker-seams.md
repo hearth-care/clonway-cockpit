@@ -152,22 +152,22 @@
 
 ### RED/GREEN
 
-- [ ] RED scans generated production Python/Jinja for the exact forbidden framework-private names
+- [x] RED scans generated production Python/Jinja for the exact forbidden framework-private names
   in design §8 and proves the two current `_home` calls fail it.
-- [ ] RED asserts the current generated legacy `handle_extra_key(screen, read_key)` and `_host()`
+- [x] RED asserts the current generated legacy `handle_extra_key(screen, read_key)` and `_host()`
   reconstruction guidance violate the active-session contract.
-- [ ] Replace both `_home` calls with `shell.run_home`; render a worker fixture and run its cockpit
+- [x] Replace both `_home` calls with `shell.run_home`; render a worker fixture and run its cockpit
   smoke/import.
-- [ ] Generate `handle_extra_key_with_session(state, selection, key, session: ShellSession)` and
+- [x] Generate `handle_extra_key_with_session(state, selection, key, session: ShellSession)` and
   wire only `Host.handle_extra_key_with_session`; do not generate/wire the legacy hook.
-- [ ] Replace ambient `_host()` rebuild advice with public `ShellSession` helper guidance in the
+- [x] Replace ambient `_host()` rebuild advice with public `ShellSession` helper guidance in the
   generated hook, cockpit host docstring and README.
-- [ ] Render/import a worker and assert the Host owns the exact generated session hook, retains the
+- [x] Render/import a worker and assert the Host owns the exact generated session hook, retains the
   legacy framework default, and passes the exact sentinel active Host/screen/read-key through one
   claimed-key nested-helper test without constructing another Host.
-- [ ] Guard self-test feeds every forbidden spelling and accepted public equivalents.
-- [ ] Existing generated output outside the Home entry/hook/wiring/docs migration is byte-identical.
-- [ ] Commit `template: generate workers on public cockpit APIs`.
+- [x] Guard self-test feeds every forbidden spelling and accepted public equivalents.
+- [x] Existing generated output outside the Home entry/hook/wiring/docs migration is byte-identical.
+- [x] Commit `template: generate workers on public cockpit APIs`.
 
 ## Task 6 — Structural compatibility and independent consumer rehearsal
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 5 template RED captured; migrate Home entry/hook/wiring/docs next.
+- Phase: Task 5 worker-template migration complete; Task 6 compatibility/rehearsal is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -245,6 +245,7 @@ or claims product value before #1046 lands.
   cancellation, nested isolation, cross-worker and copied-context rows.
 - Task 5 RED: the generated-production guard reports `shell._home` and ambient agent-mode Host
   reconstruction guidance; its complete forbidden/public-equivalent self-test passes.
-- Known failing tests: `tests/test_worker_template_public_api.py::
-  test_generated_production_uses_only_public_framework_seams` (intentional Task 5 RED).
+- Task 5 GREEN: 28 template structural/render/import/agent/smoke tests passed. Copier renders from
+  committed HEAD, so the GREEN run used exact local commit `8c9e952`.
+- Known failing tests: none.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

@@ -42,8 +42,12 @@ uv run pytest -q && uv run ruff check .              # green out of the box
    the pulse stub, the Doctor probes, and `capture_state()` with real
    {{ worker_id }} surfaces.
 3. **`src/{{ package_name }}/cli/home_hooks.py`** — optionally add worker-owned
-   home rows, regions, and key handling. Keep domain policy here; do not add
-   worker-specific rules to the shared template.
+   home rows, regions, and key handling. The session-aware key hook receives the
+   active `ShellSession`; nested work must use `session.open_capability`,
+   `session.activate_need`, `session.emit_model`, or `session.show_and_wait` so
+   the active observer, authorization, audit, prompts, screen, and key reader are
+   retained. Never reconstruct a `Host` inside a Home hook. Keep domain policy
+   here; do not add worker-specific rules to the shared template.
 4. **`src/{{ package_name }}/google_auth.py`** — if the worker needs Google APIs,
    uncomment the matching `CredentialSpec`, keep secret values in the worker's
    config layer, and resolve credentials at the integration boundary.
