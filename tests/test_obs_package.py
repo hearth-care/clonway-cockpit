@@ -12,12 +12,15 @@ _EXPECTED_EXPORTS = {
     "RESERVED_LOGRECORD_KEYS",
     "SEVERITY_TO_LEVEL",
     "CloudLoggingSink",
+    "EventBufferScope",
     "LoggerFactory",
     "StorageClientFactory",
     "atomic_append",
     "atomic_write_bytes",
+    "event_buffer",
     "flush_buffer",
     "make_obs",
+    "isolated_event_buffers",
     "resolve_run_id",
 }
 

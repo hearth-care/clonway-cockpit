@@ -29,36 +29,36 @@
 
 ### Shell RED
 
-- [ ] Import exact shell names from design §4; expected RED is ImportError/AttributeError only.
-- [ ] `CallbackScreen` forwards two distinguishable renderables once/in order and propagates a
+- [x] Import exact shell names from design §4; expected RED is ImportError/AttributeError only.
+- [x] `CallbackScreen` forwards two distinguishable renderables once/in order and propagates a
   callback exception.
-- [ ] `ShellSession` methods use the exact active Host/screen/key objects. Populate sentinel
+- [x] `ShellSession` methods use the exact active Host/screen/key objects. Populate sentinel
   observer/authorization/audit/agent-input fields and prove none is replaced or dropped.
-- [ ] Host with session-aware pill/extra-key callbacks invokes them once with one active session and
+- [x] Host with session-aware pill/extra-key callbacks invokes them once with one active session and
   never invokes legacy callbacks; Host without them invokes the legacy callbacks exactly as today.
-- [ ] In `agent_mode=True`, a pulse pill invokes neither callback and emits the existing one
+- [x] In `agent_mode=True`, a pulse pill invokes neither callback and emits the existing one
   `Sync skipped` model; mutation moving the session callback before refusal is RED.
-- [ ] Drive `open_capability` for reference card, normal walk/focus, agent observer, gated context,
+- [x] Drive `open_capability` for reference card, normal walk/focus, agent observer, gated context,
   crashing walk and `ShellOut`; assert current usage/audit/human/model/failure semantics.
-- [ ] `emit_model` suppresses observer error and emits exactly once when healthy.
-- [ ] `show_and_wait` updates once then reads exactly one key; key-reader errors propagate.
-- [ ] Drive public Home/activate/need/Doctor wrappers through existing fixtures and assert current
+- [x] `emit_model` suppresses observer error and emits exactly once when healthy.
+- [x] `show_and_wait` updates once then reads exactly one key; key-reader errors propagate.
+- [x] Drive public Home/activate/need/Doctor wrappers through existing fixtures and assert current
   state, focus, selection and fix confirmation.
-- [ ] Mutation proof monkeypatches the private owner to a sentinel for every wrapper and proves the
+- [x] Mutation proof monkeypatches the private owner to a sentinel for every wrapper and proves the
   public function resolves it at call time rather than holding a stale alias.
 
 ### Walk/render RED
 
-- [ ] Public `present` picks `ctx.present` then console fallback; `emit` is best-effort;
+- [x] Public `present` picks `ctx.present` then console fallback; `emit` is best-effort;
   `await_key` reads zero/one; `first_blocked_remedy` keeps current order; constants equal.
-- [ ] `DEFAULT_HELP_LINES` is a tuple equal/identical to the current private compatibility value.
-- [ ] Gate/animation tests remain unchanged; public names add no second path.
+- [x] `DEFAULT_HELP_LINES` is a tuple equal/identical to the current private compatibility value.
+- [x] Gate/animation tests remain unchanged; public names add no second path.
 
 ### Obs RED
 
-- [ ] Pin exact `EventBufferScope`, `event_buffer`, `isolated_event_buffers` imports and package
+- [x] Pin exact `EventBufferScope`, `event_buffer`, `isolated_event_buffers` imports and package
   `__all__`; `_RUN_BUFFERS` remains absent.
-- [ ] Expected RED: names absent. Commit `test: pin public worker integration seams`.
+- [x] Expected RED: names absent. Commit `test: pin public worker integration seams`.
 
 ## Task 2 — GREEN: expose shell and callback-screen seams
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 0 complete; Task 1 RED is next.
+- Phase: Task 1 RED complete; Task 2 shell GREEN is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -235,5 +235,7 @@ or claims product value before #1046 lands.
 - Dependency: none. Parallel #114/#115 are orthogonal.
 - Downstream: Auto-Bookkeeper #1046 remains draft on
   `claude/plan-preserve-agent-visibility-through-nested-walks@0580b8593`; no edit or pin was made.
-- Known failing tests: none before Task 1 RED.
+- RED proof: `tests/test_public_worker_api.py` and `tests/test_obs_package.py` fail collection on
+  absent `EventBufferScope`; isolated import probes also fail on absent shell, walk and help names.
+- Known failing tests: the intentional Task 1 import REDs above.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

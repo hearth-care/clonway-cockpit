@@ -587,10 +587,10 @@ def test_open_capability_runs_a_walk_handler_with_focus(usage_to_tmp):
         )
     )
     host = _FakeHost().as_host()
-    shell._open_capability(host, "scoped", _Screen(), _keys([keys.ESC]), focus="overdue")
+    shell.open_capability(host, "scoped", _Screen(), _keys([keys.ESC]), focus="overdue")
     assert seen["focus"] == "overdue"
     seen.clear()
-    shell._open_capability(host, "scoped", _Screen(), _keys([keys.ESC]))
+    shell.open_capability(host, "scoped", _Screen(), _keys([keys.ESC]))
     assert seen["focus"] is None
 
 
@@ -609,7 +609,7 @@ def test_open_capability_records_an_open(usage_to_tmp, monkeypatch):
         )
     )
     host = _FakeHost().as_host()
-    shell._open_capability(host, "status", _Screen(), _keys([keys.ENTER]))
+    shell.open_capability(host, "status", _Screen(), _keys([keys.ENTER]))
     assert ("status", "open") in recorded
 
 
@@ -627,7 +627,7 @@ def test_open_capability_records_audit_launch_event(usage_to_tmp):
     )
     host = _FakeHost(audit_sink=events.append).as_host()
 
-    shell._open_capability(host, "status", _Screen(), _keys([keys.ENTER]), focus="today")
+    shell.open_capability(host, "status", _Screen(), _keys([keys.ENTER]), focus="today")
 
     assert [(event.event, event.actor, event.outcome) for event in events] == [
         ("capability.launched", "human", None)
@@ -645,7 +645,7 @@ def test_open_capability_unknown_key_records_nothing(usage_to_tmp, monkeypatch):
     recorded: list = []
     monkeypatch.setattr(usage, "record", lambda *a, **k: recorded.append((a, k)))
     host = _FakeHost().as_host()
-    shell._open_capability(host, "nope-not-real", _Screen(), _keys([keys.ENTER]))
+    shell.open_capability(host, "nope-not-real", _Screen(), _keys([keys.ENTER]))
     assert recorded == []
 
 
@@ -952,7 +952,7 @@ def test_doctor_runs_the_selected_runnable_fix_on_enter(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, keys.ENTER, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, keys.ENTER, "q"]))
     assert ran == ["xero"]
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Synced" in joined
@@ -976,7 +976,7 @@ def test_doctor_does_not_rebuild_report_on_cursor_moves(usage_to_tmp):
 
     host = _CountingReportHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.DOWN, keys.UP, keys.DOWN, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.DOWN, keys.UP, keys.DOWN, "q"]))
     assert builds["n"] == 1  # one build on entry; the arrows rebuild nothing
 
 
@@ -991,7 +991,7 @@ def test_doctor_display_only_fix_is_not_runnable(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, "q"]))
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Re-authenticate Xero" in joined
     assert "run in a terminal" in joined
@@ -1014,7 +1014,7 @@ def test_doctor_lock_fix_confirms_then_removes(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, "y", keys.ENTER, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, "y", keys.ENTER, "q"]))
     assert removed == [True]
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Removed .state/apply.lock" in joined
@@ -1037,7 +1037,7 @@ def test_doctor_confirm_accepts_enter(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, keys.ENTER, keys.ENTER, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, keys.ENTER, keys.ENTER, "q"]))
     assert removed == [True]
 
 
@@ -1058,7 +1058,7 @@ def test_doctor_confirm_unrelated_key_cancels(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, keys.UP, "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, keys.UP, "q"]))
     assert removed == []
 
 
@@ -1079,14 +1079,14 @@ def test_doctor_confirm_cancel_does_not_run(usage_to_tmp):
     ]
     host = _FakeHost(probes=probes).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER, "n", "q"]))
+    shell.run_doctor(host, scr, _keys([keys.ENTER, "n", "q"]))
     assert removed == []
 
 
 def test_doctor_degrades_when_unconfigured(usage_to_tmp):
     host = _FakeHost(report_raises=True).as_host()
     scr = _Screen()
-    shell._doctor(host, scr, _keys([keys.ENTER]))  # must NOT raise
+    shell.run_doctor(host, scr, _keys([keys.ENTER]))  # must NOT raise
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "not configured" in joined
 
@@ -1690,7 +1690,7 @@ def test_open_capability_guards_a_crashing_walk(usage_to_tmp):
             run=_boom,
         )
     )
-    shell._open_capability(host, "crashy", screen, _keys([]))  # must NOT raise
+    shell.open_capability(host, "crashy", screen, _keys([]))  # must NOT raise
     txt = "\n".join(_text(f) for f in screen.frames)
     assert "Crashy walk" in txt
     assert "kaboom-from-walk" in txt
@@ -1718,7 +1718,7 @@ def test_open_capability_reraises_shellout(usage_to_tmp):
         )
     )
     with pytest.raises(shellout.ShellOut):
-        shell._open_capability(host, "reauth", screen, _keys([]))
+        shell.open_capability(host, "reauth", screen, _keys([]))
 
 
 def test_home_emits_worker_model_regions(usage_to_tmp):
