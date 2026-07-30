@@ -224,7 +224,7 @@ git diff --check
   private/walk owner; observe each deliberate mutation fail its named test.
 - [x] Append both session callbacks after all pre-existing `Host` fields to preserve positional
   construction compatibility.
-- [ ] Rebase onto current `origin/main`, run every full local gate, push, and hand the exact head
+- [x] Rebase onto current `origin/main`, run every full local gate, push, and hand the exact head
   to independent QA.
 
 ## Independent QA rejection conditions
@@ -239,8 +239,8 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: QA fix round behavior/docs complete; next step is rebase, full local gates, and finish
-  protocol.
+- Phase: QA fix round complete; final handoff-note commit and exact-head gate rerun precede the
+  finish protocol.
 - QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
   tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
   flushes once. Host session callbacks are appended after the complete legacy field sequence.
@@ -255,7 +255,12 @@ or claims product value before #1046 lands.
   `tests/test_adoption_playbook_docs.py::test_host_rebuild_pattern_latches_agent_mode_once`,
   which required the exact ambient Host-rebuild recipe this fix removes. Its replacement
   session-continuity contract and the docs guard pass together (`8 passed in 0.18s`).
-- Known failing tests: none in focused scopes; full gates must be rerun after the stale-test fix.
+- QA fix full gates after the stale-test correction: `uv run pytest -q` -> `1186 passed in
+  70.38s`; ruff -> `All checks passed!`; format -> `160 files already formatted`; mypy ->
+  `Success: no issues found in 67 source files`; all eight pre-commit hooks passed;
+  `git diff --check` exited 0 with no output.
+- Rebase: current `origin/main@8694e302`; branch remains zero commits behind.
+- Known failing tests: none.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
