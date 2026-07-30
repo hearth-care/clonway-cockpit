@@ -91,13 +91,15 @@ fields expose it to the agent from the same snapshot. Workers without declaratio
 - [x] Add a backward-compatible normalized menu item with stable ordinal ID and optional shortcut.
 - [x] Drive every current shortcut through Rich, model and both human/agent input forms.
 - [x] Prove item 10+ single-key routes, legacy agent alias, overflow arrows/Enter and reserved keys.
-- [x] Prove optional worker-declared global/row Home actions, legacy constructors and real xbook `z`
-  discoverability/drive without adding provider or money effects. (The framework-side additive
-  fields + model projection are proven here; the REAL xbook `z` drive is Auto-Bookkeeper #1015's
-  own consumer acceptance — deferred, cross-repo, see plan doc HANDOFF NOTES.)
+- [ ] Prove optional worker-declared global/row Home actions, legacy constructors and real xbook `z`
+  discoverability/drive without adding provider or money effects. Framework fields/projection and
+  the real xbook handler/store are separately green against the candidate, but production xbook
+  does not populate the declarations that join them. Auto-Bookkeeper #1015 owns that missing
+  consumer implementation and remains an unmerged plan; see plan doc HANDOFF NOTES.
 - [x] Prove Auto-Bookkeeper's 16-item shelf through a pinned-framework candidate and real stdio.
-  (Proven at the framework level in `tests/test_contract.py` against a real 16-item shelf shape;
-  the actual pinned-candidate consumer drive is #1014's own acceptance — deferred, cross-repo.)
+  Candidate-source acceptance loaded Auto-Bookkeeper main's production shelf-G registry and passed
+  all 32 `{human, stdio} × {1..9,a..g}` exact route cells plus root Backspace, with inert run-body
+  substitutions and no provider/accounting effects. #1014 still owns the post-merge metadata pin.
 - [ ] Run framework gates, independent acceptance/architecture/security/operability QA and document
   the consumer pin SHA for Auto-Bookkeeper #1014. Framework gates: DONE (all green — see plan doc
   HANDOFF NOTES for the exact commands/results). Independent QA: pending — this PR now flips to
@@ -106,7 +108,8 @@ fields expose it to the agent from the same snapshot. Workers without declaratio
 
 ## HANDOFF NOTES
 
-- Current phase: implementation complete, all local gates green, handed to independent Foundry QA.
+- Current phase: QA findings 1–5 addressed; blocked before QA on finding 6's absent consumer
+  declaration implementation.
 - Base: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2` (confirmed still an ancestor of this
   branch's HEAD at handoff — no rebase needed).
 - Baseline: 204 focused framework tests passed in 0.47 seconds (SOL authoring). Post-implementation:

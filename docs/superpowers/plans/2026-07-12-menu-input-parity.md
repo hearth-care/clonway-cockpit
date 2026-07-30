@@ -75,9 +75,10 @@ equivalent key.
 - [x] Assert workers with empty defaults remain model-shape compatible.
 - [ ] Use xbook #1015's worktree/candidate pin to drive real active/deferred `z`; assert the
   declaration matches handler behavior and only the reversible local park store changes.
-  DEFERRED — Auto-Bookkeeper #1015 is a separate repo/consumer PR; this framework PR ships the
-  additive state fields + model projection it depends on, but the real xbook `z` drive is that
-  consumer's own acceptance slice per this plan's ownership section. See HANDOFF NOTES.
+  BLOCKED — the exact candidate framework passes xbook's real reversible park/wake handler/store
+  tests (`4 passed, 63 deselected`), but Auto-Bookkeeper #1015 is still an unmerged plan and its
+  production state does not populate `home_actions` / per-row `actions`. The declaration-to-handler
+  acceptance cannot pass until that consumer implementation exists. See HANDOFF NOTES.
 - [x] Commit: `feat(model): expose worker-declared home actions`.
 
 ## Task 5 — contract, agent and real-shape acceptance
@@ -88,12 +89,14 @@ equivalent key.
 - [x] Assert usage/audit open exactly once and any nested write still reaches existing gate/default
   denial; navigation itself creates no completion receipt.
 - [x] Run contract/model shape tests and old-agent legacy alias regression.
-- [ ] Create a temporary consumer install/pin or use Auto-Bookkeeper #1014/#1015 worktrees after
+- [x] Create a temporary consumer install/pin or use Auto-Bookkeeper #1014/#1015 worktrees after
   this branch is published; drive the real 16-item shelf, root Backspace and `z` facts without live
   provider/accounting effects.
-  DEFERRED — cross-repo; no Auto-Bookkeeper worktree/checkout exists in this session/workspace. The
-  framework-side 16-item acceptance (contract.assert_drives_clean + serve_stdio parity) is done in
-  `tests/test_contract.py`; the real #1014/#1015 consumer drive is that repo's own PR.
+  PARTIAL — a temporary `PYTHONPATH` candidate load imported this exact branch, loaded
+  Auto-Bookkeeper main's real ordered shelf-G catalog, and passed 32/32
+  `{human, stdio} × {1..9,a..g}` route cells with inert run-body substitutions plus real stdio
+  root-Backspace liveness. No provider/accounting effect ran. The `z` facts half remains blocked
+  as described in Task 4 because the consumer declaration implementation does not exist yet.
 - [x] Rebase against #114 if it merged; resolve shell/model overlap semantically and rerun Doctor
   remedy tests. It is not a product dependency. (#114 is still open/unmerged at the time of this
   implementation — nothing to rebase against yet. Per the design doc §9 it is explicitly orthogonal
@@ -145,8 +148,8 @@ equivalent key.
 
 ## HANDOFF NOTES
 
-- **Status:** all six tasks implemented and pushed; full local gates green; PR handed to
-  independent Foundry QA (`agent:needs-qa`).
+- **Status:** QA fixer findings 1–5 addressed; finding 6 is blocked on the missing consumer
+  declaration implementation and needs operator resolution of the cross-PR ordering cycle.
 - **Commits (RED/GREEN per task), on `Codex/menu-input-parity-plan`:**
   - `fix(shell): keep root backspace in session` — Task 1.
   - `feat(menu): assign human-enterable action tokens` — Tasks 2 **and** 3 combined (see
@@ -172,15 +175,15 @@ equivalent key.
   existing positional/keyword construction of `NeedsItem`/`CockpitState`/menu tuples still works.
   Row ids stay `option:<ordinal>` (never the shortcut). Legacy multi-character digit aliases
   (e.g. `"10"`) still open the right capability but are never advertised.
-- **Auto-Bookkeeper real-shape proof:** done at the FRAMEWORK level only —
-  `tests/test_contract.py` drives a real 16-item shelf (Auto-Bookkeeper's actual shelf-G shape)
-  both via injected human-shaped keys and the real `serve_stdio` JSON wire, cross-checking
-  titles/row-ids/shortcuts/actions/selection and the exact opened capability (`a`→ordinal 10,
-  `g`→ordinal 16), a write-gated 16th capability declining over both channels, usage/audit
-  opening exactly once, and plain navigation minting zero audit events. The actual
-  Auto-Bookkeeper #1014/#1015 consumer pin+drive is out of scope for this repo/session (no
-  xbook checkout exists here) — that is those repos' own consumer-acceptance PRs per this design's
-  §9 ownership split.
+- **Auto-Bookkeeper real-shape proof:** a candidate-source load against Auto-Bookkeeper main
+  imported this worktree's `clonway_cockpit`, loaded the production ordered shelf-G catalog
+  (`config`, `resident-lifecycle`, `connections`, `doctor`, `rooms`, `direct-debits`,
+  `prepayments`, `loans`, `onboard-resident`, `admitted-events`, `occupancy-sync`,
+  `occupancy-create-contacts`, `reauth`, `connect-lloyds`, `connect-revolut`, `setup`) and passed
+  32/32 `{human, stdio} × {1..9,a..g}` exact route cells with inert run-body substitutions. Real
+  stdio root Backspace remained live. Separately, the production xbook handler/store tests pass
+  against this candidate (`4 passed, 63 deselected`). Consumer metadata still pins pre-PR
+  `8694e302`; per design §9, #1014 updates that pin after this framework merges.
 - **Gates (this session, on this branch's HEAD):**
   - `uv run pytest -q` (focused list from Task 6, substituting `test_home_actions.py` for the
     non-existent `test_state.py` and adding `test_serve_stdio.py`) → 274 passed.
@@ -205,9 +208,9 @@ equivalent key.
   3. Task 1's `serve_stdio` RED test landed in `tests/test_serve_stdio.py` (the file that
      actually exercises `serve_stdio`) rather than `tests/test_agent_driver.py` (which drives the
      in-process `CockpitDriver`, not the JSON wire).
-  4. Task 4's real xbook `z` drive and Task 5's real Auto-Bookkeeper #1014/#1015 consumer
-     drive are DEFERRED — cross-repo, no consumer checkout in this workspace; those are the
-     consumer repos' own acceptance slices per the design's ownership section (§9).
+  4. Task 4's declaration-to-handler `z` drive is BLOCKED — the real handler/store drive passes,
+     but production xbook does not populate the new framework action facts. #1015 owns that
+     implementation per design §9 and is still an unmerged plan.
   5. #114 (Doctor remedy actions) is still open/unmerged at the time of this work — nothing to
      rebase against; the design doc (§9) already declares it orthogonal/non-blocking.
 - **OPERATOR TODO:** after this PR merges, post the exact merge SHA as a comment on
@@ -223,8 +226,8 @@ code.
 
 ## HANDOFF NOTES — fixer round 2026-07-30
 
-- **Current phase:** QA findings 1–4 fixed and focused GREEN; next is real-consumer evidence and
-  truthful dependency/scope reconciliation for findings 5 and 6.
+- **Current phase:** QA findings 1–5 addressed; blocked on finding 6's absent consumer declaration
+  implementation.
 - **Decisions:** legacy agent aliases are canonical multi-character ASCII decimal strings with no
   leading zero and an in-range ordinal. All Unicode digit-like, leading-zero, mixed, unknown and
   out-of-range strings are inert. Positive ASCII-decimal legacy tuple keys supply stable ordinal
@@ -234,6 +237,8 @@ code.
   Exact route acceptance is now an exhaustive fresh-session matrix:
   `{human, stdio} × {1..9,a..g}` = 32 cells, `32 passed, 7 deselected`. Each cell asserts its
   rendered/model token, exact public effect, exactly one usage/audit launch and zero neighbor opens.
-- **Known-failing tests:** none in the completed phases. Findings 5 and 6 remain to be resolved.
+- **Known-failing tests:** none in the completed framework phases. Finding 5's real catalog
+  candidate probe is green. Finding 6 cannot be made green because the consumer declaration code
+  under test is absent from both current Auto-Bookkeeper production and its open #1015 plan branch.
 - **Consumer status:** Auto-Bookkeeper #1014 and #1015 are still open, unmerged plan PRs. No
   consumer implementation has been assumed.
