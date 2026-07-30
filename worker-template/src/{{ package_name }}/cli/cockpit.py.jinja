@@ -188,9 +188,12 @@ def doctor_unconfigured_renderable() -> RenderableType:
 
 
 def doctor_classify_report_failure(exc: Exception) -> Probe:
-    """Turn a report-build exception into safe modeled Doctor copy. The scaffold
-    exposes only the exception class; workers should replace this with their own
-    typed/redacted failure taxonomy and stable remedy."""
+    """Opt-in example for turning a report-build exception into modeled copy.
+
+    Do not wire this callback until the worker has replaced it with a typed,
+    redacted failure taxonomy and stable remedy. The exception-class revision is
+    scaffold-only: repeated failures of the same class compare as still present.
+    """
     exception_class = type(exc).__name__
     return Probe(
         name="Doctor report",
@@ -229,7 +232,9 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         doctor_build_probes=doctor_build_probes,
         doctor_fixes_for=fixes_for,
         doctor_unconfigured_renderable=doctor_unconfigured_renderable,
-        doctor_classify_report_failure=doctor_classify_report_failure,
+        # Opt in after replacing the scaffold example with a worker-owned,
+        # typed/redacted failure taxonomy:
+        # doctor_classify_report_failure=doctor_classify_report_failure,
         doctor_on_receipt=doctor_on_receipt,
         usage=usage,
         on_open=_on_open,

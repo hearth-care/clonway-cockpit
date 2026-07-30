@@ -116,9 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Tasks 2–5 complete.
-- Next concrete step: drive the generated-worker unconfigured path and make its classifier example
-  opt-in so the documented setup hint remains reachable.
+- Current phase: all QA FAIL round 3 findings fixed; focused phase gates green.
+- Next concrete step: rebase onto latest `origin/main`, run full local gates at the rebased head,
+  refresh exact evidence, and execute the finish protocol.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -167,6 +167,11 @@ Foundry completes only when hermetic public-path tests prove:
   retains the same requested/matched metadata.
 - Task 5 verification: Doctor drive/model/contract/screen-model suite `32 passed`; Ruff passed;
   mypy reported no issues in `render_panels.py`; `git diff --check` clean.
+- Task 6 compatibility keeps the scaffold classifier as an opt-in example so the generated
+  worker's documented unconfigured setup hint remains reachable. The generator test copies current
+  worktree template bytes, ensuring pre-commit RED/GREEN changes are actually exercised.
+- Task 6 verification: generated-worker suite `27 passed`; focused classifier/setup drive
+  `2 passed, 25 deselected`; `git diff --check` clean.
 - Current phase known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in

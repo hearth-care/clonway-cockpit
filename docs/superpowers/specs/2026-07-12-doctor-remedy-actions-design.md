@@ -146,8 +146,9 @@ emits a modeled internal Doctor failure with no runnable action and safe excepti
 canned auth/setup instruction.
 
 Legacy hosts without a classifier retain the current fallback so the change is additive. The
-worker template is updated to demonstrate the classifier callback and modeled failure path for new
-workers.
+worker template demonstrates the classifier callback and modeled failure path as an opt-in example;
+it remains unwired until the worker replaces the scaffold placeholder, preserving the generated
+worker's documented unconfigured setup hint.
 
 ## 8. Focus threading
 

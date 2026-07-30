@@ -107,6 +107,11 @@ The public import surface is `clonway_cockpit.doctor`:
 `doctor_classify_report_failure` and `doctor_on_receipt` callbacks. Existing positional
 constructors and hosts without either callback remain supported.
 
+The worker template keeps `doctor_classify_report_failure` as an opt-in typed/redacted example
+rather than wiring its generic exception-class placeholder. This preserves the scaffold's
+documented `doctor_unconfigured_renderable` setup hint until a worker deliberately adopts modeled
+failure classification. The receipt callback remains a wired best-effort no-op example.
+
 Doctor capability remedies delegate to the existing `_open_capability` route and preserve its
 usage, audit, effect, agent model, and guarded-write behavior. Callback remedies remain disabled
 in agent mode. Report classifier and receipt observer failures are isolated and do not expose raw

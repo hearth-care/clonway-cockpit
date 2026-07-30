@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -42,13 +43,12 @@ _NOW = datetime(2026, 6, 1, 7, 0, tzinfo=UTC)
 def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> Path:
     """Generate a worker into ``tmp_path`` and return its repo root."""
     dst = tmp_path / worker_id
-    source_ref = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        cwd=_REPO_ROOT,
-        text=True,
-    ).strip()
+    source = tmp_path / f".{worker_id}-template-source"
+    source.mkdir()
+    shutil.copy2(_REPO_ROOT / "copier.yml", source / "copier.yml")
+    shutil.copytree(_REPO_ROOT / "worker-template", source / "worker-template")
     copier.run_copy(
-        str(_REPO_ROOT),
+        str(source),
         dst,
         data={
             "worker_id": worker_id,
@@ -63,7 +63,6 @@ def _generate(tmp_path: Path, *, worker_id: str, deploy_shape: str = "job") -> P
         defaults=True,
         quiet=True,
         unsafe=True,  # template has computed values; we trust our own template
-        vcs_ref=source_ref,
     )
     return dst
 
@@ -472,7 +471,8 @@ def test_template_host_wires_typed_doctor_callbacks(tmp_path: Path) -> None:
         host = cockpit._host()
         failure = RuntimeError("raw-secret")
 
-        probe = host.doctor_classify_report_failure(failure)
+        assert host.doctor_classify_report_failure is None
+        probe = cockpit.doctor_classify_report_failure(failure)
         assert probe.probe_id == "scaffold.report"
         assert "RuntimeError" in probe.detail
         assert "raw-secret" not in probe.detail
@@ -494,6 +494,43 @@ def test_template_host_wires_typed_doctor_callbacks(tmp_path: Path) -> None:
         )
         assert host.doctor_on_receipt is not None
         host.doctor_on_receipt(receipt)
+
+
+def test_template_unconfigured_doctor_keeps_documented_setup_hint(tmp_path: Path) -> None:
+    from rich.console import Console
+
+    from clonway_cockpit import shell
+
+    dst = _generate(tmp_path, worker_id="xgenunconfigured")
+    with _importable(dst, "xgenunconfigured"):
+        cockpit = importlib.import_module("xgenunconfigured.cli.cockpit")
+        models = []
+        frames: list[str] = []
+        console = Console(record=True, width=120)
+
+        class _Screen:
+            def update(self, renderable: object) -> None:
+                with console.capture() as capture:
+                    console.print(renderable)
+                frames.append(capture.get())
+
+        def unavailable_report() -> object:
+            raise RuntimeError("raw-secret")
+
+        host = replace(
+            cockpit._host(),
+            doctor_build_report=unavailable_report,
+            on_screen=models.append,
+        )
+
+        shell._doctor(host, _Screen(), lambda: "q")
+
+        assert host.doctor_classify_report_failure is None
+        assert [model.kind for model in models] == ["unstructured"]
+        assert "Worker not configured yet — fill in doctor_build_report()." in frames[-1]
+        assert "Status report unavailable" not in frames[-1]
+        assert "RuntimeError" not in frames[-1]
+        assert "raw-secret" not in frames[-1]
 
 
 # --- AC-C6-2 — emits the C0 wire shape, flag-guarded -----------------------

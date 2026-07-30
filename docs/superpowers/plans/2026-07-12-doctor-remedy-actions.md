@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Tasks 2–5 complete.
-- Next concrete step: add the generated-worker unconfigured-path drive for Task 6, watch the
-  always-wired classifier violate it, then make classifier adoption opt-in in the scaffold.
+- Current phase: all QA FAIL round 3 findings fixed; focused phase gates green.
+- Next concrete step: rebase onto latest `origin/main`, resolve semantically, run the complete local
+  gate sequence at the rebased head, refresh final evidence, then execute the finish protocol.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -527,7 +527,7 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: generated-worker fallback.
+- Pending QA findings: none; final rebase, full gates, and finish protocol remain.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -552,4 +552,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   matched/unmatched focus for 2 generated cells.
 - QA FAIL round 3 Task 5 verification: Doctor drive/model/contract/screen-model suite `32 passed`;
   Ruff passed; mypy reported no issues in `render_panels.py`; `git diff --check` clean.
+- QA FAIL round 3 Task 6 compatibility: generated workers leave the generic classifier example
+  unwired, preserving the documented unconfigured setup hint until a worker deliberately adopts a
+  typed/redacted taxonomy. The generated-worker helper now copies current worktree template bytes,
+  so pre-commit RED/GREEN changes are exercised rather than silently generating from `HEAD`.
+- QA FAIL round 3 Task 6 verification: generated-worker suite `27 passed`; focused classifier/setup
+  drive `2 passed, 25 deselected`; `git diff --check` clean.
 - QA FAIL round 3 known-failing tests: none.

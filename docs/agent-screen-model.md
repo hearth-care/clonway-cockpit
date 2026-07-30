@@ -119,7 +119,9 @@ receive receipts through `Host.doctor_on_receipt(receipt)`. The classifier owns 
 safe wording, and redaction. Receipt delivery is best effort; workers own persistence, timestamps,
 and observability. Framework receipts contain bounded framework status rather than raw exception
 text. A classifier-produced failure renders as a normal `doctor` model, not `unstructured`;
-legacy hosts without the callback retain their existing fallback.
+legacy hosts without the callback retain their existing fallback. The generated-worker scaffold
+keeps its classifier example unwired so a report-builder exception still reaches the documented
+setup hint; wire the example only after replacing it with the worker's typed/redacted taxonomy.
 
 ## Driving headlessly
 
