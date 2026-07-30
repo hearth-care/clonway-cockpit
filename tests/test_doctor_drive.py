@@ -229,6 +229,73 @@ def test_cockpit_client_drives_focused_capability_and_one_receipt() -> None:
         clear_capabilities()
 
 
+def test_cockpit_client_redacts_throwing_doctor_capability_from_every_frame() -> None:
+    clear_capabilities()
+    receipts: list[DoctorRemedyReceipt] = []
+    sentinel = "RAW-PROVIDER-CREDENTIAL-456"
+    try:
+        register_capability(CapabilitySpec("doctor", "G", "Doctor", "Health", "worker doctor"))
+
+        def nested(ctx: WizardContext) -> None:
+            raise RuntimeError(sentinel)
+
+        register_capability(
+            CapabilitySpec(
+                "review",
+                "C",
+                "Review",
+                "Review",
+                "worker review",
+                run=nested,
+            )
+        )
+        fix = Fix(
+            "Review",
+            "worker review",
+            remedy_id="remedy.review",
+            probe_id="probe.review",
+            capability_key="review",
+        )
+        probe = Probe("Review", "error", "Safe detail", fix, "probe.review", "rev-1")
+        state = CockpitState(
+            tenant_name="Clonway",
+            needs=(NeedsItem("Review", "Open Doctor", "error", "doctor", "probe.review"),),
+        )
+        host = shell.Host(
+            capture_state=lambda: state,
+            build_walk_ctx=_ctx,
+            activate_pill=lambda *args: None,
+            doctor_build_report=lambda: object(),
+            doctor_build_probes=lambda report: [probe],
+            doctor_fixes_for=fixes_for,
+            doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Unavailable"),
+            usage=_Usage(),
+            on_open=lambda: None,
+            doctor_on_receipt=receipts.append,
+        )
+        client, thread = _wire(host)
+
+        frames = [client.read_home(), client.press(keys.ENTER)]
+        frames.append(client.press(keys.ENTER))
+        frames.append(client.press("dismiss"))
+        frames.extend(client.drain(idle=0.2))
+
+        result = next(frame for frame in frames if frame.get("kind") == "walk.result")
+        assert result["meta"]["ok"] is False
+        assert result["meta"]["message"] == "Review hit an error (RuntimeError)."
+        assert frames[-1]["kind"] == "doctor"
+        assert len(receipts) == 1
+        assert sentinel not in json.dumps(frames)
+        assert sentinel not in repr(receipts[0])
+
+        assert client.press("q")["kind"] == "home"
+        client.quit()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    finally:
+        clear_capabilities()
+
+
 _LEGACY_CHILD = r"""
 from rich.console import Console
 from clonway_cockpit import agent, render, shell

@@ -485,9 +485,8 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2, Task 2 focus-coherence fix complete.
-- Next concrete step: Task 3 RED tests for safe modeled callback/capability exception failures,
-  followed by the existing capability chokepoint implementation fix.
+- Current phase: QA FAIL round 2, Task 3 capability exception-model safety complete.
+- Next concrete step: Task 4 RED stable-ID pairing matrix, then callback exception-model safety.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -497,8 +496,12 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   `predecessor_removed`, `predecessor_inserted`, `reordered`, `target_removed`) for 10 cells.
 - Task 2 verification: focused matrix `11 passed`; shell/capability/model suite `145 passed`;
   canonical generated-worker suite `26 passed`; Ruff passed; mypy passed; `git diff --check` clean.
+- Task 3 verification: real `CockpitClient` throwing-capability drive passed; complete
+  capability/drive/shell/contract suite `137 passed`; Ruff and format passed; mypy passed;
+  `git diff --check` clean. Framework-owned crash copy is capability title plus exception class;
+  raw worker/provider exception text is absent from Rich, model frames, and receipts.
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: stable-ID pairing matrix, callback/capability exception redaction, runbook
-  delta, prohibited commit trailer, full gates, rebase, and finish protocol.
+- Pending QA findings: stable-ID pairing matrix, callback exception redaction, runbook delta,
+  prohibited commit trailer, full gates, rebase, and finish protocol.

@@ -863,10 +863,10 @@ def _open_capability(
             # taking the whole cockpit down. Surface the crash as a clean result
             # frame and return to the home loop instead. Emit the matching model so an
             # agent driving the walk sees the failure too (not just the human screen).
-            # Some exceptions stringify to "" (e.g. click.Abort on an EOF'd prompt) — note an
-            # exception OBJECT is always truthy, so test str(e), not e — fall back to the type name
-            # so the crash frame is never a dangling "… hit an error — " with nothing after it.
-            crash_msg = f"{spec.title} hit an error — {str(e) or type(e).__name__}"
+            # Exception text is worker/provider-owned and may contain credentials,
+            # customer data, payloads or paths. Framework-owned Rich and agent
+            # frames therefore expose only a bounded class name.
+            crash_msg = f"{spec.title} hit an error ({type(e).__name__})."
             _safe_emit(host, r.model_walk_result(spec.title, ok=False, message=crash_msg))
             _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return

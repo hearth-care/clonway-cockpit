@@ -2160,7 +2160,8 @@ def test_open_capability_guards_a_crashing_walk(usage_to_tmp):
     shell.open_capability(host, "crashy", screen, _keys([]))  # must NOT raise
     txt = "\n".join(_text(f) for f in screen.frames)
     assert "Crashy walk" in txt
-    assert "kaboom-from-walk" in txt
+    assert "RuntimeError" in txt
+    assert "kaboom-from-walk" not in txt
 
 
 def test_open_capability_reraises_shellout(usage_to_tmp):

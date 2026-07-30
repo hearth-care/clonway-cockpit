@@ -203,4 +203,9 @@ Foundry completes only when hermetic public-path tests prove:
   crosses 2 selection sources with 5 rebuild shapes (10 cells).
 - Focus phase gates: focused matrix `11 passed`; shell/capability/model suite `145 passed`;
   generated-worker suite `26 passed`; Ruff and mypy passed; `git diff --check` clean.
+- Task 3 capability exception safety: a real `CockpitClient` drive proves a throwing registered
+  capability emits bounded class-only framework copy, returns to Doctor, emits exactly one receipt,
+  and leaks no raw exception sentinel through any serialized frame or receipt.
+- Task 3 gates: capability/drive/shell/contract suite `137 passed`; Ruff, format and mypy passed;
+  `git diff --check` clean.
 - Known-failing tests: none.
