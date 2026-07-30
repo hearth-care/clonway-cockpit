@@ -361,7 +361,7 @@ def render_ledger(events: Sequence[AuditEvent]) -> RenderableType:
 
 # The default home help body (key, description) — shared by render_help and
 # model_help so the rendered help and its semantic twin can never drift.
-_DEFAULT_HELP_LINES: tuple[tuple[str, str], ...] = (
+DEFAULT_HELP_LINES: tuple[tuple[str, str], ...] = (
     ("↑ ↓", "move the highlight"),
     ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
     ("⏎", "open the item · sync the selected pulse pill"),
@@ -371,6 +371,9 @@ _DEFAULT_HELP_LINES: tuple[tuple[str, str], ...] = (
     ("r", "refresh the cockpit"),
     ("q / esc", "back · quit"),
 )
+# Compatibility spelling for workers pinned before the public facade. Keep both
+# names bound to the exact same immutable tuple.
+_DEFAULT_HELP_LINES = DEFAULT_HELP_LINES
 
 
 def render_help(

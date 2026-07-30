@@ -79,47 +79,39 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
     )
 ```
 
-### Agent-mode-on-host-rebuild trap
+### Reuse the active shell session in callbacks
 
-This is the most common brownfield mistake. `serve_agent_stdio` forces `agent_mode=True` on
-the host it receives. A worker that **re-invokes `_host()` inside its own callbacks** (e.g.
-inside `activate_pill`, `handle_extra_key`, or a walk step) constructs a fresh `Host()` whose
-`agent_mode` defaults back to `False` — silently dropping dry-run and allowing a real post.
+This is the most common brownfield mistake: constructing another `Host` inside
+`activate_pill` or `handle_extra_key`. The replacement loses the live `on_screen` observer,
+guarded-apply authorization, audit sink, and agent prompt callbacks installed by
+`serve_agent_stdio`. Preserving only `agent_mode` does not preserve the active session.
 
-Two patterns fix this:
-
-**Option A — no rebuild.** If the worker's callbacks never call `_host()` again, a parameter
-is sufficient. This is the common case; confirm by grepping for `_host(` in callback
-functions.
-
-**Option B — ambient flag.** If `_host()` is re-invoked inside callbacks, read an
-ambient module-level flag instead of accepting a per-call `agent_mode` parameter. Latch
-the flag once before serving the agent channel:
+Use the session-aware hooks and route nested work through the supplied `ShellSession`:
 
 ```python
-_AGENT_MODE: bool = False
+def activate_pill_with_session(pill, session: shell.ShellSession) -> None:
+    session.open_capability("sync-status")
 
-def _host() -> shell.Host:
-    return shell.Host(..., agent_mode=_AGENT_MODE, ...)
-
-def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:
-    global _AGENT_MODE
-    _AGENT_MODE = True
-    serve_agent_stdio(_host(), stdin=stdin, stdout=stdout, allow_apply=allow_apply)
+def handle_extra_key_with_session(
+    state,
+    selection,
+    key,
+    session: shell.ShellSession,
+) -> bool:
+    if key == "p":
+        session.open_capability("payroll-status", focus="overdue")
+        return True
+    return False
 ```
 
-The callback that rebuilds a host calls `_host()` with no arguments. Because `_host()`
-reads `_AGENT_MODE`, any pre-existing bare rebuild site preserves agent-mode/dry-run
-instead of resetting it to the default:
+Wire these as `Host(activate_pill_with_session=..., handle_extra_key_with_session=...)`.
+The session also provides `activate_need`, `emit_model`, and `show_and_wait`. Each helper
+reuses the exact active Host, screen, and key reader. The legacy callbacks remain supported
+for pinned workers, but they must not reconstruct a Host; migrate a callback before it opens
+nested work.
 
-```python
-def activate_pill(pill, screen, read_key) -> None:
-    host = _host()   # reads the latched _AGENT_MODE flag on rebuild
-    ...
-```
-
-See `docs/agent-screen-model.md` → "Wiring a worker to the agent channel" for a full
-explanation of why `serve_agent_stdio` cannot fix this for you.
+See `docs/agent-screen-model.md` → "Wiring a worker to the agent channel" for the complete
+continuity contract.
 
 ### First-frame latency rule
 

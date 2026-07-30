@@ -6,7 +6,9 @@ The framework owns the generic extension seam:
 - ``extra_regions`` adds worker-owned Rich renderables between needs-you and toolkit.
 - ``extra_model_regions`` adds the model twins of those panels — set both, or the panel
   is invisible to agent drivers.
-- ``handle_extra_key`` lets the worker claim keys for rows it owns.
+- ``handle_extra_key_with_session`` lets the worker claim keys for rows it owns.
+  Use ``session.open_capability``, ``session.activate_need``, ``session.emit_model``
+  and ``session.show_and_wait`` for nested work so the active Host is retained.
 
 The generated worker starts with no extensions. Keep shared framework/template code
 domain-neutral; put worker-specific policy and wording in this module when {{ worker_id }}
@@ -15,9 +17,8 @@ needs an extra home panel.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from clonway_cockpit.model import Region
+from clonway_cockpit.shell import ShellSession
 from clonway_cockpit.state import CockpitState
 from rich.console import RenderableType
 
@@ -37,12 +38,11 @@ def extra_model_regions(state: CockpitState) -> list[Region]:
     return []
 
 
-def handle_extra_key(
+def handle_extra_key_with_session(
     state: CockpitState,
     selection: tuple[str, object] | None,
     key: str,
-    screen: object,
-    read_key: Callable[[], str],
+    session: ShellSession,
 ) -> bool:
     """Return True only when {{ worker_id }} handled ``key`` for an owned row."""
     return False

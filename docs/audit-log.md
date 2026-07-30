@@ -3,7 +3,7 @@
 `clonway_cockpit.audit_log` records framework-level operator activity at the shared
 chokepoints every worker inherits:
 
-- capability launches through `shell._open_capability`
+- capability launches through `shell.open_capability`
 - write gates through `walk.confirm_apply`
 - reflex policy decisions through `reflex.fire_reflexes`
 - guarded approval routing/resolution through `approval_delivery`

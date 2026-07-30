@@ -12,12 +12,15 @@ _EXPECTED_EXPORTS = {
     "RESERVED_LOGRECORD_KEYS",
     "SEVERITY_TO_LEVEL",
     "CloudLoggingSink",
+    "EventBufferScope",
     "LoggerFactory",
     "StorageClientFactory",
     "atomic_append",
     "atomic_write_bytes",
+    "event_buffer",
     "flush_buffer",
     "make_obs",
+    "isolated_event_buffers",
     "resolve_run_id",
 }
 
@@ -46,6 +49,7 @@ def test_constants_accessible():  # CC-OBS-PKG-3
 def test_re_export_list_pinned():  # CC-OBS-PKG-4
     import clonway_cockpit.obs as obs
 
+    assert not hasattr(obs, "_RUN_BUFFERS")
     missing = _EXPECTED_EXPORTS - set(obs.__all__)
     assert not missing, f"Missing from __all__: {missing}"
     extra = set(obs.__all__) - _EXPECTED_EXPORTS

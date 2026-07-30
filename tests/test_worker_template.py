@@ -281,7 +281,10 @@ def test_ac_c6_1_cockpit_opens_three_region_shell(tmp_path: Path) -> None:
 
 
 def test_template_home_hooks_are_generic_noops(tmp_path: Path) -> None:
+    import inspect
+
     from clonway_cockpit import keys
+    from clonway_cockpit.shell import ShellSession
     from clonway_cockpit.state import CockpitState
 
     dst = _generate(tmp_path, worker_id="xgenhooks")
@@ -296,13 +299,21 @@ def test_template_home_hooks_are_generic_noops(tmp_path: Path) -> None:
         assert hooks.extra_selectables(state) == []
         assert hooks.extra_regions(state) == []
         assert hooks.extra_model_regions(state) == []
+        host = importlib.import_module("xgenhooks.cli.cockpit")._host()
+        session = ShellSession(host, object(), lambda: "q")
         assert (
-            hooks.handle_extra_key(state, ("shelf", "A"), keys.ENTER, object(), lambda: "q")
-            is False
+            hooks.handle_extra_key_with_session(state, ("shelf", "A"), keys.ENTER, session) is False
+        )
+        assert tuple(inspect.signature(hooks.handle_extra_key_with_session).parameters) == (
+            "state",
+            "selection",
+            "key",
+            "session",
         )
 
 
 def test_template_host_wires_generic_home_hooks(tmp_path: Path) -> None:
+    from clonway_cockpit import shell
     from clonway_cockpit.state import CockpitState
 
     dst = _generate(tmp_path, worker_id="xgenhosthooks")
@@ -316,8 +327,92 @@ def test_template_host_wires_generic_home_hooks(tmp_path: Path) -> None:
         assert host.extra_selectables is hooks.extra_selectables
         assert host.extra_regions is hooks.extra_regions
         assert host.extra_model_regions is hooks.extra_model_regions
-        assert host.handle_extra_key is hooks.handle_extra_key
+        assert host.handle_extra_key_with_session is hooks.handle_extra_key_with_session
+        assert host.handle_extra_key is shell.Host.__dataclass_fields__["handle_extra_key"].default
         assert host.extra_selectables(state) == []
+
+
+def test_template_home_hook_reuses_exact_active_session_for_nested_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from clonway_cockpit import shell
+
+    dst = _generate(tmp_path, worker_id="xgensessionhook")
+    with _importable(dst, "xgensessionhook"):
+        cockpit = importlib.import_module("xgensessionhook.cli.cockpit")
+        hooks = importlib.import_module("xgensessionhook.cli.home_hooks")
+        seen: list[shell.ShellSession] = []
+        nested = object()
+
+        def claim(state, selection, key, session):
+            seen.append(session)
+            session.show_and_wait(nested)
+            return True
+
+        monkeypatch.setattr(hooks, "handle_extra_key_with_session", claim)
+        host = cockpit._host()
+
+        class _Screen:
+            def __init__(self) -> None:
+                self.frames: list[object] = []
+
+            def update(self, renderable: object) -> None:
+                self.frames.append(renderable)
+
+        keys = iter(["z", "nested-return", "q"])
+
+        def read_key() -> str:
+            return next(keys)
+
+        screen = _Screen()
+        shell.run_home(host, screen, read_key)
+
+        assert len(seen) == 1
+        assert seen[0].host is host
+        assert seen[0].screen is screen
+        assert seen[0].read_key is read_key
+        assert nested in screen.frames
+
+
+def test_generated_production_ast_has_no_private_framework_attributes(tmp_path: Path) -> None:
+    import ast
+
+    dst = _generate(tmp_path, worker_id="xgenpublicast")
+    forbidden = {
+        ("shell", "_home"),
+        ("shell", "_activate"),
+        ("shell", "_activate_need"),
+        ("shell", "_doctor"),
+        ("shell", "_open_capability"),
+        ("shell", "_show"),
+        ("shell", "_safe_emit"),
+        ("shell", "_PROGRESS_TICK"),
+        ("walk", "_present"),
+        ("walk", "_await"),
+        ("walk", "_emit"),
+        ("walk", "_first_blocked_remedy"),
+        ("walk", "_PROGRESS_TICK"),
+        ("render_panels", "_DEFAULT_HELP_LINES"),
+    }
+    findings: list[str] = []
+    for path in sorted((dst / "src").rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and (node.value.id, node.attr) in forbidden
+            ):
+                findings.append(
+                    f"{path.relative_to(dst)}:{node.lineno} {node.value.id}.{node.attr}"
+                )
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "clonway_cockpit.obs._telemetry"
+                and any(alias.name == "_RUN_BUFFERS" for alias in node.names)
+            ):
+                findings.append(f"{path.relative_to(dst)}:{node.lineno} _RUN_BUFFERS")
+    assert findings == []
 
 
 def test_template_home_model_regions_reach_the_home_screen_model(tmp_path: Path) -> None:

@@ -207,17 +207,26 @@ A worker exposes the cockpit to an agent with two pieces, both inherited from th
    which forces `agent_mode=True` (dry-run) and wires the guarded-apply handshake when
    `allow_apply`. `on_apply` is an audit callback fired on each apply; `policy` is an optional
    autonomous-authorization predicate (WS-B) consulted before a guarded apply.
-2. **An agent-mode-aware host factory.** `serve_stdio` sets `agent_mode=True` on the host it
-   threads through `run_cockpit`. A worker whose `_host()` is **re-invoked inside its own
-   callbacks** loses that flag on the rebuilt instance — so such a worker reads an ambient
-   `_AGENT_MODE` module flag in `_host()` and sets it `True` before serving. A worker that
-   never rebuilds its host can pass the host directly and skip the flag.
+2. **Session-aware nested callbacks.** `serve_stdio` sets `agent_mode=True` and installs the
+   observer, guarded-apply authorization, audit sink, and agent prompt callbacks on the Host
+   it threads through `run_cockpit`. A worker must wire
+   `activate_pill_with_session` / `handle_extra_key_with_session` and use the supplied
+   `ShellSession` helpers for nested work. Constructing another Host inside a callback drops
+   that live state; carrying only an agent-mode flag is insufficient.
 
 ```python
 # the worker's cli/__init__.py callback
 if agent_stdio:
     serve_agent(allow_apply=allow_apply)   # → serve_agent_stdio(_host(agent_mode=True), …)
     raise typer.Exit()
+```
+
+```python
+def handle_extra_key_with_session(state, selection, key, session: ShellSession) -> bool:
+    if key == "p":
+        session.open_capability("payroll-status")
+        return True
+    return False
 ```
 
 The discipline is enforced, not optional: `clonway_cockpit.contract.assert_render_model_parity`

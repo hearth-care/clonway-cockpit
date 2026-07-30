@@ -56,6 +56,32 @@ def _br():
     )
 
 
+def test_public_first_blocked_remedy_returns_first_actionable_blocked_remedy():
+    first = Remedy(key="u", label="unlock", action=lambda: "unlocked")
+    later = Remedy(key="r", label="reauth", action=lambda: "reauthenticated")
+
+    assert (
+        walk.first_blocked_remedy(
+            [
+                Precondition("ready with remedy", ok=True, remedy=later),
+                Precondition("blocked without remedy", ok=False),
+                Precondition("first actionable", ok=False, remedy=first),
+                Precondition("later actionable", ok=False, remedy=later),
+            ]
+        )
+        is first
+    )
+    assert (
+        walk.first_blocked_remedy(
+            [
+                Precondition("ready", ok=True),
+                Precondition("blocked without remedy", ok=False),
+            ]
+        )
+        is None
+    )
+
+
 def test_preflight_blocks_when_a_precondition_fails():
     ctx = _ctx([True])  # operator would continue, but a precondition is red
     ok = walk.preflight(
