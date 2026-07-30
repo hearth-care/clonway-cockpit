@@ -485,10 +485,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: both QA FAIL round 4 cardinality findings are green; rebased full local gates are
-  next.
-- Next concrete step: commit/push the Task 4 receipt phase, fetch and rebase onto current
-  `origin/main`, then run every Task 6/full repository gate in the foreground.
+- Current phase: both QA FAIL round 4 cardinality findings are fixed; the rebased code-head full
+  gate sequence is green.
+- Next concrete step: commit/push this final handoff receipt, repeat the complete gate sequence at
+  that documentation head, verify a clean synchronized worktree, then execute the finish protocol.
 - Decisions: focus resolves probe identity against the full probe snapshot, where exactly one
   matching probe may own one or many remedies; the first matching runnable remedy is selected.
   Duplicate probe IDs and duplicate remedy IDs remain fail-closed.
@@ -600,3 +600,16 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   reported 2 files already formatted; mypy reported no issues in `shell.py`; `git diff --check`
   clean.
 - QA FAIL round 4 known-failing tests: none.
+- QA FAIL round 4 rebase: fetched current `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`;
+  the branch was already based on it, and the required force-with-lease push was a no-op.
+- QA FAIL round 4 code-head full gates: `uv run pytest -q` -> `1416 passed in 22.65s`;
+  `uv run ruff check .` -> all checks passed; `uv run ruff format --check .` -> 167 files already
+  formatted; `uv run mypy src` -> no issues in 67 source files; all eight all-file pre-commit hooks
+  passed; canonical generated-worker suite -> `27 passed in 7.68s`; subprocess legacy/opt-in
+  acceptance -> `2 passed, 6 deselected in 10.56s`; `git diff --check` and
+  `git status --porcelain` clean.
+- QA FAIL round 4 history: no prohibited co-author/AI trailers; remote divergence `0 0`;
+  `origin/main` is an ancestor of the code head.
+- QA FAIL round 4 change management: no operator commands, provisioning, sign-offs or recurring
+  operating steps changed; the existing runbook delta already covers focused selection and
+  re-probe behavior, so no additional runbook comment is required.

@@ -116,10 +116,10 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: both QA FAIL round 4 cardinality findings are green; rebased full local gates are
-  next.
-- Next concrete step: commit/push the Task 4 receipt phase, fetch and rebase onto current
-  `origin/main`, then run every Task 6/full repository gate in the foreground.
+- Current phase: both QA FAIL round 4 cardinality findings are fixed; the rebased code-head full
+  gate sequence is green.
+- Next concrete step: commit/push this final handoff receipt, repeat the complete gate sequence at
+  that documentation head, verify a clean synchronized worktree, then execute the finish protocol.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -222,6 +222,18 @@ Foundry completes only when hermetic public-path tests prove:
   reported 2 files already formatted; mypy reported no issues in `shell.py`; `git diff --check`
   clean.
 - Known-failing tests: none.
+- Rebase: fetched current `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`; the branch was
+  already based on it, and the required force-with-lease push was a no-op.
+- Code-head full gates: `uv run pytest -q` -> `1416 passed in 22.65s`; Ruff passed; Ruff format
+  reported 167 files already formatted; mypy reported no issues in 67 source files; all eight
+  all-file pre-commit hooks passed; canonical generated-worker suite -> `27 passed in 7.68s`;
+  subprocess legacy/opt-in acceptance -> `2 passed, 6 deselected in 10.56s`; `git diff --check`
+  and `git status --porcelain` clean.
+- History: no prohibited co-author/AI trailers; remote divergence `0 0`; `origin/main` is an
+  ancestor of the code head.
+- Change management: no operator commands, provisioning, sign-offs or recurring operating steps
+  changed; the existing runbook delta already covers focused selection and re-probe behavior, so
+  no additional runbook comment is required.
 
 ### QA FAIL round (qa-claude-20260730T084851Z-65419-1) — fixer-claude-20260730T141659Z-27593-1
 
