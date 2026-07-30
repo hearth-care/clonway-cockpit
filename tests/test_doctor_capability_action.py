@@ -243,6 +243,7 @@ def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> N
     "focus_identity",
     [
         "unique_probe_id",
+        "multiple_remedies_one_probe",
         "duplicate_probe_id",
         "unique_remedy_id",
         "duplicate_remedy_id",
@@ -287,10 +288,18 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     _, probe_b = remedy("b")
     _, probe_c = remedy("c")
     _, probe_x = remedy("x")
+    alternate_c = Fix(
+        "Open C another way",
+        "worker x",
+        remedy_id="remedy.c.alternate",
+        probe_id="probe.c",
+        capability_key="x",
+    )
     initial = [probe_a, probe_b, probe_c]
     if focus_identity == "duplicate_probe_id":
         probe_x = replace(
             probe_x,
+            probe_id="probe.c",
             fix=replace(probe_x.fix, probe_id="probe.c"),
         )
         initial.append(probe_x)
@@ -309,7 +318,11 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     else:
         focus = "probe.c"
 
-    focus_is_unique = focus_identity in {"unique_probe_id", "unique_remedy_id"}
+    focus_is_unique = focus_identity in {
+        "unique_probe_id",
+        "multiple_remedies_one_probe",
+        "unique_remedy_id",
+    }
     target_probe = (
         probe_b if selection_source == "manual" else (probe_c if focus_is_unique else probe_a)
     )
@@ -352,6 +365,14 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     host = replace(
         _host([]),
         doctor_build_probes=lambda report: probes_holder["list"],
+        doctor_fixes_for=lambda current_probes: [
+            *fixes_for(current_probes),
+            *(
+                [alternate_c]
+                if focus_identity == "multiple_remedies_one_probe" and probe_c in current_probes
+                else []
+            ),
+        ],
         on_screen=models.append,
     )
     sequence = []

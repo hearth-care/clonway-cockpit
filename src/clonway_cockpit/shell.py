@@ -972,22 +972,30 @@ def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Prob
 
 
 def _focused_remedy(
-    runnable: list[tuple[Probe | None, Fix]], focus: str | None
+    probes: list[Probe],
+    runnable: list[tuple[Probe | None, Fix]],
+    focus: str | None,
 ) -> tuple[int, str | None]:
     if focus is None:
         return 0, None
     indexed = list(enumerate(runnable))
-    probe_id_claimed = any(
-        (probe is not None and probe.probe_id == focus) or fix.probe_id == focus
-        for probe, fix in runnable
+    probe_id_claimed = any(probe.probe_id == focus for probe in probes) or any(
+        fix.probe_id == focus for _, fix in runnable
     )
     if probe_id_claimed:
-        match = _unique_match(
-            indexed,
-            lambda item: (
-                (item[1][0] is not None and item[1][0].probe_id == focus)
-                or item[1][1].probe_id == focus
+        focused_probe = _unique_match(
+            probes,
+            partial(_probe_id_matches, probe_id=focus),
+        )
+        if focused_probe is None:
+            return 0, None
+        match = next(
+            (
+                item
+                for item in indexed
+                if item[1][0] is focused_probe or item[1][1].probe_id == focus
             ),
+            None,
         )
         return (match[0], focus) if match is not None else (0, None)
     remedy_match = _unique_match(
@@ -1114,7 +1122,7 @@ def _doctor(
             # survives a rebuild it shouldn't). Only the initial cursor jump is
             # gated by focus_pending — subsequent arrow moves must not be
             # overridden back onto the focus target.
-            index, focus_matched = _focused_remedy(runnable_remedies, focus)
+            index, focus_matched = _focused_remedy(probes, runnable_remedies, focus)
             if focus_pending:
                 sel = index
                 focus_pending = False

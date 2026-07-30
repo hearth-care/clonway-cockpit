@@ -61,19 +61,28 @@ def _wire(host: shell.Host):
 
 
 @pytest.mark.parametrize(
-    ("focus_requested", "focus_matched", "selected", "human_focus"),
+    ("focus_requested", "focus_matched", "selected", "human_focus", "alternate_remedy"),
     [
         (
             "probe.review",
             "probe.review",
             1,
             "focus     ✓ probe.review matched",
+            False,
+        ),
+        (
+            "probe.review",
+            "probe.review",
+            1,
+            "focus     ✓ probe.review matched",
+            True,
         ),
         (
             "probe.missing",
             None,
             0,
             "focus     ⚠ probe.missing not found — review selection",
+            False,
         ),
     ],
 )
@@ -82,6 +91,7 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus(
     focus_matched: str | None,
     selected: int,
     human_focus: str,
+    alternate_remedy: bool,
 ) -> None:
     display = Fix("Explain", "worker explain", note="Read the runbook")
     callback = Fix(
@@ -105,9 +115,21 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus(
         Probe("Repair", "warn", "Repair needed", callback, "probe.repair", "rev-1"),
         Probe("Review", "error", "Review needed", capability, "probe.review", "rev-2"),
     ]
+    fixes = fixes_for(probes)
+    if alternate_remedy:
+        fixes.append(
+            Fix(
+                "Review another way",
+                "worker review-alt",
+                remedy_id="remedy.review.alternate",
+                probe_id="probe.review",
+                capability_key="review",
+                focus="row.7",
+            )
+        )
     kwargs = {
         "probes": probes,
-        "fixes": fixes_for(probes),
+        "fixes": fixes,
         "selected": selected,
         "focus_requested": focus_requested,
         "focus_matched": focus_matched,
@@ -120,7 +142,10 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus(
     rows = next(region.rows for region in model.regions if region.role == "fixes")
     capability_fields = {field.label: field.value for field in rows[2].fields}
 
-    assert [row.id for row in rows] == ["fix:display:0", "fix:0", "fix:1"]
+    expected_row_ids = ["fix:display:0", "fix:0", "fix:1"]
+    if alternate_remedy:
+        expected_row_ids.append("fix:2")
+    assert [row.id for row in rows] == expected_row_ids
     assert model.selection == f"fix:{selected}"
     assert capability_fields == {
         "cmd": "worker review",

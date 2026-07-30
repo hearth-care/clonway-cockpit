@@ -116,9 +116,10 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: all QA FAIL round 3 findings fixed; rebased full gate sequence green.
-- Next concrete step: commit/push this exact receipt, repeat full gates at the documentation head,
-  verify clean synchronization, and execute the finish protocol.
+- Current phase: QA FAIL round 4 Task 2 focus-cardinality fix is green; Task 4 receipt-cardinality
+  RED/GREEN is next.
+- Next concrete step: commit/push the Task 2 focus phase, then add the complete 1:N remedy-pairing
+  matrix before changing `_runnable_remedies`.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -189,6 +190,26 @@ Foundry completes only when hermetic public-path tests prove:
   Enter action/open, focused stable selection across rebuilds, guarded capability writes, one
   post-action re-probe/receipt, bounded failure copy, and explicit review after a disappeared or
   ambiguous target.
+
+### QA FAIL round 4 (qa-claude-20260730T223356Z-84400-53) — fixer-codex-20260730T230222Z-84400-60
+
+- Task 2 RED: adding the valid `multiple_remedies_one_probe` state to the focus matrix produced
+  10 failures. Focused entry executed row 1 instead of the focused probe, and focused/manual paths
+  both reported `focus_matched=None`.
+- Task 2 matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
+  crosses 2 selection sources, 6 focus identities and 5 rebuild shapes for 60 generated cells.
+  The `duplicate_probe_id` state now constructs two actual probes with that ID, distinct from the
+  valid one-probe/multiple-remedy state.
+- Task 2 GREEN: focus resolves exactly one probe from the full snapshot and selects its first
+  runnable remedy. Duplicate probe IDs and duplicate remedy IDs remain fail-closed. Rich and
+  ScreenModel projection coverage includes the one-probe/two-remedy matched verdict.
+- Task 2 verification: focused matrix plus projection `63 passed`; full
+  shell/model/screen-model/capability/drive phase `203 passed in 11.58s`; canonical generated-worker
+  suite `27 passed in 9.52s`; Ruff passed; mypy reported no issues in `shell.py`;
+  `git diff --check` clean.
+- Known outstanding behavior: QA finding 1, explicit probe attribution for every remedy in a 1:N
+  shape, remains to receive its Task 4 RED test and implementation.
 
 ### QA FAIL round (qa-claude-20260730T084851Z-65419-1) — fixer-claude-20260730T141659Z-27593-1
 

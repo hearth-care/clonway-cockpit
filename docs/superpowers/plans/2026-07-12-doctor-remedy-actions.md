@@ -485,12 +485,13 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: all QA FAIL round 3 findings fixed; rebased full gate sequence green.
-- Next concrete step: commit/push this exact receipt, repeat the full gates at that documentation
-  head, verify a clean synchronized worktree, then execute the finish protocol.
-- Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
-  then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
-  manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
+- Current phase: QA FAIL round 4 Task 2 focus-cardinality fix is green; Task 4 receipt-cardinality
+  RED/GREEN is next.
+- Next concrete step: commit/push the Task 2 focus phase, then add the complete 1:N remedy-pairing
+  matrix before changing `_runnable_remedies`.
+- Decisions: focus resolves probe identity against the full probe snapshot, where exactly one
+  matching probe may own one or many remedies; the first matching runnable remedy is selected.
+  Duplicate probe IDs and duplicate remedy IDs remain fail-closed.
 - QA focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`) with rebuild shape (`unchanged`,
@@ -565,3 +566,23 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   generated-worker suite `27 passed`; subprocess legacy/opt-in acceptance `2 passed, 5 deselected
   in 10.56s`; no prohibited commit trailers; remote divergence `0 0`.
 - QA FAIL round 3 known-failing tests: none.
+- QA FAIL round 4 Task 2 RED: adding `multiple_remedies_one_probe` to the focus matrix produced
+  10 failures: focused entry executed row 1 instead of the focused probe, and focused/manual paths
+  both reported `focus_matched=None`.
+- QA FAIL round 4 Task 2 matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
+  crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
+  `multiple_remedies_one_probe`, `duplicate_probe_id`, `unique_remedy_id`,
+  `duplicate_remedy_id`, `unknown`) and rebuild shape (`unchanged`, `predecessor_removed`,
+  `predecessor_inserted`, `reordered`, `target_removed`) for 60 generated cells. The duplicate
+  probe case now creates two actual probes with the same ID, rather than conflating that ambiguity
+  with two remedies legitimately declaring one probe ID.
+- QA FAIL round 4 Task 2 GREEN: `_focused_remedy` resolves a unique probe from the full probe
+  snapshot, then takes that probe's first runnable remedy. Remedy-ID focus still requires one unique
+  remedy. The Rich/ScreenModel projection matrix includes the one-probe/two-remedy matched case.
+- QA FAIL round 4 Task 2 verification: focused matrix plus projection `63 passed`; full
+  shell/model/screen-model/capability/drive phase `203 passed in 11.58s`; canonical generated-worker
+  suite `27 passed in 9.52s`; Ruff passed; mypy reported no issues in `shell.py`;
+  `git diff --check` clean.
+- QA FAIL round 4 known outstanding behavior: finding 1, explicit probe attribution for every
+  remedy in a 1:N shape, remains to receive its Task 4 RED test and implementation.
