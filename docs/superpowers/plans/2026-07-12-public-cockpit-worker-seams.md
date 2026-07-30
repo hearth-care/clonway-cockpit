@@ -70,21 +70,21 @@
 
 ### Implementation
 
-- [ ] Add public constant/class/functions exactly as design §4 with typed explicit signatures.
-- [ ] Add the two default-`None` Host session callbacks and construct the session only at existing
+- [x] Add public constant/class/functions exactly as design §4 with typed explicit signatures.
+- [x] Add the two default-`None` Host session callbacks and construct the session only at existing
   pill/extra-key dispatch points; no global active-host state or signature introspection.
-- [ ] Every function calls the existing private owner at runtime; do not copy a function body.
-- [ ] `open_capability` never accepts/exposes `_nav`; private shell calls remain unchanged.
-- [ ] Keep private names and current internal call graph for pinned-worker compatibility.
-- [ ] Update module docstring to name the public worker entry/nested seams.
+- [x] Every function calls the existing private owner at runtime; do not copy a function body.
+- [x] `open_capability` never accepts/exposes `_nav`; private shell calls remain unchanged.
+- [x] Keep private names and current internal call graph for pinned-worker compatibility.
+- [x] Update module docstring to name the public worker entry/nested seams.
 
 ### Verify
 
-- [ ] Run shell/public tests and the agent/gate/audit suites.
-- [ ] Mutation rows fail if focus/observer/agent authorization/audit/usage/ShellOut is lost.
-- [ ] Run legacy Host fixture matrix to prove callbacks/frames/keys unchanged when session hooks are
+- [x] Run shell/public tests and the agent/gate/audit suites.
+- [x] Mutation rows fail if focus/observer/agent authorization/audit/usage/ShellOut is lost.
+- [x] Run legacy Host fixture matrix to prove callbacks/frames/keys unchanged when session hooks are
   absent; run session-aware nested-open rows to prove one observer-visible child frame.
-- [ ] Commit `cockpit: expose stable shell worker seams`.
+- [x] Commit `cockpit: expose stable shell worker seams`.
 
 ## Task 3 — GREEN: expose walk and help-line seams
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 1 RED complete; Task 2 shell GREEN is next.
+- Phase: Task 2 shell GREEN complete; Task 3 walk/help GREEN is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -237,5 +237,7 @@ or claims product value before #1046 lands.
   `claude/plan-preserve-agent-visibility-through-nested-walks@0580b8593`; no edit or pin was made.
 - RED proof: `tests/test_public_worker_api.py` and `tests/test_obs_package.py` fail collection on
   absent `EventBufferScope`; isolated import probes also fail on absent shell, walk and help names.
-- Known failing tests: the intentional Task 1 import REDs above.
+- Task 2 verification: 15 focused public shell tests passed; 117 shell/agent/gate/audit tests
+  passed. Legacy and opt-in session callback rows both passed.
+- Known failing tests: intentional absent walk/help/obs public names pending Tasks 3–4.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

@@ -8,11 +8,9 @@ from typing import Any
 
 import pytest
 
-from clonway_cockpit import render_panels, shell, walk
+from clonway_cockpit import obs, render_panels, shell, walk
 from clonway_cockpit.model import ScreenModel
-from clonway_cockpit.obs import EventBufferScope, event_buffer, isolated_event_buffers
 from clonway_cockpit.registry import WizardContext
-from clonway_cockpit.render_panels import DEFAULT_HELP_LINES
 from clonway_cockpit.shell import (
     PROGRESS_TICK as SHELL_PROGRESS_TICK,
 )
@@ -28,15 +26,6 @@ from clonway_cockpit.shell import (
     show_and_wait,
 )
 from clonway_cockpit.state import CockpitState, Pill
-from clonway_cockpit.walk import (
-    PROGRESS_TICK as WALK_PROGRESS_TICK,
-)
-from clonway_cockpit.walk import (
-    await_key,
-    emit,
-    first_blocked_remedy,
-    present,
-)
 
 
 class _Screen:
@@ -61,15 +50,15 @@ def test_exact_public_import_surface() -> None:
             run_doctor,
             run_home,
             show_and_wait,
-            WALK_PROGRESS_TICK,
-            await_key,
-            emit,
-            first_blocked_remedy,
-            present,
-            DEFAULT_HELP_LINES,
-            EventBufferScope,
-            event_buffer,
-            isolated_event_buffers,
+            walk.PROGRESS_TICK,
+            walk.await_key,
+            walk.emit,
+            walk.first_blocked_remedy,
+            walk.present,
+            render_panels.DEFAULT_HELP_LINES,
+            obs.EventBufferScope,
+            obs.event_buffer,
+            obs.isolated_event_buffers,
         )
     )
 
@@ -307,18 +296,18 @@ def test_default_help_lines_is_canonical_immutable_tuple() -> None:
 
 
 def test_event_buffer_scope_is_frozen() -> None:
-    scope = EventBufferScope([], True)
+    scope = obs.EventBufferScope([], True)
     with pytest.raises(FrozenInstanceError):
         scope.owner = False  # type: ignore[misc]
 
 
 def test_event_buffer_owner_nested_and_cross_worker() -> None:
-    with isolated_event_buffers(), event_buffer("alpha") as alpha:
+    with obs.isolated_event_buffers(), obs.event_buffer("alpha") as alpha:
         assert alpha.owner is True
-        with event_buffer("alpha") as nested:
+        with obs.event_buffer("alpha") as nested:
             assert nested.owner is False
             assert nested.events is alpha.events
-        with event_buffer("beta") as beta:
+        with obs.event_buffer("beta") as beta:
             assert beta.owner is True
             assert beta.events is not alpha.events
             beta.events.append({"worker": "beta"})
@@ -327,10 +316,10 @@ def test_event_buffer_owner_nested_and_cross_worker() -> None:
 
 @pytest.mark.parametrize("worker_id", ["", " ", None, 7])
 def test_event_buffer_rejects_invalid_worker_before_binding(worker_id: Any) -> None:
-    with isolated_event_buffers():
-        with pytest.raises(ValueError), event_buffer(worker_id):
+    with obs.isolated_event_buffers():
+        with pytest.raises(ValueError), obs.event_buffer(worker_id):
             pytest.fail("invalid worker was bound")
-        with event_buffer("valid") as scope:
+        with obs.event_buffer("valid") as scope:
             assert scope.owner is True
 
 
@@ -339,10 +328,10 @@ def test_event_buffer_rejects_invalid_worker_before_binding(worker_id: Any) -> N
     [RuntimeError("boom"), KeyboardInterrupt(), SystemExit()],
 )
 def test_event_buffer_resets_after_base_exception(error: BaseException) -> None:
-    with isolated_event_buffers():
-        with pytest.raises(type(error)), event_buffer("alpha") as first:
+    with obs.isolated_event_buffers():
+        with pytest.raises(type(error)), obs.event_buffer("alpha") as first:
             first.events.append({"first": True})
             raise error
-        with event_buffer("alpha") as second:
+        with obs.event_buffer("alpha") as second:
             assert second.owner is True
             assert second.events == []

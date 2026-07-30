@@ -13,6 +13,11 @@ signal emit). The generic machinery — navigation, filter, open-capability
 chokepoint, the doctor loop, the animated-progress helper — lives here so every
 worker inherits the whole interactive loop, not just the primitives.
 
+Workers enter through :func:`run_home` and use :class:`ShellSession` for nested
+screens so the exact active Host, observer, authorization, audit, prompt and key
+reader remain attached. :class:`CallbackScreen` adapts a worker presentation
+callback to the framework's :class:`Screen` protocol.
+
 This module imports only ``clonway_cockpit.{keys,render,walk,registry,usage}`` and
 stdlib — never a worker package."""
 
@@ -38,6 +43,9 @@ from clonway_cockpit.state import CockpitState
 # How long the cockpit sleeps between progress frames — ~8 redraws/second, fast
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
 _PROGRESS_TICK = walk._PROGRESS_TICK
+# Stable worker-facing animation cadence. The private owner remains for pinned
+# consumers while new workers import the public spelling.
+PROGRESS_TICK = _PROGRESS_TICK
 
 
 @dataclass
@@ -94,6 +102,13 @@ class Screen(Protocol):
     def update(self, renderable: RenderableType) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class CallbackScreen:
+    """Adapt one presentation callback to the shell's ``Screen`` protocol."""
+
+    update: Callable[[RenderableType], None]
+
+
 class UsageModule(Protocol):
     """The slice of a worker's usage-telemetry module the loop reaches for. A
     worker passes its own module (e.g. ``xbook.cockpit.usage``, which defaults the
@@ -137,6 +152,10 @@ class Host:
     # Fired once per cockpit open — catalog registration + best-effort signal
     # emit. Worker-specific; the loop just calls it before the first paint.
     on_open: Callable[[], None]
+    # Opt-in nested-screen pill hook. It receives the exact active session and
+    # wins over ``activate_pill`` when configured. Agent mode refuses before
+    # either hook is reached.
+    activate_pill_with_session: Callable[[object, ShellSession], None] | None = None
     # The worker's capability registry accessors. A worker may keep its own
     # registry dict (e.g. xbook does, so its tests can snapshot/restore it) rather
     # than share ``clonway_cockpit.registry``'s module global — so the loop reads
@@ -194,6 +213,15 @@ class Host:
         [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
         bool,
     ] = field(default=lambda state, sel, key, screen, read_key: False)
+    # Opt-in worker Home hook carrying the exact active Host/screen/key reader.
+    # When absent, ``handle_extra_key`` keeps its legacy arguments and behavior.
+    handle_extra_key_with_session: (
+        Callable[
+            [CockpitState, tuple[str, object] | None, str, ShellSession],
+            bool,
+        ]
+        | None
+    ) = None
     # Observer the shell calls with the ScreenModel for every screen it draws (home,
     # shelf menu) and threads into each walk's WizardContext so walk screens emit too.
     # Default no-op so existing Host constructions are byte-identical and the live
@@ -217,6 +245,27 @@ class Host:
     # Optional framework audit sink. Worker code usually passes make_audit_sink(worker_id).
     audit_sink: AuditSink | None = None
     audit_worker: str = "cockpit"
+
+
+@dataclass(frozen=True, slots=True)
+class ShellSession:
+    """The exact active shell objects a worker must reuse for nested screens."""
+
+    host: Host
+    screen: Screen
+    read_key: Callable[[], str]
+
+    def open_capability(self, key: str, *, focus: str | None = None) -> None:
+        open_capability(self.host, key, self.screen, self.read_key, focus=focus)
+
+    def activate_need(self, item: object) -> None:
+        activate_need(self.host, item, self.screen, self.read_key)
+
+    def emit_model(self, model: ScreenModel) -> None:
+        emit_model(self.host, model)
+
+    def show_and_wait(self, renderable: RenderableType) -> None:
+        show_and_wait(self.screen, renderable, self.read_key)
 
 
 def run_with_progress[T](
@@ -477,7 +526,13 @@ def _home(
         # the alt-screen the same way the framework's own _activate does.
         # Returning True means "I handled it; skip the framework's branches
         # below". A worker key may have drilled + acted, so re-capture afterwards.
-        if host.handle_extra_key(state, selection, key, screen, read_key):
+        if (
+            host.handle_extra_key_with_session(
+                state, selection, key, ShellSession(host, screen, read_key)
+            )
+            if host.handle_extra_key_with_session is not None
+            else host.handle_extra_key(state, selection, key, screen, read_key)
+        ):
             state, items, sel = _recapture(host, sel)
             dirty = True
             continue
@@ -614,7 +669,13 @@ def _activate(
         if host.agent_mode:
             _safe_emit(host, r.model_note("Sync skipped", "pulse sync is disabled in agent mode"))
             return
-        host.activate_pill(state.pills[ref], screen, read_key)
+        if host.activate_pill_with_session is not None:
+            host.activate_pill_with_session(
+                state.pills[ref],
+                ShellSession(host, screen, read_key),
+            )
+        else:
+            host.activate_pill(state.pills[ref], screen, read_key)
         return
     _activate_need(host, state.needs[ref], screen, read_key)
 
@@ -920,6 +981,63 @@ def _show(screen: Screen, renderable: RenderableType, read_key: Callable[[], str
     """Draw a leaf screen (card / doctor / note / help); any key returns."""
     screen.update(renderable)
     read_key()
+
+
+def emit_model(host: Host, model: ScreenModel) -> None:
+    """Emit ``model`` through the shell's best-effort observer owner."""
+    return _safe_emit(host, model)
+
+
+def show_and_wait(
+    screen: Screen,
+    renderable: RenderableType,
+    read_key: Callable[[], str],
+) -> None:
+    """Show one leaf renderable and wait for exactly one key."""
+    return _show(screen, renderable, read_key)
+
+
+def activate_need(
+    host: Host,
+    item: object,
+    screen: Screen,
+    read_key: Callable[[], str],
+) -> None:
+    """Activate one needs-you item through the existing shell owner."""
+    return _activate_need(host, item, screen, read_key)
+
+
+def run_home(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
+    """Run the worker Home loop with a fresh framework-owned navigation stack."""
+    return _home(host, screen, read_key)
+
+
+def activate_item(
+    host: Host,
+    item: tuple[str, object],
+    state: CockpitState,
+    screen: Screen,
+    read_key: Callable[[], str],
+) -> None:
+    """Activate one selected Home item through the existing shell owner."""
+    return _activate(host, item, state, screen, read_key)
+
+
+def open_capability(
+    host: Host,
+    key: str,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    focus: str | None = None,
+) -> None:
+    """Open a capability without exposing the shell's private navigation stack."""
+    return _open_capability(host, key, screen, read_key, focus=focus)
+
+
+def run_doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
+    """Run Doctor through the existing shell owner."""
+    return _doctor(host, screen, read_key)
 
 
 @dataclass(frozen=True)
