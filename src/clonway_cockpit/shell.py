@@ -511,14 +511,16 @@ def _home(
         if low in ("q", keys.ESC):
             return
         # Backspace at home: pop back if there is somewhere to go. At home with an
-        # empty stack it is a no-op (home IS the root).
+        # empty stack it is a real no-op — nothing changed, so the loop just keeps
+        # reading the next key in THIS invocation rather than ending the session
+        # (home IS the root; there is nowhere to return FROM).
         if key == keys.BACKSPACE:
             frame = nav.pop_back()
-            if frame is not None:
-                # Re-enter home with the snapshotted cursor.
-                _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
-            # Whether we popped or not, return from THIS home invocation — either
-            # we recursed into a restored home, or we're truly at root and a no-op.
+            if frame is None:
+                continue
+            # Re-enter home with the snapshotted cursor, then return from THIS
+            # invocation — we've recursed into the restored home.
+            _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
             return
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)

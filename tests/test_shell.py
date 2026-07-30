@@ -1559,8 +1559,11 @@ def test_back_from_shelf_returns_to_home_with_cursor_preserved(usage_to_tmp):
 
 
 def test_back_from_walk_result_returns_to_home_with_cursor_preserved(usage_to_tmp):
-    """After a walk returns, Backspace is a no-op at home (stack already popped by
-    the walk returning normally). Home cursor lands on default selection."""
+    """After a walk returns, Backspace at home (stack popped by the walk's own
+    return) is a REAL no-op — the same session stays open for a second, later
+    action, not an implicit quit. This is the case the readiness doc flagged: the
+    old script never actually pressed Backspace, so it couldn't catch the root
+    Backspace ending the whole cockpit."""
     ran: list = []
     register_capability(
         CapabilitySpec(
@@ -1574,11 +1577,69 @@ def test_back_from_walk_result_returns_to_home_with_cursor_preserved(usage_to_tm
     )
     host = _FakeHost().as_host()
     scr = _Screen()
-    # Boot on shelf A; 'a' opens shelf A directly (single spec); walk runs; returns
-    # to home; 'q' quits.
-    shell.run_cockpit(host, read_key=_keys(["a", "q"]), screen=scr)
-    assert ran == [True]
+    # Boot on shelf A; 'a' opens shelf A directly (single spec) and the walk runs;
+    # back at home, Backspace at root must be a no-op — a second 'a' in the SAME
+    # session proves the cockpit is still alive; 'q' quits.
+    shell.run_cockpit(host, read_key=_keys(["a", keys.BACKSPACE, "a", "q"]), screen=scr)
+    assert ran == [True, True], "session ended after root Backspace instead of staying open"
     # The last frame must be home (legend "to move" is present).
+    last = _text(scr.frames[-1])
+    assert "to move" in last
+
+
+def test_root_backspace_empty_stack_then_down_enter_stays_in_one_run(usage_to_tmp):
+    """Empty-stack root Backspace, then Down (cursor move), then Enter (a real
+    action) must all land in the SAME run_cockpit call — proving Backspace didn't
+    end the session."""
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()  # no pills/needs → boot lands on shelf A (index 0)
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host, read_key=_keys([keys.BACKSPACE, keys.DOWN, keys.ENTER, "q"]), screen=scr
+    )
+    assert ran == [True], "Down/Enter after root Backspace never reached the walk"
+    # Exactly the boot capture plus the one re-capture after Enter's action — the
+    # no-op Backspace and the cursor-only Down must not have re-captured.
+    assert fh.capture_calls == 2
+    last = _text(scr.frames[-1])
+    assert "to move" in last
+
+
+def test_two_root_backspaces_then_valid_action_neither_exits_nor_recaptures(usage_to_tmp):
+    """Two repeated no-op root Backspaces in a row must not exit the cockpit and
+    must not trigger a state re-capture; a following real action still works."""
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-a",
+            shelf="A",
+            title="Cap A",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys([keys.BACKSPACE, keys.BACKSPACE, keys.ENTER, "q"]),
+        screen=scr,
+    )
+    assert ran == [True], "Enter after two root Backspaces never reached the walk"
+    assert fh.capture_calls == 2  # boot capture + the one after Enter; not one per Backspace
     last = _text(scr.frames[-1])
     assert "to move" in last
 
