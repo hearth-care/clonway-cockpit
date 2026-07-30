@@ -216,4 +216,6 @@ Foundry completes only when hermetic public-path tests prove:
   bounded class-only failure copy and no raw callback sentinel.
 - Task 4 gates: receipt/drive/shell suite `147 passed`; Ruff, format and mypy passed;
   `git diff --check` clean.
+- Task 5 parity gates: exact doctor-drive/model/contract/screen-model suite `31 passed`; full-tree
+  Ruff and format passed; mypy reported no issues in 67 source files; `git diff --check` clean.
 - Known-failing tests: none.

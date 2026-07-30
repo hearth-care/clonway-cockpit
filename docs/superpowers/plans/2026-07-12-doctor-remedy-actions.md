@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2, Task 4 pairing/receipt/callback safety complete.
-- Next concrete step: Task 5 parity regression sweep, then Task 6 runbook delta, history cleanup,
-  full gates, rebase and finish protocol.
+- Current phase: QA FAIL round 2, Task 5 parity regression sweep complete.
+- Next concrete step: Task 6 runbook delta, prohibited-trailer history cleanup, full gates, rebase
+  and finish protocol.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -511,6 +511,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   `15 passed`; receipt/drive/shell suite `147 passed`; Ruff and format passed; mypy passed;
   `git diff --check` clean. A real `CockpitDriver` serialization proves raw callback exception text
   is absent while `serve_stdio` remains unable to execute opaque callbacks by design.
+- Task 5 verification: exact doctor-drive/model/contract/screen-model suite `31 passed`; full-tree
+  Ruff passed; Ruff format reported `167 files already formatted`; mypy reported no issues in
+  67 source files; `git diff --check` clean.
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
