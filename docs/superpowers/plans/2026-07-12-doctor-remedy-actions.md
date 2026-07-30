@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: all QA FAIL round 3 findings fixed; focused phase gates green.
-- Next concrete step: rebase onto latest `origin/main`, resolve semantically, run the complete local
-  gate sequence at the rebased head, refresh final evidence, then execute the finish protocol.
+- Current phase: all QA FAIL round 3 findings fixed; rebased full gate sequence green.
+- Next concrete step: commit/push this exact receipt, repeat the full gates at that documentation
+  head, verify a clean synchronized worktree, then execute the finish protocol.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -527,7 +527,7 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: none; final rebase, full gates, and finish protocol remain.
+- Pending QA findings: none; exact-receipt-head gate repeat and finish protocol remain.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -558,4 +558,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   so pre-commit RED/GREEN changes are exercised rather than silently generating from `HEAD`.
 - QA FAIL round 3 Task 6 verification: generated-worker suite `27 passed`; focused classifier/setup
   drive `2 passed, 25 deselected`; `git diff --check` clean.
+- QA FAIL round 3 final gates: rebased onto latest
+  `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`; full suite `1,297 passed in
+  21.74s`; Ruff passed; Ruff format reported `167 files already formatted`; mypy reported no issues
+  in 67 source files; all eight pre-commit hooks passed; `git diff --check` clean;
+  generated-worker suite `27 passed`; subprocess legacy/opt-in acceptance `2 passed, 5 deselected
+  in 10.56s`; no prohibited commit trailers; remote divergence `0 0`.
 - QA FAIL round 3 known-failing tests: none.

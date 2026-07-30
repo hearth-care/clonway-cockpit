@@ -116,9 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: all QA FAIL round 3 findings fixed; focused phase gates green.
-- Next concrete step: rebase onto latest `origin/main`, run full local gates at the rebased head,
-  refresh exact evidence, and execute the finish protocol.
+- Current phase: all QA FAIL round 3 findings fixed; rebased full gate sequence green.
+- Next concrete step: commit/push this exact receipt, repeat full gates at the documentation head,
+  verify clean synchronization, and execute the finish protocol.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -172,6 +172,11 @@ Foundry completes only when hermetic public-path tests prove:
   worktree template bytes, ensuring pre-commit RED/GREEN changes are actually exercised.
 - Task 6 verification: generated-worker suite `27 passed`; focused classifier/setup drive
   `2 passed, 25 deselected`; `git diff --check` clean.
+- Final rebased gates: full suite `1,297 passed in 21.74s`; Ruff passed; Ruff format reported
+  `167 files already formatted`; mypy reported no issues in 67 source files; all eight pre-commit
+  hooks passed; `git diff --check` clean; generated-worker suite `27 passed`; subprocess
+  legacy/opt-in acceptance `2 passed, 5 deselected in 10.56s`; no prohibited commit trailers;
+  remote divergence `0 0`.
 - Current phase known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in

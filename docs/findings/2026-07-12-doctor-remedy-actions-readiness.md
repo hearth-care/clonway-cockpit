@@ -140,11 +140,14 @@ filled in by the release owner. No data migration or operator cutover step is in
 
 ## Final local verification
 
-- `uv run pytest -q`: 1,213 passed in 26.27 seconds.
+- `uv run pytest -q`: 1,297 passed in 21.74 seconds.
 - `uv run ruff check .`: all checks passed.
 - `uv run ruff format --check .`: 167 files already formatted.
 - `uv run mypy src`: success, no issues in 67 source files.
 - `uv run pre-commit run --all-files`: all eight hooks passed.
 - `git diff --check`: clean.
-- Generated-worker suite: 26 passed.
-- True subprocess `CockpitClient` legacy/opt-in acceptance: 2 passed, 4 deselected.
+- Generated-worker suite: 27 passed.
+- True subprocess `CockpitClient` legacy/opt-in acceptance: 2 passed, 5 deselected in 10.56
+  seconds.
+- Branch rebased on `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`; no prohibited
+  commit trailers; pushed branch and local head have divergence `0 0`.
