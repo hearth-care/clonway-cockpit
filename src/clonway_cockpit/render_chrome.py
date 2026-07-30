@@ -277,11 +277,11 @@ def normalize_menu_items(
     once at their boundary so Rich rendering and the agent model are always
     reading the same normalized sequence.
 
-    A legacy tuple's ``key`` becomes the shortcut when it is itself a valid
-    one-character token (today's ``"1"``..``"9"`` shelves); anything else
-    (a multi-character key, or one a caller only ever used for parallel-array
-    bookkeeping) degrades to ``shortcut=None`` rather than raising, so an
-    unanticipated legacy caller stays inert instead of crashing."""
+    A positive ASCII-decimal legacy tuple ``key`` remains its ordinal identity,
+    preserving stable ``option:<key>`` row/selection IDs even for offset and
+    multi-digit menus. Its key becomes the shortcut only when it is itself a
+    valid one-character token (today's ``"1"``..``"9"`` shelves); anything
+    else degrades to ``shortcut=None`` rather than raising."""
     items: list[MenuItem] = []
     for i, opt in enumerate(options, start=1):
         if isinstance(opt, MenuItem):
@@ -289,7 +289,8 @@ def normalize_menu_items(
             continue
         key, title, summary = opt
         shortcut = key if _is_valid_menu_shortcut(key) else None
-        items.append(MenuItem(ordinal=i, title=title, summary=summary, shortcut=shortcut))
+        ordinal = int(key) if key.isascii() and key.isdecimal() and int(key) > 0 else i
+        items.append(MenuItem(ordinal=ordinal, title=title, summary=summary, shortcut=shortcut))
     _validate_menu_items(items)
     return items
 

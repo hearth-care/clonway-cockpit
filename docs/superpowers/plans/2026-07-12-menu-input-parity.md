@@ -220,3 +220,17 @@ Return to SOL authoring if a wire schema bump is required, row identity cannot s
 multi-digit agent inputs cannot be retained, overflow would crash, root no-op cannot satisfy the
 existing frame-per-key pump, or the implementation proposes timing/digit buffering or worker-local
 code.
+
+## HANDOFF NOTES — fixer round 2026-07-30
+
+- **Current phase:** QA findings 1, 2 and 4 fixed and focused GREEN; next is finding 3's exhaustive
+  `channel × token × ordinal` exact-routing matrix.
+- **Decisions:** legacy agent aliases are canonical multi-character ASCII decimal strings with no
+  leading zero and an in-range ordinal. All Unicode digit-like, leading-zero, mixed, unknown and
+  out-of-range strings are inert. Positive ASCII-decimal legacy tuple keys supply stable ordinal
+  row/selection identity; duplicate identities fail validation.
+- **Evidence:** focused RED produced 7 expected failures including the `²²` crash and rewritten
+  `option:7`/`option:12` identities; focused GREEN is `16 passed, 34 deselected`.
+- **Known-failing tests:** none in the completed phase. Findings 3, 5 and 6 remain to be resolved.
+- **Consumer status:** Auto-Bookkeeper #1014 and #1015 are still open, unmerged plan PRs. No
+  consumer implementation has been assumed.

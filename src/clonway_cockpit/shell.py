@@ -764,13 +764,19 @@ def _shelf(
             # routes (never a second, differently-cased action).
             _open_capability(host, specs[by_shortcut[low]].key, screen, read_key, _nav=_nav)
             return
-        elif key.isdigit() and len(key) > 1 and 1 <= int(key) <= n:
+        elif (
+            len(key) > 1
+            and key.isascii()
+            and key.isdecimal()
+            and not key.startswith("0")
+            and 1 <= (legacy_ordinal := int(key)) <= n
+        ):
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
             # ordinal (e.g. "10") that no human raw keypress can ever produce in
             # one token. Never advertised (absent from actions/Rich); kept so an
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
-            _open_capability(host, specs[int(key) - 1].key, screen, read_key, _nav=_nav)
+            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key, _nav=_nav)
             return
 
 

@@ -157,6 +157,21 @@ def test_normalize_menu_items_legacy_tuple_keeps_ordinal_and_shortcut():
     assert [(i.ordinal, i.shortcut) for i in items] == [(1, "1"), (2, "2")]
 
 
+@pytest.mark.parametrize("key", ["7", "12"])
+def test_normalize_menu_items_preserves_positive_numeric_legacy_identity(key):
+    items = normalize_menu_items([(key, "Legacy", "stable row")])
+    assert items[0].ordinal == int(key)
+    assert items[0].shortcut == (key if len(key) == 1 else None)
+    model = render.model_menu("X", [(key, "Legacy", "stable row")], selected=0)
+    assert model.regions[0].rows[0].id == f"option:{key}"
+    assert model.selection == f"option:{key}"
+
+
+def test_normalize_menu_items_rejects_duplicate_numeric_legacy_identities():
+    with pytest.raises(ValueError, match="ordinals must be unique"):
+        normalize_menu_items([("7", "First", "s"), ("7", "Second", "s")])
+
+
 def test_normalize_menu_items_rejects_duplicate_shortcuts():
     with pytest.raises(ValueError):
         normalize_menu_items([MenuItem(1, "A", "s", "a"), MenuItem(2, "B", "s", "a")])
@@ -190,13 +205,44 @@ def test_menu_shortcut_alphabet_excludes_q_and_has_34_unique_slots():
 
 
 def test_assign_menu_shortcuts_at_capacity_and_overflow():
-    capacity = len(MENU_SHORTCUT_ALPHABET)
-    at_capacity = assign_menu_shortcuts(capacity)
-    assert all(s is not None for s in at_capacity)
-    assert at_capacity[-1] == MENU_SHORTCUT_ALPHABET[-1]
-    overflow = assign_menu_shortcuts(capacity + 1)
-    assert overflow[:-1] == at_capacity
-    assert overflow[-1] is None  # beyond capacity: no fake token, ever
+    expected = [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z",
+    ]
+    assert assign_menu_shortcuts(34) == expected
+    assert assign_menu_shortcuts(35) == [*expected, None]
 
 
 # --- Rich / model parity: same non-None tokens, one char, unique, no q --------
@@ -306,6 +352,38 @@ def test_unknown_and_malformed_inputs_are_inert_in_shelf_menu():
     # multi-character non-digit — neither a real shortcut nor the legacy alias.
     shell.run_cockpit(host, read_key=_keys(["b", "z", "xx", "q"]), screen=scr)
     assert all(v == [] for v in ran.values())
+
+
+@pytest.mark.parametrize(
+    ("candidate", "expected_open"),
+    [
+        ("10", "cap-10"),
+        ("16", "cap-16"),
+        ("17", "cap-16"),
+        ("99", "cap-16"),
+        ("00", "cap-16"),
+        ("01", "cap-16"),
+        ("١٠", "cap-16"),
+        ("１２", "cap-16"),
+        ("²²", "cap-16"),
+        ("1x", "cap-16"),
+        ("xx", "cap-16"),
+        ("?", "cap-16"),
+    ],
+)
+def test_legacy_alias_grammar_is_ascii_canonical_and_other_inputs_stay_inert(
+    candidate, expected_open
+):
+    """Only canonical in-range multi-character ASCII ordinals are aliases.
+
+    Every other arbitrary stdio string remains inert, leaves the shelf alive,
+    and permits the following advertised ``g`` action to open ordinal 16.
+    """
+    ran = _register_shelf(16)
+    host = _host()
+    shell.run_cockpit(host, read_key=_keys(["b", candidate, "g", "q"]), screen=_Screen())
+    assert ran[expected_open] == [True]
+    assert sum(len(opens) for opens in ran.values()) == 1
 
 
 def test_direct_token_opens_exact_capability_once():
