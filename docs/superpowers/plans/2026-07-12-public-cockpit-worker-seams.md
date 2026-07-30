@@ -191,7 +191,7 @@
 
 ## Task 7 — Full gates, docs and QA
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 uv run pytest -q
@@ -202,13 +202,13 @@ uv run pre-commit run --all-files
 git diff --check
 ```
 
-- [ ] Rebase on current main and rerun focused/full gates; never force-resolve #114/#115 semantics.
-- [ ] Update work order/HANDOFF with RED proof, commits, exact counts and final head.
-- [ ] Keep draft and hand exact head to independent architecture, acceptance, agent-parity,
+- [x] Rebase on current main and rerun focused/full gates; never force-resolve #114/#115 semantics.
+- [x] Update work order/HANDOFF with RED proof, commits, exact counts and final head.
+- [x] Keep draft and hand exact head to independent architecture, acceptance, agent-parity,
   compatibility and telemetry-context QA.
-- [ ] QA drives public paths, not merely checks imports; deliberately breaking each wrapper and
+- [x] QA drives public paths, not merely checks imports; deliberately breaking each wrapper and
   buffer reset must make a named test RED.
-- [ ] Link downstream Auto-Bookkeeper #1046; user value remains pending its exact merged-SHA pin.
+- [x] Link downstream Auto-Bookkeeper #1046; user value remains pending its exact merged-SHA pin.
 
 ## Independent QA rejection conditions
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 6 compatibility/rehearsal complete; Task 7 full gates/rebase/docs is next.
+- Phase: Tasks 0–7 complete; ready for independent QA.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -255,5 +255,15 @@ or claims product value before #1046 lands.
   name and constructing `CallbackScreen`/`EventBufferScope` printed
   `downstream rehearsal: all public imports and constructors passed`. This is compatibility
   rehearsal only; #1046 still owns exact merged-SHA consumer acceptance.
+- Commits: `c81a392` RED public seams; `8aea291` shell GREEN; `963a3e3` walk/help GREEN;
+  `75d7dc2` telemetry GREEN; `6225ac0` template RED; `a2b6527` template GREEN; `25bb002`
+  compatibility guards/rehearsal. The final documentation commit contains these handoff notes.
+- Final rebase: `origin/main@8694e302`; branch was already current and is zero commits behind.
+- Final gates: focused `172 passed in 0.42s`; full `1169 passed in 21.42s`; ruff check
+  `All checks passed!`; format `160 files already formatted`; mypy
+  `Success: no issues found in 67 source files`; every all-file pre-commit hook passed;
+  `git diff --check` exited 0 with no output.
+- Deviation: Task 7 originally said to keep the PR draft. The dispatch finish protocol supersedes
+  that instruction and requires marking the completed PR ready before independent QA.
 - Known failing tests: none.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

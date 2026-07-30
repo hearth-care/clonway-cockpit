@@ -168,22 +168,25 @@ mapping; it is the supported test-isolation seam. No caller receives the Context
 
 ## Acceptance
 
-- [ ] Public shell functions execute the same current implementation and pass behavior/mutation tests.
-- [ ] `CallbackScreen` forwards each renderable once and holds no additional state.
-- [ ] `ShellSession` uses the active Host; session-aware extra-key hooks preserve every agent field,
+- [x] Public shell functions execute the same current implementation and pass behavior/mutation tests.
+- [x] `CallbackScreen` forwards each renderable once and holds no additional state.
+- [x] `ShellSession` uses the active Host; session-aware extra-key hooks preserve every agent field,
   legacy callbacks remain byte-identical when absent, and agent pills invoke neither callback.
-- [ ] Public walk functions match current private semantics; gates and animation remain unchanged.
-- [ ] Public help tuple is immutable/equal to the current default.
-- [ ] Event buffer owner/nested/cross-worker/BaseException/context-isolation matrix passes.
-- [ ] Obs package `__all__` pins the new public names and no private buffer.
-- [ ] Worker template uses `run_home` and generates/wires only
+- [x] Public walk functions match current private semantics; gates and animation remain unchanged.
+- [x] Public help tuple is immutable/equal to the current default.
+- [x] Event buffer owner/nested/cross-worker/BaseException/context-isolation matrix passes.
+- [x] Obs package `__all__` pins the new public names and no private buffer.
+- [x] Worker template uses `run_home` and generates/wires only
   `handle_extra_key_with_session(..., session: ShellSession)` for Home extensions. Its guidance
   directs nested work through `session.open_capability`/`activate_need`/`emit_model`/
   `show_and_wait`, never `_host()` reconstruction; rendered-worker tests prove the active Host is
   retained and a dynamic source guard rejects named framework-private consumption.
-- [ ] #114/#115 diffs rebase without ownership conflict.
+- [x] #114/#115 diffs rebase without ownership conflict.
 - [ ] Auto-Bookkeeper #1046 pins the merged SHA and its full public-consumer guard passes.
-- [ ] Framework full pytest, ruff, format, mypy, pre-commit and diff gates pass.
+- [x] Framework full pytest, ruff, format, mypy, pre-commit and diff gates pass.
+
+Auto-Bookkeeper #1046 is explicitly deferred: it must pin this PR's eventual merge SHA and run its
+real consumer acceptance after #116 passes independent QA and merges. This branch made no xbook edit.
 
 ## Out of scope
 
@@ -196,13 +199,21 @@ mapping; it is the supported test-isolation seam. No caller receives the Context
 
 ## HANDOFF NOTES
 
-- Phase: Task 0 live inventory complete; Task 1 RED is next.
+- Phase: framework implementation Tasks 0–7 complete; independent QA is next.
 - Base: `origin/main@8694e302`; branch is zero behind.
 - Baseline: 172 focused framework tests passed in 0.54 seconds.
 - Parallel state: #114 and #115 remain open code-bearing, orthogonal PRs; no planned public seam
   has landed independently.
 - Inventory: the generated template retains the two expected `shell._home` calls; #1046 remains a
   draft at `0580b8593` and still owns the downstream public-API migration.
+- RED/GREEN proof: public import RED `c81a392`; shell GREEN `8aea291`; walk/help GREEN `963a3e3`;
+  telemetry GREEN `75d7dc2`; template guard RED `6225ac0`; template GREEN `a2b6527`;
+  compatibility/rehearsal `25bb002`.
+- Final base/gates: `origin/main@8694e302`, zero behind; focused 172 passed in 0.42s; full 1169
+  passed in 21.42s; ruff, format, mypy, all-file pre-commit and diff checks passed.
+- Downstream rehearsal: a non-editable wheel from framework `a2b6527` imported every public seam
+  and instantiated the callback/buffer types from a clean xbook #1046 checkout at `0580b8593`.
+  This is not downstream acceptance; exact merge-SHA pinning remains deferred to #1046.
 - Package: 856 artifact lines and 82 explicit implementation/acceptance gates; 1,122 current tests,
   all-file pre-commit and diff checks pass.
 - Independent plan QA: two read-only reviewers approved after the generated Home hook/session
