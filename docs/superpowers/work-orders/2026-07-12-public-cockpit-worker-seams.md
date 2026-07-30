@@ -196,9 +196,13 @@ mapping; it is the supported test-isolation seam. No caller receives the Context
 
 ## HANDOFF NOTES
 
-- Phase: SOL-authored dependency-free framework blueprint; no implementation started.
-- Base: `origin/main@8694e302`.
-- Baseline: 172 focused framework tests passed in 0.36 seconds.
+- Phase: Task 0 live inventory complete; Task 1 RED is next.
+- Base: `origin/main@8694e302`; branch is zero behind.
+- Baseline: 172 focused framework tests passed in 0.54 seconds.
+- Parallel state: #114 and #115 remain open code-bearing, orthogonal PRs; no planned public seam
+  has landed independently.
+- Inventory: the generated template retains the two expected `shell._home` calls; #1046 remains a
+  draft at `0580b8593` and still owns the downstream public-API migration.
 - Package: 856 artifact lines and 82 explicit implementation/acceptance gates; 1,122 current tests,
   all-file pre-commit and diff checks pass.
 - Independent plan QA: two read-only reviewers approved after the generated Home hook/session

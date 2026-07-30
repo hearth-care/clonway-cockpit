@@ -6,12 +6,12 @@
 
 ## Task 0 — Live release inventory
 
-- [ ] Rebase current `origin/main`; record exact base and zero-behind state.
-- [ ] Confirm #114/#115 remain orthogonal docs-only plans; list any newly merged public API.
-- [ ] Re-run the work-order private-consumer inventory against framework template and xbook #1046.
-- [ ] Run focused baseline from design §11 and record count/time.
-- [ ] If any public symbol now exists or private behavior changed, stop for root SOL amendment.
-- [ ] Record exact downstream #1046 branch/head; no xbook edit or dependency pin in Task 0.
+- [x] Rebase current `origin/main`; record exact base and zero-behind state.
+- [x] Confirm #114/#115 remain orthogonal docs-only plans; list any newly merged public API.
+- [x] Re-run the work-order private-consumer inventory against framework template and xbook #1046.
+- [x] Run focused baseline from design §11 and record count/time.
+- [x] If any public symbol now exists or private behavior changed, stop for root SOL amendment.
+- [x] Record exact downstream #1046 branch/head; no xbook edit or dependency pin in Task 0.
 
 ## Task 1 — RED: pin the public API and compatibility behavior
 
@@ -222,9 +222,18 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: SOL blueprint; Task 0 next.
-- Base: `origin/main@8694e302`; focused baseline 172 passed in 0.36 seconds.
+- Phase: Task 0 complete; Task 1 RED is next.
+- Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
+  exist on main, so no SOL amendment was required.
+- Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
+  Doctor/menu ownership remains orthogonal; no newly merged public API was found.
+- Inventory: the generated cockpit still contains the two planned `shell._home` calls. The
+  framework keeps its expected private owners and `_RUN_BUFFERS`; no unplanned template consumer
+  was found. The #1046 diff still plans the named private-API and copied-adapter migration.
+- Focused baseline: the design §11 command passed, `172 passed in 0.54s`.
 - Blueprint QA: two independent read-only reviewers approved the final 856-line/82-gate package.
 - Dependency: none. Parallel #114/#115 are orthogonal.
-- Downstream: Auto-Bookkeeper #1046 owns pin/migration/real journeys.
+- Downstream: Auto-Bookkeeper #1046 remains draft on
+  `claude/plan-preserve-agent-visibility-through-nested-walks@0580b8593`; no edit or pin was made.
+- Known failing tests: none before Task 1 RED.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.
