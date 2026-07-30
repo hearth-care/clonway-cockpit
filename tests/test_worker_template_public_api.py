@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_TEMPLATE_SRC = _REPO_ROOT / "worker-template" / "src"
+_TEMPLATE_ROOT = _REPO_ROOT / "worker-template"
 
 _FORBIDDEN = (
     "shell._home",
@@ -29,11 +29,23 @@ _FORBIDDEN = (
 )
 
 
+def _template_sources() -> list[Path]:
+    return sorted(_TEMPLATE_ROOT.rglob("*.jinja"))
+
+
 def _find_forbidden(path: str, source: str) -> list[str]:
     findings = [name for name in _FORBIDDEN if name in source]
     is_doc = path.endswith(".md")
-    if (path.endswith("cli/home_hooks.py") and "_host()" in source) or (
-        is_doc and re.search(r"\bhost\s*=\s*_host\(\)", source)
+    callback_host_rebuild = any(
+        re.search(
+            r"\bdef\s+(?:activate_pill|handle_extra_key)(?:_with_session)?\s*\(",
+            block,
+        )
+        and re.search(r"\b_host\s*\(", block)
+        for block in re.findall(r"```[^\n]*\n(.*?)```", source, flags=re.DOTALL)
+    )
+    if (path.endswith("cli/home_hooks.py") and re.search(r"\b_host\s*\(", source)) or (
+        is_doc and callback_host_rebuild
     ):
         findings.append("Home hook reconstructs _host()")
     normalized = " ".join(source.lower().split())
@@ -44,12 +56,16 @@ def _find_forbidden(path: str, source: str) -> list[str]:
 
 def test_generated_production_uses_only_public_framework_seams() -> None:
     findings: list[str] = []
-    for path in sorted(_TEMPLATE_SRC.rglob("*.jinja")):
-        relative = path.relative_to(_TEMPLATE_SRC).as_posix().removesuffix(".jinja")
+    for path in _template_sources():
+        relative = path.relative_to(_TEMPLATE_ROOT).as_posix().removesuffix(".jinja")
         findings.extend(
             f"{relative}: {item}" for item in _find_forbidden(relative, path.read_text())
         )
     assert findings == []
+
+
+def test_template_guard_inventory_includes_generated_readme() -> None:
+    assert _REPO_ROOT / "worker-template" / "README.md.jinja" in _template_sources()
 
 
 def test_framework_documentation_examples_use_public_worker_seams() -> None:
@@ -106,6 +122,25 @@ obs.event_buffer("worker")
 )
 def test_private_seam_guard_covers_hand_written_rules(path, source, expected) -> None:
     assert expected in _find_forbidden(path, source)
+
+
+@pytest.mark.parametrize(
+    "rebuild",
+    [
+        "h = _host()",
+        "return _host()",
+        "self._host()",
+        "_host(agent_mode=True)",
+    ],
+)
+@pytest.mark.parametrize("callback", ["activate_pill", "handle_extra_key"])
+def test_private_seam_guard_rejects_host_rebuild_spellings_in_doc_callbacks(
+    rebuild, callback
+) -> None:
+    source = f"```python\ndef {callback}(*args):\n    {rebuild}\n```"
+    assert "Home hook reconstructs _host()" in _find_forbidden(
+        "docs/adopting-the-agent-channel.md", source
+    )
 
 
 @pytest.mark.parametrize(
