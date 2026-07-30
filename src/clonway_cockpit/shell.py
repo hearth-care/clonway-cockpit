@@ -42,6 +42,7 @@ from clonway_cockpit.doctor import (
     DoctorRemedyReceipt,
     Probe,
     action_kind,
+    build_remedy_receipt,
 )
 from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
@@ -909,19 +910,36 @@ def _doctor_probes(host: Host, build: DoctorBuild) -> list[Probe]:
     return host.doctor_build_probes(build.report)
 
 
-def _focused_remedy(
-    probes: list[Probe], runnable: list, focus: str | None
-) -> tuple[int, str | None]:
+def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe, Any]]:
+    remedies = []
+    for fix in fixes:
+        if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
+            continue
+        probe = next((item for item in probes if item.fix is fix), None)
+        if probe is None:
+            probe = next((item for item in probes if item.fix == fix), None)
+        if probe is not None:
+            remedies.append((probe, fix))
+    return remedies
+
+
+def _focused_remedy(runnable: list[tuple[Probe, Any]], focus: str | None) -> tuple[int, str | None]:
     if focus is None:
         return 0, None
-    for index, fix in enumerate(runnable):
-        probe = next((item for item in probes if item.fix is fix), None)
-        if (probe is not None and probe.probe_id == focus) or fix.probe_id == focus:
+    for index, (probe, fix) in enumerate(runnable):
+        if probe.probe_id == focus or fix.probe_id == focus:
             return index, focus
-    for index, fix in enumerate(runnable):
+    for index, (_, fix) in enumerate(runnable):
         if fix.remedy_id == focus:
             return index, focus
     return 0, None
+
+
+def _deliver_doctor_receipt(host: Host, receipt: DoctorRemedyReceipt) -> None:
+    if host.doctor_on_receipt is None:
+        return
+    with contextlib.suppress(Exception):
+        host.doctor_on_receipt(receipt)
 
 
 def _doctor(
@@ -945,6 +963,7 @@ def _doctor(
     sel = 0
     focus_matched: str | None = None
     focus_pending = True
+    cached_probes: list[Probe] | None = None
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
     # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
     # just re-highlight from the cached report, the same per-keypress-work fix as
@@ -958,12 +977,17 @@ def _doctor(
         return
     dirty = True
     while True:
-        probes = _doctor_probes(host, build)
+        if cached_probes is None:
+            probes = _doctor_probes(host, build)
+        else:
+            probes = cached_probes
+            cached_probes = None
         fixes = host.doctor_fixes_for(probes)
-        runnable = [f for f in fixes if action_kind(f) is not DoctorActionKind.DISPLAY_ONLY]
+        runnable_remedies = _runnable_remedies(probes, fixes)
+        runnable = [fix for _, fix in runnable_remedies]
         if runnable:
             if focus_pending:
-                sel, focus_matched = _focused_remedy(probes, runnable, focus)
+                sel, focus_matched = _focused_remedy(runnable_remedies, focus)
                 focus_pending = False
             else:
                 sel %= len(runnable)
@@ -1020,22 +1044,76 @@ def _doctor(
             dirty = True
             continue
         if key.isdigit() and 1 <= int(key) <= len(runnable):
-            _run_doctor_fix(
+            selected_probe, selected_fix = runnable_remedies[int(key) - 1]
+            action_result = _run_doctor_fix(
                 host,
-                runnable[int(key) - 1],
+                selected_fix,
                 screen,
                 read_key,
                 _nav=_nav,
             )
         elif key == keys.ENTER:
-            _run_doctor_fix(host, runnable[sel], screen, read_key, _nav=_nav)
+            selected_probe, selected_fix = runnable_remedies[sel]
+            action_result = _run_doctor_fix(
+                host,
+                selected_fix,
+                screen,
+                read_key,
+                _nav=_nav,
+            )
         else:
             continue  # inert key — no repaint
+        capability_missing = (
+            action_kind(selected_fix) is DoctorActionKind.OPEN_CAPABILITY
+            and action_result is DoctorActionResult.FAILED
+            and (
+                selected_fix.capability_key is None
+                or host.get_capability(selected_fix.capability_key) is None
+            )
+        )
+        if capability_missing:
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=action_result,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
+            dirty = True
+            continue
         # A fix ran → rebuild the report so the probes reflect the change.
         rebuilt = _rebuild_doctor_report(host, screen, read_key)
         if rebuilt is None:
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=action_result,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
             return
+        after_probes = _doctor_probes(host, rebuilt)
+        after_probe = next(
+            (
+                probe
+                for probe in after_probes
+                if selected_probe.probe_id and probe.probe_id == selected_probe.probe_id
+            ),
+            None,
+        )
+        comparison_available = not (rebuilt.failure_probe is not None and after_probe is None)
+        receipt = build_remedy_receipt(
+            fix=selected_fix,
+            before=selected_probe,
+            after=after_probe,
+            action_result=action_result,
+            rebuild_available=comparison_available,
+        )
+        _deliver_doctor_receipt(host, receipt)
         build = rebuilt
+        cached_probes = after_probes
         dirty = True
 
 
