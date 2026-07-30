@@ -251,7 +251,11 @@ or claims product value before #1046 lands.
   contract test.
 - QA fix focused GREEN: `uv run pytest -q tests/test_public_worker_api.py tests/test_walk.py
   tests/test_obs.py tests/test_worker_template_public_api.py` -> `121 passed in 0.50s`.
-- Known failing tests: none in the focused QA-fix scope; full gates pending.
+- First full-suite attempt: `1185 passed, 1 failed in 90.47s`; the only failure was the stale
+  `tests/test_adoption_playbook_docs.py::test_host_rebuild_pattern_latches_agent_mode_once`,
+  which required the exact ambient Host-rebuild recipe this fix removes. Its replacement
+  session-continuity contract and the docs guard pass together (`8 passed in 0.18s`).
+- Known failing tests: none in focused scopes; full gates must be rerun after the stale-test fix.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
