@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Task 2 focus-identity fix complete.
-- Next concrete step: extend the Task 4 receipt matrix with after-probe identity states, watch the
-  ambiguity cells fail, then make the shared unique-match resolver govern after-state comparison.
+- Current phase: QA FAIL round 3 Tasks 2–4 identity-coherence fixes complete.
+- Next concrete step: add matched/unmatched Rich focus assertions for Task 5, watch them fail, then
+  render the same focus decision carried by the ScreenModel.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -527,7 +527,7 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: after-probe ambiguity, Rich focus parity, and generated-worker fallback.
+- Pending QA findings: Rich focus parity and generated-worker fallback.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -536,5 +536,14 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   50 generated cells. A shared `_unique_match` now governs all Doctor stable-identity resolvers;
   ambiguous focus claims fail closed to `focus_matched=None` and the visible first-row fallback.
 - QA FAIL round 3 Task 2 verification: focus matrix `50 passed`; Ruff passed; mypy reported no
+  issues in `shell.py`; `git diff --check` clean.
+- QA FAIL round 3 receipt matrix:
+  `tests/test_doctor_receipt_integration.py::test_doctor_remedy_pairing_state_matrix` crosses
+  before pairing (`same_object`, `equal_clone`, `stable_id_clone`, `shared_equal_values`,
+  `unpaired`, `reordered_subset`, `ambiguous_duplicate_id`), after identity (`unique`, `absent`,
+  `duplicate_id`, `duplicate_id_reversed`) and display layout (`absent`, `interleaved`) for 56
+  generated cells. Duplicate after IDs always produce `unknown` with empty after fields regardless
+  of order; absent unique IDs remain `resolved`; legacy consume-on-match pairing remains supported.
+- QA FAIL round 3 Task 4 verification: receipt matrix `56 passed`; Ruff passed; mypy reported no
   issues in `shell.py`; `git diff --check` clean.
 - QA FAIL round 3 known-failing tests: none.

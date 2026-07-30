@@ -925,10 +925,6 @@ def _probe_id_matches(candidate: Probe, *, probe_id: str) -> bool:
     return candidate.probe_id == probe_id
 
 
-def _probe_fix_matches(candidate: Probe, *, fix: Fix, by_identity: bool) -> bool:
-    return candidate.fix is fix if by_identity else candidate.fix == fix
-
-
 def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Probe | None, Fix]]:
     """Pair every non-display-only fix with its originating probe, in ``fixes``
     order — the exact order/count ``render_doctor``/``model_doctor`` number rows
@@ -962,21 +958,15 @@ def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Prob
                 # either probe, even if one happens to share object identity.
                 probe = None
         if probe is None and not stable_id_claimed:
-            identity_match = _unique_match(
-                available,
-                partial(_probe_fix_matches, fix=fix, by_identity=True),
-            )
-            if identity_match is not None:
-                available.remove(identity_match)
-                probe = identity_match
+            for index, candidate in enumerate(available):
+                if candidate.fix is fix:
+                    probe = available.pop(index)
+                    break
             else:
-                equality_match = _unique_match(
-                    available,
-                    partial(_probe_fix_matches, fix=fix, by_identity=False),
-                )
-                if equality_match is not None:
-                    available.remove(equality_match)
-                    probe = equality_match
+                for index, candidate in enumerate(available):
+                    if candidate.fix == fix:
+                        probe = available.pop(index)
+                        break
         remedies.append((probe, fix))
     return remedies
 

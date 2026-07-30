@@ -116,9 +116,8 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Task 2 focus-identity fix complete.
-- Next concrete step: extend Task 4's receipt matrix across unique/absent/duplicate after-probe
-  identity, then make ambiguous after-state comparison fail closed.
+- Current phase: QA FAIL round 3 Tasks 2–4 identity-coherence fixes complete.
+- Next concrete step: add and satisfy the Task 5 matched/unmatched Rich focus parity assertions.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -155,6 +154,12 @@ Foundry completes only when hermetic public-path tests prove:
   post-rebuild selection and after-probe comparison. Duplicate focus IDs report
   `focus_matched=None`; Enter then follows the visible first-row fallback.
 - Task 2 verification: focus matrix `50 passed`; Ruff passed; mypy reported no issues in
+  `shell.py`; `git diff --check` clean.
+- Task 4 receipt matrix crosses 7 before-pairing states, 4 after-identity states, and 2 display
+  layouts for 56 generated cells. Duplicate after IDs produce an order-independent `unknown`
+  receipt with no after-state fields; absent IDs remain `resolved`; legacy consume-on-match
+  pairing is preserved.
+- Task 4 verification: receipt matrix `56 passed`; Ruff passed; mypy reported no issues in
   `shell.py`; `git diff --check` clean.
 - Current phase known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.

@@ -195,6 +195,15 @@ def test_capability_receipt_reports_resolved_only_after_reprobe() -> None:
 
 @pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
 @pytest.mark.parametrize(
+    "after_identity",
+    [
+        "unique",
+        "absent",
+        "duplicate_id",
+        "duplicate_id_reversed",
+    ],
+)
+@pytest.mark.parametrize(
     "pairing_case",
     [
         "same_object",
@@ -208,9 +217,10 @@ def test_capability_receipt_reports_resolved_only_after_reprobe() -> None:
 )
 def test_doctor_remedy_pairing_state_matrix(
     pairing_case: str,
+    after_identity: str,
     display_layout: str,
 ) -> None:
-    """Dispatch and receipt attribution share one ordered, fail-closed pairing."""
+    """Before attribution and after comparison share fail-closed identity rules."""
     receipts: list[DoctorRemedyReceipt] = []
     models = []
     calls: list[str] = []
@@ -314,8 +324,23 @@ def test_doctor_remedy_pairing_state_matrix(
         display = Fix("Display only", "worker explain", note="Read the runbook")
         fixes = [display, *fixes, display]
 
+    if after_identity == "unique":
+        after_probes = [target_probe]
+    elif after_identity == "absent":
+        after_probes = [Probe("Other", "warn", "other", None, "probe.other", "rev-other")]
+    else:
+        changed = replace(
+            target_probe,
+            name="Target changed",
+            level="warn",
+            evidence_revision="rev-changed",
+        )
+        after_probes = [target_probe, changed]
+        if after_identity == "duplicate_id_reversed":
+            after_probes.reverse()
+
     host = replace(
-        _host(lambda report: probes, receipts),
+        _host(lambda report: after_probes if calls else probes, receipts),
         doctor_fixes_for=lambda current_probes: fixes,
         on_screen=models.append,
     )
@@ -339,7 +364,16 @@ def test_doctor_remedy_pairing_state_matrix(
     assert len(receipts) == 1
     assert receipts[0].probe_id == expected_probe_id
     assert receipts[0].before_revision == expected_revision
+    if not expected_probe_id:
+        expected_closure = DoctorClosure.UNKNOWN
+    elif after_identity == "absent":
+        expected_closure = DoctorClosure.RESOLVED
+    elif after_identity.startswith("duplicate"):
+        expected_closure = DoctorClosure.UNKNOWN
     assert receipts[0].closure is expected_closure
+    if after_identity.startswith("duplicate"):
+        assert receipts[0].after_level is None
+        assert receipts[0].after_revision is None
 
 
 @pytest.mark.parametrize(
