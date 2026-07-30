@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import logging
+import threading
 from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
 from typing import Any
@@ -312,6 +316,81 @@ def test_event_buffer_owner_nested_and_cross_worker() -> None:
             assert beta.events is not alpha.events
             beta.events.append({"worker": "beta"})
         assert alpha.events == []
+
+
+def test_make_obs_appends_exact_record_to_public_scope() -> None:
+    event, _run_session = obs.make_obs(
+        worker_id="alpha",
+        logger_factory=lambda name: logging.getLogger("public-scope-test"),
+    )
+    with obs.isolated_event_buffers(), obs.event_buffer("alpha") as scope:
+        event("custom.event", answer=42)
+        assert len(scope.events) == 1
+        record = scope.events[0]
+        assert record["event"] == "custom.event"
+        assert record["payload"] == {"severity": "INFO", "answer": 42}
+        assert isinstance(record["ts"], str)
+
+
+def test_nested_isolation_restores_exact_outer_scope() -> None:
+    with obs.isolated_event_buffers(), obs.event_buffer("alpha") as outer:
+        outer.events.append({"outer": True})
+        with obs.isolated_event_buffers(), obs.event_buffer("alpha") as inner:
+            assert inner.owner is True
+            assert inner.events == []
+        with obs.event_buffer("alpha") as restored:
+            assert restored.owner is False
+            assert restored.events is outer.events
+            assert restored.events == [{"outer": True}]
+
+
+def test_event_buffer_resets_on_async_cancellation_and_restores_outer_mapping() -> None:
+    async def exercise() -> None:
+        with obs.isolated_event_buffers(), obs.event_buffer("alpha") as outer:
+
+            async def child() -> None:
+                with obs.event_buffer("beta") as beta:
+                    beta.events.append({"child": True})
+                    await asyncio.Event().wait()
+
+            task = asyncio.create_task(child())
+            await asyncio.sleep(0)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            with obs.event_buffer("alpha") as restored:
+                assert restored.events is outer.events
+                assert restored.owner is False
+            with obs.event_buffer("beta") as beta_after:
+                assert beta_after.owner is True
+                assert beta_after.events == []
+
+    asyncio.run(exercise())
+
+
+def test_copied_thread_context_reset_cannot_corrupt_parent_mapping() -> None:
+    with obs.isolated_event_buffers(), obs.event_buffer("alpha") as outer:
+        copied = contextvars.copy_context()
+        errors: list[BaseException] = []
+
+        def child() -> None:
+            try:
+                with obs.event_buffer("beta") as beta:
+                    assert beta.owner is True
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=lambda: copied.run(child))
+        thread.start()
+        thread.join()
+
+        assert errors == []
+        with obs.event_buffer("alpha") as restored:
+            assert restored.events is outer.events
+            assert restored.owner is False
+        with obs.event_buffer("beta") as beta_after:
+            assert beta_after.owner is True
 
 
 @pytest.mark.parametrize("worker_id", ["", " ", None, 7])

@@ -115,26 +115,26 @@
 
 ### Implementation
 
-- [ ] Add frozen/slots `EventBufferScope`, validate worker ID, implement owner/nested/cross-worker
+- [x] Add frozen/slots `EventBufferScope`, validate worker ID, implement owner/nested/cross-worker
   state machine and isolation context exactly as design §7.
-- [ ] Use `ContextVar.set/reset` only inside these public context managers; never expose mapping or
+- [x] Use `ContextVar.set/reset` only inside these public context managers; never expose mapping or
   token.
-- [ ] Export exactly the three names and retain all prior `__all__` entries/order policy.
-- [ ] Do not rewrite `make_obs` to consume the new API in this PR; it remains the reference current
+- [x] Export exactly the three names and retain all prior `__all__` entries/order policy.
+- [x] Do not rewrite `make_obs` to consume the new API in this PR; it remains the reference current
   behavior and shares the same private ContextVar.
 
 ### RED/GREEN matrix
 
-- [ ] owner fresh list; `make_obs().event` appends exact record;
-- [ ] nested same worker same object/owner false/no reset;
-- [ ] nested other worker separate object/both records/no clobber;
-- [ ] normal/Exception/KeyboardInterrupt/SystemExit reset;
-- [ ] `asyncio.CancelledError` resets an owner scope; cancellation inside a nested other-worker
+- [x] owner fresh list; `make_obs().event` appends exact record;
+- [x] nested same worker same object/owner false/no reset;
+- [x] nested other worker separate object/both records/no clobber;
+- [x] normal/Exception/KeyboardInterrupt/SystemExit reset;
+- [x] `asyncio.CancelledError` resets an owner scope; cancellation inside a nested other-worker
   scope restores the exact outer mapping and list identities with no leaked binding;
-- [ ] nested `isolated_event_buffers` restores exact prior scope;
-- [ ] blank/non-string worker rejected before binding;
-- [ ] context copied into a child task/thread does not let reset corrupt the parent mapping.
-- [ ] Commit `obs: expose scoped worker event buffering`.
+- [x] nested `isolated_event_buffers` restores exact prior scope;
+- [x] blank/non-string worker rejected before binding;
+- [x] context copied into a child task/thread does not let reset corrupt the parent mapping.
+- [x] Commit `obs: expose scoped worker event buffering`.
 
 ## Task 5 — Migrate the generated worker template
 
@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 3 walk/help GREEN complete; Task 4 scoped telemetry GREEN is next.
+- Phase: Task 4 scoped telemetry GREEN complete; Task 5 worker-template migration is next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -241,5 +241,7 @@ or claims product value before #1046 lands.
   passed. Legacy and opt-in session callback rows both passed.
 - Task 3 verification: 2 focused public walk/help tests and 44
   walk/render/contract/agent tests passed.
-- Known failing tests: intentional absent obs public names pending Task 4.
+- Task 4 verification: 67 public/obs/package tests passed, including BaseException,
+  cancellation, nested isolation, cross-worker and copied-context rows.
+- Known failing tests: none.
 - Product value: pending implementation, independent QA, merge and downstream acceptance.

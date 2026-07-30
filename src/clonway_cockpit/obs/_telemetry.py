@@ -62,6 +62,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -131,6 +132,46 @@ _QUIET_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
 _RUN_BUFFERS: ContextVar[dict[str, list[dict]] | None] = ContextVar(
     "clonway_obs_run_buffers", default=None
 )
+
+
+@dataclass(frozen=True, slots=True)
+class EventBufferScope:
+    """One worker's active event list and whether this scope owns its binding."""
+
+    events: list[dict]
+    owner: bool
+
+
+@contextmanager
+def event_buffer(worker_id: str) -> Iterator[EventBufferScope]:
+    """Bind or join one worker's event list without exposing ContextVar state."""
+    if not isinstance(worker_id, str) or not worker_id.strip():
+        raise ValueError("worker_id must be a non-blank string")
+
+    buffers = _RUN_BUFFERS.get()
+    if buffers is not None and worker_id in buffers:
+        yield EventBufferScope(events=buffers[worker_id], owner=False)
+        return
+
+    events: list[dict] = []
+    new_buffers = dict(buffers) if buffers is not None else {}
+    new_buffers[worker_id] = events
+    token = _RUN_BUFFERS.set(new_buffers)
+    try:
+        yield EventBufferScope(events=events, owner=True)
+    finally:
+        _RUN_BUFFERS.reset(token)
+
+
+@contextmanager
+def isolated_event_buffers() -> Iterator[None]:
+    """Temporarily isolate telemetry buffers for tests, restoring on every exit."""
+    token = _RUN_BUFFERS.set(None)
+    try:
+        yield
+    finally:
+        _RUN_BUFFERS.reset(token)
+
 
 CloudLoggingSink = Callable[[str, str, dict[str, Any]], None]
 LoggerFactory = Callable[[str], logging.Logger]
