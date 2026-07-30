@@ -155,6 +155,8 @@ def event_buffer(worker_id: str) -> Iterator[EventBufferScope]:
 
     Entering this scope before ``run_session`` is supported: the session reuses
     this exact list while retaining ownership of lifecycle emission and flush.
+    Records emitted outside a session remain visible here but are not included
+    in a later session's JSONL flush.
     """
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ValueError("worker_id must be a non-blank string")
@@ -381,8 +383,10 @@ def make_obs(
         buffer_token = None
         if buffers is not None and worker_id in buffers:
             buffer = buffers[worker_id]
+            flush_from = len(buffer)
         else:
             buffer = []
+            flush_from = 0
             new_buffers = dict(buffers) if buffers is not None else {}
             new_buffers[worker_id] = buffer
             buffer_token = _RUN_BUFFERS.set(new_buffers)
@@ -420,9 +424,10 @@ def make_obs(
             _RUN_SESSION_WORKERS.reset(session_token)
             if buffer_token is not None:
                 _RUN_BUFFERS.reset(buffer_token)
+            session_buffer = buffer[flush_from:]
             if _flush_allowed():
                 flush_buffer(
-                    buffer,
+                    session_buffer,
                     worker_id=worker_id,
                     run_id=rid,
                     bucket=bucket,
@@ -435,7 +440,7 @@ def make_obs(
                     "obs flush gated (%s != 'cloud_run', %s unset); %d events not uploaded",
                     runtime_env,
                     FORCE_FLUSH_ENV,
-                    len(buffer),
+                    len(session_buffer),
                 )
 
     return event, run_session

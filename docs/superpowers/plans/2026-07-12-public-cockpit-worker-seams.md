@@ -227,6 +227,21 @@ git diff --check
 - [x] Rebase onto current `origin/main`, run every full local gate, push, and hand the exact head
   to independent QA.
 
+## QA fix round 2 — 2026-07-31
+
+- [x] Task 4 RED: generate the complete 5 ordering × 3 runs-per-scope × 4 outside-event
+  placement × 5 exit-mode matrix (300 cells), asserting exact per-run flush batches and retained
+  scope contents.
+- [x] Task 4 GREEN: segment a pre-bound public event list at each `run_session` boundary so every
+  flush contains only that run's lifecycle and payload records.
+- [ ] Task 4 contract pin: prove nested isolation restores live run-session ownership, including
+  a deliberate missing-reset mutation that makes the named test RED.
+- [ ] Task 6 guards: reject every `_host(...)` spelling in framework Markdown guidance and scan
+  every generated Jinja file, including `worker-template/README.md.jinja`.
+- [ ] Task 7 docs: add the stable worker seams to the changelog's Unreleased section.
+- [ ] Rebase onto current `origin/main`, rerun every focused and full local gate, push, and hand
+  the exact head to independent QA.
+
 ## Independent QA rejection conditions
 
 Reject if a public function copies logic, exposes `_NavStack`/ContextVar/token, changes
@@ -239,8 +254,17 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: QA fix round complete; final handoff-note commit and exact-head gate rerun precede the
-  finish protocol.
+- Phase: QA fix round 2, Task 4 contract pin. Next: add the nested-isolation live-session
+  restoration test and prove a missing session-token reset makes it RED.
+- Round-2 decision: support repeated sequential sessions inside one public buffer. Each session
+  flushes only records appended after its own boundary; records emitted in the public scope before,
+  between, or after sessions remain visible in `scope.events` but are not attributed to a run.
+- Round-2 RED/GREEN: the generated 300-cell matrix first failed at
+  `clean-none-2-event_buffer_then_run_session`: the second flush contained both runs. Capturing
+  the pre-bound list boundary and flushing only the appended slice made all 300 cells pass.
+- Round-2 focused GREEN: `uv run pytest -q tests/test_obs.py` -> `330 passed in 0.29s`;
+  touched-file ruff and `git diff --check` passed.
+- Round-2 known failing tests: none.
 - QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
   tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
   flushes once. Host session callbacks are appended after the complete legacy field sequence.

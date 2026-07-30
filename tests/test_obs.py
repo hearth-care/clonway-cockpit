@@ -15,6 +15,7 @@ separators, trailing newline). These tests pin that exact wire shape.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -321,78 +322,144 @@ def test_run_session_run_id_from_env(monkeypatch):  # CC-OBS-RUN-4
     assert any(k.endswith("/fpo-77.jsonl") for k in client._store)
 
 
-@pytest.mark.parametrize(
-    "ordering",
-    [
-        "run_session_alone",
-        "event_buffer_then_run_session",
-        "run_session_then_event_buffer",
-        "nested_same_worker",
-        "nested_other_worker",
-    ],
+_RUN_BUFFER_ORDERINGS = (
+    "run_session_alone",
+    "event_buffer_then_run_session",
+    "run_session_then_event_buffer",
+    "nested_same_worker",
+    "nested_other_worker",
 )
-@pytest.mark.parametrize("raises", [False, True], ids=["clean", "exception"])
-def test_event_buffer_run_session_ordering_matrix(monkeypatch, ordering, raises):
-    """Public buffer scopes never disarm a worker run's lifecycle or flush policy."""
+_OUTSIDE_EVENT_PLACEMENTS = ("none", "before", "between", "after")
+_SESSION_EXIT_MODES = (
+    "clean",
+    "exception",
+    "keyboard_interrupt",
+    "system_exit",
+    "cancelled",
+)
+
+
+@pytest.mark.parametrize("ordering", _RUN_BUFFER_ORDERINGS)
+@pytest.mark.parametrize("runs_per_scope", (0, 1, 2))
+@pytest.mark.parametrize("outside_events", _OUTSIDE_EVENT_PLACEMENTS)
+@pytest.mark.parametrize("exit_mode", _SESSION_EXIT_MODES)
+def test_event_buffer_run_session_flush_ownership_matrix(
+    monkeypatch,
+    ordering,
+    runs_per_scope,
+    outside_events,
+    exit_mode,
+):
+    """Every run flush owns one disjoint slice of any public buffer (300 cells)."""
     import clonway_cockpit.obs._telemetry as obs_mod
 
-    flushed: list[list[dict[str, Any]]] = []
+    flushed: list[tuple[str, list[dict[str, Any]]]] = []
     monkeypatch.setattr(
         obs_mod,
         "flush_buffer",
-        lambda buffer, **kwargs: flushed.append(list(buffer)) or True,
+        lambda buffer, **kwargs: flushed.append((kwargs["run_id"], list(buffer))) or True,
     )
     event, run_session = make_obs(worker_id="alpha")
-    scopes: dict[str, Any] = {}
+    beta_event, _ = make_obs(worker_id="beta")
+    scopes: list[tuple[str, Any]] = []
+    expected_scope_names: list[str] = []
 
-    def work() -> None:
-        event("work.done")
-        if raises:
-            raise LookupError("boom")
+    errors: dict[str, type[BaseException]] = {
+        "exception": LookupError,
+        "keyboard_interrupt": KeyboardInterrupt,
+        "system_exit": SystemExit,
+        "cancelled": asyncio.CancelledError,
+    }
 
-    def exercise() -> None:
-        if ordering == "run_session_alone":
-            with run_session(trigger="test"):
-                work()
-        elif ordering == "event_buffer_then_run_session":
-            with event_buffer("alpha") as scope:
-                scopes["alpha"] = scope
-                with run_session(trigger="test"):
-                    work()
-        elif ordering == "run_session_then_event_buffer":
-            with run_session(trigger="test"), event_buffer("alpha") as scope:
-                scopes["alpha"] = scope
-                work()
-        elif ordering == "nested_same_worker":
-            with event_buffer("alpha") as outer:
-                scopes["alpha"] = outer
-                with event_buffer("alpha") as nested:
-                    scopes["nested"] = nested
-                    with run_session(trigger="test"):
-                        work()
+    def run_once(index: int, *, enter_buffer_inside: bool = False) -> None:
+        def body() -> None:
+            if enter_buffer_inside:
+                with event_buffer("alpha") as scope:
+                    scopes.append((f"alpha-{index}", scope))
+                    event(f"work.{index}")
+                    if exit_mode != "clean":
+                        raise errors[exit_mode](f"exit-{index}")
+            else:
+                event(f"work.{index}")
+                if exit_mode != "clean":
+                    raise errors[exit_mode](f"exit-{index}")
+
+        if exit_mode == "clean":
+            with run_session(trigger="test", run_id=f"run-{index}"):
+                body()
         else:
-            with event_buffer("beta") as other:
-                scopes["beta"] = other
-                with run_session(trigger="test"):
-                    work()
+            with (
+                pytest.raises(errors[exit_mode]),
+                run_session(trigger="test", run_id=f"run-{index}"),
+            ):
+                body()
+
+    def run_sequence(*, enter_buffer_inside: bool = False, outside_event=event) -> None:
+        if outside_events == "before":
+            outside_event("scope.before")
+            expected_scope_names.append("scope.before")
+        for index in range(runs_per_scope):
+            run_once(index, enter_buffer_inside=enter_buffer_inside)
+            if outside_events == "between" and index == 0 and runs_per_scope == 2:
+                outside_event("scope.between")
+                expected_scope_names.append("scope.between")
+        if outside_events == "after":
+            outside_event("scope.after")
+            expected_scope_names.append("scope.after")
 
     with isolated_event_buffers():
-        if raises:
-            with pytest.raises(LookupError, match="boom"):
-                exercise()
+        if ordering == "event_buffer_then_run_session":
+            with event_buffer("alpha") as scope:
+                scopes.append(("alpha", scope))
+                run_sequence()
+        elif ordering == "run_session_then_event_buffer":
+            run_sequence(enter_buffer_inside=True)
+        elif ordering == "nested_same_worker":
+            with event_buffer("alpha") as outer, event_buffer("alpha") as nested:
+                scopes.extend((("alpha", outer), ("nested", nested)))
+                run_sequence()
+        elif ordering == "nested_other_worker":
+            with event_buffer("beta") as scope:
+                scopes.append(("beta", scope))
+                run_sequence(outside_event=beta_event)
         else:
-            exercise()
+            run_sequence()
 
-    expected_names = ["run.started", "work.done", "run.finished"]
-    assert [[record["event"] for record in batch] for batch in flushed] == [expected_names]
-    assert flushed[0][-1]["payload"]["status"] == ("error" if raises else "ok")
-    if "alpha" in scopes:
-        assert [record["event"] for record in scopes["alpha"].events] == expected_names
-    if "nested" in scopes:
-        assert scopes["nested"].events is scopes["alpha"].events
-        assert scopes["nested"].owner is False
-    if "beta" in scopes:
-        assert scopes["beta"].events == []
+    expected_batches = [
+        ["run.started", f"work.{index}", "run.finished"] for index in range(runs_per_scope)
+    ]
+    assert [run_id for run_id, _ in flushed] == [f"run-{index}" for index in range(runs_per_scope)]
+    assert [[record["event"] for record in batch] for _, batch in flushed] == expected_batches
+    expected_status = "ok" if exit_mode == "clean" else "error"
+    assert [batch[-1]["payload"]["status"] for _, batch in flushed] == [
+        expected_status
+    ] * runs_per_scope
+
+    if ordering in {"event_buffer_then_run_session", "nested_same_worker"}:
+        retained_names: list[str] = []
+        if outside_events == "before":
+            retained_names.append("scope.before")
+        for index, batch in enumerate(expected_batches):
+            retained_names.extend(batch)
+            if outside_events == "between" and index == 0 and runs_per_scope == 2:
+                retained_names.append("scope.between")
+        if outside_events == "after":
+            retained_names.append("scope.after")
+        assert [[record["event"] for record in scope.events] for _, scope in scopes] == [
+            retained_names
+        ] * len(scopes)
+    elif ordering == "run_session_then_event_buffer":
+        assert [
+            [record["event"] for record in scope.events] for _, scope in scopes
+        ] == expected_batches
+    elif ordering == "nested_other_worker":
+        assert [record["event"] for record in scopes[0][1].events] == expected_scope_names
+    else:
+        assert scopes == []
+
+    if ordering == "nested_same_worker":
+        assert scopes[1][1].events is scopes[0][1].events
+        assert scopes[1][1].owner is False
 
 
 # ---- run_session: runtime flush gate -----------------------------------------
