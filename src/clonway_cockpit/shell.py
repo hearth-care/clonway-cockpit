@@ -38,6 +38,7 @@ from clonway_cockpit import render as r
 from clonway_cockpit.audit_log import AuditEvent, AuditSink
 from clonway_cockpit.doctor import (
     DoctorActionKind,
+    DoctorActionResult,
     DoctorRemedyReceipt,
     Probe,
     action_kind,
@@ -1019,9 +1020,15 @@ def _doctor(
             dirty = True
             continue
         if key.isdigit() and 1 <= int(key) <= len(runnable):
-            _run_doctor_fix(host, runnable[int(key) - 1], screen, read_key)
+            _run_doctor_fix(
+                host,
+                runnable[int(key) - 1],
+                screen,
+                read_key,
+                _nav=_nav,
+            )
         elif key == keys.ENTER:
-            _run_doctor_fix(host, runnable[sel], screen, read_key)
+            _run_doctor_fix(host, runnable[sel], screen, read_key, _nav=_nav)
         else:
             continue  # inert key — no repaint
         # A fix ran → rebuild the report so the probes reflect the change.
@@ -1047,7 +1054,26 @@ def _rebuild_doctor_report(
         return None
 
 
-def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]) -> None:
+def _doctor_action_result(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    ok: bool,
+    message: str,
+) -> None:
+    _safe_emit(host, r.model_walk_result("Doctor", ok=ok, message=message))
+    _show(screen, r.render_walk_result("Doctor", ok=ok, message=message), read_key)
+
+
+def _run_doctor_fix(
+    host: Host,
+    fix,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    _nav: _NavStack | None = None,
+) -> DoctorActionResult:
     """Run one runnable Doctor fix, gating a state-changing one behind a single
     confirm key. The confirm grammar matches the walk gate (M-2 / N-5): ENTER or
     ``y``/``Y`` confirms; anything else fails closed (the fix does NOT run). The
@@ -1057,14 +1083,35 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
     In agent mode the fix is NOT run — a Doctor fix (sync pull / lock removal / browser
     re-auth) is a side effect an autonomously-driving agent shouldn't trigger; a note is
     emitted instead. The live human cockpit (agent_mode=False) is unchanged."""
+    kind = action_kind(fix)
+    if kind is DoctorActionKind.OPEN_CAPABILITY:
+        capability_key = fix.capability_key
+        if capability_key is None or host.get_capability(capability_key) is None:
+            _doctor_action_result(
+                host,
+                screen,
+                read_key,
+                ok=False,
+                message="Doctor capability is unavailable.",
+            )
+            return DoctorActionResult.FAILED
+        _open_capability(
+            host,
+            capability_key,
+            screen,
+            read_key,
+            focus=fix.focus,
+            _nav=_nav,
+        )
+        return DoctorActionResult.OPENED
     if host.agent_mode:
         _safe_emit(host, r.model_note("Fix skipped", f"{fix.title} is disabled in agent mode"))
-        return
+        return DoctorActionResult.SKIPPED_AGENT_MODE
     if fix.confirm:
         _safe_emit(host, r.model_doctor_confirm(fix))
         screen.update(r.render_doctor_confirm(fix))
         if read_key() not in (keys.ENTER, "y", "Y"):
-            return  # cancelled — the fix did NOT run
+            return DoctorActionResult.DECLINED
     host.usage.record("doctor:fix", "open")  # a Doctor fix was actually run
     try:
         # A "Sync now" fix is a blocking pull — run it under the animated progress
@@ -1079,9 +1126,8 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
         ok = True
     except Exception as e:  # noqa: BLE001 — surface any failure as a clean result
         msg, ok = str(e), False
-    _safe_emit(host, r.model_walk_result("Doctor", ok=ok, message=msg))
-    screen.update(r.render_walk_result("Doctor", ok=ok, message=msg))
-    read_key()
+    _doctor_action_result(host, screen, read_key, ok=ok, message=msg)
+    return DoctorActionResult.RAN if ok else DoctorActionResult.FAILED
 
 
 def _show(screen: Screen, renderable: RenderableType, read_key: Callable[[], str]) -> None:

@@ -116,15 +116,18 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: Task 2 complete.
-- Next concrete step: Task 3 RED tests for selectable action kinds, exact capability routing and
-  agent-mode safety.
+- Current phase: Task 3 complete.
+- Next concrete step: Task 4 RED matrix for before/action/after closure receipts and callback
+  exact-once isolation.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
 - Task 2 gates: shell/model suite `121 passed`; generated-worker mapping is
   `tests/test_worker_template.py` (no `tests/test_generated_worker.py` exists) and `25 passed`;
   Ruff and mypy passed; `git diff --check` clean.
+- Task 3 gates: capability/shell/contract suite `107 passed`; Ruff and mypy passed;
+  `git diff --check` clean. Real `serve_stdio` tests prove structured nested navigation,
+  default-declined existing write gate, callback skip, and zero `unstructured` frames.
 - Current-main deviation: the plan named a generated-worker test file that is not present; the
   canonical worker-template subprocess suite is used instead.
 - Known-failing tests: none.
