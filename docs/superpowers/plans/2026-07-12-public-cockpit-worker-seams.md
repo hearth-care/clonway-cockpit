@@ -239,7 +239,7 @@ git diff --check
 - [x] Task 6 guards: reject every `_host(...)` spelling in framework Markdown callback guidance
   and scan every generated Jinja file, including `worker-template/README.md.jinja`.
 - [x] Task 7 docs: add the stable worker seams to the changelog's Unreleased section.
-- [ ] Rebase onto current `origin/main`, rerun every focused and full local gate, push, and hand
+- [x] Rebase onto current `origin/main`, rerun every focused and full local gate, push, and hand
   the exact head to independent QA.
 
 ## Independent QA rejection conditions
@@ -254,8 +254,8 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: QA fix round 2, final integration. Next: fetch and rebase onto current `origin/main`,
-  then run focused tests and every repository gate on the rebased exact head.
+- Phase: QA fix round 2 complete. Next: push this handoff-note commit, rerun every gate on that
+  exact head, then execute the mandated ready/needs-QA/DONE finish protocol.
 - Round-2 decision: support repeated sequential sessions inside one public buffer. Each session
   flushes only records appended after its own boundary; records emitted in the public scope before,
   between, or after sessions remain visible in `scope.events` but are not attributed to a run.
@@ -272,6 +272,13 @@ or claims product value before #1046 lands.
   including 2 callback families × 4 rebuild spellings.
 - Round-2 changelog: Unreleased now names every stable shell/walk/help/obs seam and both opt-in
   session-aware Host callbacks.
+- Round-2 rebase: current `origin/main@8694e302`; the branch was already current and remains zero
+  commits behind.
+- Round-2 pre-handoff gates: focused public/telemetry/template/agent suite -> `534 passed in
+  3.68s`; full suite -> `1486 passed in 80.33s`; ruff -> `All checks passed!`; format -> `160
+  files already formatted`; mypy -> `Success: no issues found in 67 source files`; all eight
+  pre-commit hooks passed; `git diff --check` exited 0 with no output.
+- Round-2 known failing tests: none.
 - Round-2 known failing tests: none.
 - QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
   tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
