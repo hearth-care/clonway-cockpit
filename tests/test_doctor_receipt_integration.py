@@ -376,6 +376,136 @@ def test_doctor_remedy_pairing_state_matrix(
         assert receipts[0].after_revision is None
 
 
+@pytest.mark.parametrize("probe_cardinality", ["missing", "unique", "duplicate"])
+@pytest.mark.parametrize("remedy_count", [1, 2, 3])
+@pytest.mark.parametrize("selected_position", ["first", "middle", "last"])
+@pytest.mark.parametrize("remedy_order", ["natural", "reversed"])
+@pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+def test_doctor_remedy_cardinality_pairing_matrix(
+    probe_cardinality: str,
+    remedy_count: int,
+    selected_position: str,
+    remedy_order: str,
+    display_layout: str,
+) -> None:
+    """Explicit probe identity is 1:N from probe to remedies.
+
+    Every remedy declaring one uniquely resolvable probe ID receives the same
+    before/after attribution, independent of remedy order or display-only rows.
+    Missing and duplicate probe identities fail closed for every remedy and
+    never borrow an unrelated probe through legacy object/value matching.
+    """
+    receipts: list[DoctorRemedyReceipt] = []
+    models = []
+    calls: list[str] = []
+
+    def remedy(index: int) -> Fix:
+        remedy_id = f"remedy.shared.{index}"
+
+        def run() -> str:
+            calls.append(remedy_id)
+            return "done"
+
+        return Fix(
+            f"Shared remedy {index}",
+            f"worker remedy-{index}",
+            run=run,
+            remedy_id=remedy_id,
+            probe_id="probe.shared",
+        )
+
+    remedies = [remedy(index) for index in range(remedy_count)]
+    shared_probe = Probe(
+        "Shared",
+        "error",
+        "Safe detail",
+        remedies[0],
+        "probe.shared",
+        "rev-before",
+    )
+    if probe_cardinality == "unique":
+        before_probes = [shared_probe]
+        after_probes = [
+            replace(
+                shared_probe,
+                level="warn",
+                evidence_revision="rev-after",
+            )
+        ]
+        expected_probe_id = "probe.shared"
+        expected_before_revision = "rev-before"
+        expected_closure = DoctorClosure.CHANGED
+    elif probe_cardinality == "duplicate":
+        duplicate = replace(
+            shared_probe,
+            name="Shared duplicate",
+            fix=remedies[-1],
+            evidence_revision="rev-duplicate",
+        )
+        before_probes = [shared_probe, duplicate]
+        after_probes = before_probes
+        expected_probe_id = ""
+        expected_before_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+    else:
+        # The unrelated probe deliberately carries the first explicit remedy:
+        # its different probe_id must prevent legacy object/equality fallback
+        # from overriding the remedy's declared (but unresolved) identity.
+        unrelated = Probe(
+            "Unrelated",
+            "warn",
+            "Safe detail",
+            remedies[0],
+            "probe.unrelated",
+            "rev-unrelated",
+        )
+        before_probes = [unrelated]
+        after_probes = before_probes
+        expected_probe_id = ""
+        expected_before_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+
+    ordered = remedies if remedy_order == "natural" else list(reversed(remedies))
+    positions = {
+        "first": 0,
+        "middle": len(ordered) // 2,
+        "last": len(ordered) - 1,
+    }
+    target_index = positions[selected_position]
+    target = ordered[target_index]
+    fixes: list[Fix] = list(ordered)
+    if display_layout == "interleaved":
+        display = Fix("Display only", "worker explain", note="Read the runbook")
+        fixes = [display]
+        for fix in ordered:
+            fixes.extend([fix, display])
+
+    host = replace(
+        _host(lambda report: after_probes if calls else before_probes, receipts),
+        doctor_fixes_for=lambda current_probes: fixes,
+        on_screen=models.append,
+    )
+
+    shell._doctor(
+        host,
+        _Screen(),
+        _keys([str(target_index + 1), "dismiss", "q"]),
+    )
+
+    first_doctor = next(model for model in models if model.kind == "doctor")
+    rows = next(region.rows for region in first_doctor.regions if region.role == "fixes")
+    target_row = next(row for row in rows if row.id == f"fix:{target_index}")
+    fields = {field.label: field.value for field in target_row.fields}
+    assert fields["remedy_id"] == target.remedy_id
+    assert fields["probe_id"] == "probe.shared"
+    assert calls == [target.remedy_id]
+    assert len(receipts) == 1
+    assert receipts[0].remedy_id == target.remedy_id
+    assert receipts[0].probe_id == expected_probe_id
+    assert receipts[0].before_revision == expected_before_revision
+    assert receipts[0].closure is expected_closure
+
+
 @pytest.mark.parametrize(
     ("agent_mode", "raises", "keys_in", "result"),
     [

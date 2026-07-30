@@ -932,41 +932,34 @@ def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Prob
     Never drop an entry: a fix with no (or no longer resolvable) originating
     probe stays in the list with ``probe=None`` and remains runnable.
 
-    Each probe is matched to at most one fix (identity first, falling back to
-    equality only among probes not already claimed by an earlier fix) so two
-    probes carrying equal ``Fix`` values — or a worker that rebuilds its fixes
-    each frame and loses object identity — resolve to distinct probes instead
-    of every equal fix collapsing onto the first match."""
+    An explicit ``Fix.probe_id`` resolves uniquely against the full probe
+    snapshot and is intentionally not consumed: one probe may offer many typed
+    remedies. Missing or duplicate explicit identities fail closed and never
+    fall back to a different probe. Legacy fixes with no declared probe ID use
+    identity/equality against a shrinking pool so equal legacy values still
+    resolve deterministically without collapsing onto the same probe."""
     available = list(probes)
     remedies: list[tuple[Probe | None, Fix]] = []
     for fix in fixes:
         if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
             continue
-        probe = None
-        stable_id_claimed = False
         if fix.probe_id:
-            stable_id_claimed = any(candidate.probe_id == fix.probe_id for candidate in available)
-            stable_match = _unique_match(
-                available,
+            probe = _unique_match(
+                probes,
                 partial(_probe_id_matches, probe_id=fix.probe_id),
             )
-            if stable_match is not None:
-                available.remove(stable_match)
-                probe = stable_match
-            elif stable_id_claimed:
-                # Duplicate explicit identity cannot authorize attribution to
-                # either probe, even if one happens to share object identity.
-                probe = None
-        if probe is None and not stable_id_claimed:
+            remedies.append((probe, fix))
+            continue
+        probe = None
+        for index, candidate in enumerate(available):
+            if candidate.fix is fix:
+                probe = available.pop(index)
+                break
+        else:
             for index, candidate in enumerate(available):
-                if candidate.fix is fix:
+                if candidate.fix == fix:
                     probe = available.pop(index)
                     break
-            else:
-                for index, candidate in enumerate(available):
-                    if candidate.fix == fix:
-                        probe = available.pop(index)
-                        break
         remedies.append((probe, fix))
     return remedies
 

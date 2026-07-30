@@ -485,10 +485,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 4 Task 2 focus-cardinality fix is green; Task 4 receipt-cardinality
-  RED/GREEN is next.
-- Next concrete step: commit/push the Task 2 focus phase, then add the complete 1:N remedy-pairing
-  matrix before changing `_runnable_remedies`.
+- Current phase: both QA FAIL round 4 cardinality findings are green; rebased full local gates are
+  next.
+- Next concrete step: commit/push the Task 4 receipt phase, fetch and rebase onto current
+  `origin/main`, then run every Task 6/full repository gate in the foreground.
 - Decisions: focus resolves probe identity against the full probe snapshot, where exactly one
   matching probe may own one or many remedies; the first matching runnable remedy is selected.
   Duplicate probe IDs and duplicate remedy IDs remain fail-closed.
@@ -584,5 +584,19 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   shell/model/screen-model/capability/drive phase `203 passed in 11.58s`; canonical generated-worker
   suite `27 passed in 9.52s`; Ruff passed; mypy reported no issues in `shell.py`;
   `git diff --check` clean.
-- QA FAIL round 4 known outstanding behavior: finding 1, explicit probe attribution for every
-  remedy in a 1:N shape, remains to receive its Task 4 RED test and implementation.
+- QA FAIL round 4 Task 4 RED:
+  `tests/test_doctor_receipt_integration.py::test_doctor_remedy_cardinality_pairing_matrix`
+  produced `38 failed, 70 passed`. Valid later remedies lost attribution, while an unresolved
+  explicit ID could borrow an unrelated probe through legacy identity fallback.
+- QA FAIL round 4 Task 4 matrix crosses probe cardinality (`missing`, `unique`, `duplicate`),
+  remedy cardinality (`1`, `2`, `3`), selected row (`first`, `middle`, `last`), remedy order
+  (`natural`, `reversed`) and display layout (`absent`, `interleaved`) for 108 generated cells.
+- QA FAIL round 4 Task 4 GREEN: `_runnable_remedies` was rewritten into two cardinality modes.
+  Explicit IDs resolve uniquely against the full probe snapshot without consumption, supporting
+  1:N remedies; missing/duplicate IDs never use fallback. Only fixes without a declared probe ID
+  use the shrinking legacy identity/equality pool.
+- QA FAIL round 4 Task 4 verification: cardinality matrix `108 passed`; complete
+  receipt/receipt-integration/shell/capability phase `359 passed in 0.52s`; Ruff passed; Ruff format
+  reported 2 files already formatted; mypy reported no issues in `shell.py`; `git diff --check`
+  clean.
+- QA FAIL round 4 known-failing tests: none.
