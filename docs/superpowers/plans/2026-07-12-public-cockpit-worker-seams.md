@@ -210,6 +210,23 @@ git diff --check
   buffer reset must make a named test RED.
 - [x] Link downstream Auto-Bookkeeper #1046; user value remains pending its exact merged-SHA pin.
 
+## QA fix round — 2026-07-30
+
+- [x] Add and drive the 5 ordering × 2 exit-mode telemetry matrix; a public buffer entered
+  before a run now preserves the lifecycle pair and exactly one flush.
+- [x] Rewrite all three framework guidance sites around `ShellSession`; remove the Host rebuild
+  and ambient agent-mode recipe.
+- [x] Make the docs guard detect the real Markdown/code spellings and self-test both hand-written
+  positive and accepted-equivalent rules.
+- [x] Pin pill-session Host/screen/key identity plus authorization, audit, observer, and agent
+  prompt continuity; drive one session-aware nested child frame under agent dry-run.
+- [x] Pin `first_blocked_remedy` return identity/order and `shell.PROGRESS_TICK` identity to the
+  private/walk owner; observe each deliberate mutation fail its named test.
+- [x] Append both session callbacks after all pre-existing `Host` fields to preserve positional
+  construction compatibility.
+- [ ] Rebase onto current `origin/main`, run every full local gate, push, and hand the exact head
+  to independent QA.
+
 ## Independent QA rejection conditions
 
 Reject if a public function copies logic, exposes `_NavStack`/ContextVar/token, changes
@@ -222,7 +239,19 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Tasks 0–7 complete; ready for independent QA.
+- Phase: QA fix round behavior/docs complete; next step is rebase, full local gates, and finish
+  protocol.
+- QA fix decisions: owner-first `event_buffer` ordering is supported. `run_session` separately
+  tracks lifecycle ownership, reuses the public scope's exact list, emits one lifecycle pair, and
+  flushes once. Host session callbacks are appended after the complete legacy field sequence.
+- QA fix RED proof: the initial focused run failed 6/21 rows (four owner-first telemetry cells,
+  Host field order, realistic ambient-doc spelling). After the guard fix, the live docs guard
+  failed with four findings. Deliberate mutations `PROGRESS_TICK = 99.0`,
+  `first_blocked_remedy -> None`, and `ShellSession(replace(host), ...)` each failed their named
+  contract test.
+- QA fix focused GREEN: `uv run pytest -q tests/test_public_worker_api.py tests/test_walk.py
+  tests/test_obs.py tests/test_worker_template_public_api.py` -> `121 passed in 0.50s`.
+- Known failing tests: none in the focused QA-fix scope; full gates pending.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their

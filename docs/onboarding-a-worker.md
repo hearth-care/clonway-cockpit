@@ -523,21 +523,21 @@ deadline-aware with the rest of the fleet.
 
 A worker scaffolded from the template (S8/C6) is **born agent-navigable**: it ships
 `{{worker}} --agent-stdio` (serves the same cockpit to an agent over line-delimited JSON),
-an agent-mode-aware `_host()`, and the enforced gate (`tests/test_cockpit_contract.py` runs
+a session-aware Host, and the enforced gate (`tests/test_cockpit_contract.py` runs
 `clonway_cockpit.contract.assert_render_model_parity` + `assert_drives_clean` in CI). You do
 not write any of this — it comes from the template.
 
 As the worker grows bespoke screens, the rule is simple and CI-enforced: **every page-framing
 `render_*` ships a `model_*` twin, and you drive/verify via `--agent-stdio` /
 `CockpitClient` / `CockpitDriver` — never scrape `export_text()`.** Money/write paths go
-through the dry-run + guarded-apply gate. Full protocol + the wiring recipe (incl. the ambient
-`_AGENT_MODE` variant for a worker that rebuilds its host) live in
+through the dry-run + guarded-apply gate. Full protocol + the `ShellSession` wiring recipe
+for nested callbacks live in
 [`docs/agent-screen-model.md`](agent-screen-model.md).
 
 **Retrofitting an existing worker** (one that predates the template and has no `--agent-stdio`
 yet): follow [`docs/adopting-the-agent-channel.md`](adopting-the-agent-channel.md) — it is the
-step-by-step recipe, including the agent-mode-on-host-rebuild trap, the first-frame latency
-rule, the two contract tests to add, and the subprocess smoke test.
+step-by-step recipe, including active-session continuity, the first-frame latency rule, the
+two contract tests to add, and the subprocess smoke test.
 
 ## Optional home-screen extension hooks
 
@@ -548,7 +548,9 @@ framework `Host` by default. It starts as three no-ops:
 - `extra_regions(state)` for worker-owned Rich panels between needs-you and toolkit.
 - `extra_model_regions(state)` for the model twins of those panels — set both, or the panel
   is invisible to agent drivers.
-- `handle_extra_key(state, selection, key, screen, read_key)` for keys on rows the worker owns.
+- `handle_extra_key_with_session(state, selection, key, session)` for keys on rows the worker
+  owns. Use `session.open_capability`, `activate_need`, `emit_model`, or `show_and_wait` for
+  nested work; never construct a replacement Host inside the callback.
 
 This is the generic hook path for domain-specific home panels, including statutory heads-up cards.
 The shared worker template must stay policy-neutral: new workers inherit the seam, not another

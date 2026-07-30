@@ -24,6 +24,8 @@ import pytest
 from clonway_cockpit.obs import (
     RESERVED_LOGRECORD_KEYS,
     SEVERITY_TO_LEVEL,
+    event_buffer,
+    isolated_event_buffers,
     make_obs,
     resolve_run_id,
 )
@@ -317,6 +319,80 @@ def test_run_session_run_id_from_env(monkeypatch):  # CC-OBS-RUN-4
     with run_session(trigger="scheduler"):
         event("noop")
     assert any(k.endswith("/fpo-77.jsonl") for k in client._store)
+
+
+@pytest.mark.parametrize(
+    "ordering",
+    [
+        "run_session_alone",
+        "event_buffer_then_run_session",
+        "run_session_then_event_buffer",
+        "nested_same_worker",
+        "nested_other_worker",
+    ],
+)
+@pytest.mark.parametrize("raises", [False, True], ids=["clean", "exception"])
+def test_event_buffer_run_session_ordering_matrix(monkeypatch, ordering, raises):
+    """Public buffer scopes never disarm a worker run's lifecycle or flush policy."""
+    import clonway_cockpit.obs._telemetry as obs_mod
+
+    flushed: list[list[dict[str, Any]]] = []
+    monkeypatch.setattr(
+        obs_mod,
+        "flush_buffer",
+        lambda buffer, **kwargs: flushed.append(list(buffer)) or True,
+    )
+    event, run_session = make_obs(worker_id="alpha")
+    scopes: dict[str, Any] = {}
+
+    def work() -> None:
+        event("work.done")
+        if raises:
+            raise LookupError("boom")
+
+    def exercise() -> None:
+        if ordering == "run_session_alone":
+            with run_session(trigger="test"):
+                work()
+        elif ordering == "event_buffer_then_run_session":
+            with event_buffer("alpha") as scope:
+                scopes["alpha"] = scope
+                with run_session(trigger="test"):
+                    work()
+        elif ordering == "run_session_then_event_buffer":
+            with run_session(trigger="test"), event_buffer("alpha") as scope:
+                scopes["alpha"] = scope
+                work()
+        elif ordering == "nested_same_worker":
+            with event_buffer("alpha") as outer:
+                scopes["alpha"] = outer
+                with event_buffer("alpha") as nested:
+                    scopes["nested"] = nested
+                    with run_session(trigger="test"):
+                        work()
+        else:
+            with event_buffer("beta") as other:
+                scopes["beta"] = other
+                with run_session(trigger="test"):
+                    work()
+
+    with isolated_event_buffers():
+        if raises:
+            with pytest.raises(LookupError, match="boom"):
+                exercise()
+        else:
+            exercise()
+
+    expected_names = ["run.started", "work.done", "run.finished"]
+    assert [[record["event"] for record in batch] for batch in flushed] == [expected_names]
+    assert flushed[0][-1]["payload"]["status"] == ("error" if raises else "ok")
+    if "alpha" in scopes:
+        assert [record["event"] for record in scopes["alpha"].events] == expected_names
+    if "nested" in scopes:
+        assert scopes["nested"].events is scopes["alpha"].events
+        assert scopes["nested"].owner is False
+    if "beta" in scopes:
+        assert scopes["beta"].events == []
 
 
 # ---- run_session: runtime flush gate -----------------------------------------

@@ -9,7 +9,7 @@ import inspect
 import logging
 import textwrap
 import threading
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError, fields, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -43,7 +43,7 @@ class _Screen:
         self.frames.append(renderable)
 
 
-def test_exact_public_import_surface() -> None:
+def test_public_names_are_importable_and_constants_share_one_owner() -> None:
     assert all(
         value is not None
         for value in (
@@ -68,6 +68,8 @@ def test_exact_public_import_surface() -> None:
             obs.isolated_event_buffers,
         )
     )
+    assert shell.PROGRESS_TICK is shell._PROGRESS_TICK
+    assert shell.PROGRESS_TICK is walk.PROGRESS_TICK
 
 
 def _reader(keys: list[str], calls: list[str] | None = None):
@@ -202,6 +204,10 @@ def test_session_pill_callback_and_agent_refusal(agent_mode: bool) -> None:
         activate_pill=lambda *args: legacy.append(args),
         activate_pill_with_session=lambda *args: aware.append(args),
         on_screen=models.append,
+        authorize_apply=lambda proposal: True,
+        audit_sink=lambda event: None,
+        agent_input_fn=lambda prompt, default: "answer",
+        agent_confirm_fn=lambda prompt: True,
     )
     state = host.capture_state()
 
@@ -215,8 +221,66 @@ def test_session_pill_callback_and_agent_refusal(agent_mode: bool) -> None:
     else:
         assert len(aware) == 1
         assert aware[0][0] is state.pills[0]
-        assert aware[0][1] == shell.ShellSession(host, screen, read_key)
+        session = aware[0][1]
+        assert session.host is host
+        assert session.screen is screen
+        assert session.read_key is read_key
+        assert session.host.authorize_apply is host.authorize_apply
+        assert session.host.audit_sink is host.audit_sink
+        assert session.host.agent_input_fn is host.agent_input_fn
+        assert session.host.agent_confirm_fn is host.agent_confirm_fn
         assert models == []
+
+
+def test_session_extra_key_nested_open_keeps_observer_and_agent_dry_run() -> None:
+    child = ScreenModel(kind="walk", title="Child")
+    observed: list[ScreenModel] = []
+    contexts: list[WizardContext[Any]] = []
+
+    def run_child(ctx: WizardContext[Any]) -> None:
+        contexts.append(ctx)
+        walk.emit(ctx, child)
+
+    spec = shell.CapabilitySpec(
+        key="child",
+        shelf="A",
+        title="Child",
+        summary="Nested child",
+        equivalent_cli="worker child",
+        run=run_child,
+    )
+
+    def open_child(
+        state: CockpitState,
+        selection: tuple[str, object] | None,
+        key: str,
+        session: shell.ShellSession,
+    ) -> bool:
+        session.open_capability("child")
+        return True
+
+    host = _host(
+        agent_mode=True,
+        on_screen=observed.append,
+        get_capability=lambda key: spec if key == "child" else None,
+        handle_extra_key_with_session=open_child,
+    )
+    screen = _Screen()
+    read_key = _reader(["z", "q"])
+
+    shell.run_home(host, screen, read_key)
+
+    assert contexts and contexts[0].dry_run is True
+    assert contexts[0].on_screen is host.on_screen
+    assert child in observed
+
+
+def test_session_callbacks_are_appended_to_preserve_host_positional_order() -> None:
+    names = [item.name for item in fields(shell.Host)]
+    assert names[-2:] == [
+        "activate_pill_with_session",
+        "handle_extra_key_with_session",
+    ]
 
 
 def test_emit_model_is_best_effort_and_emits_once() -> None:
@@ -320,9 +384,15 @@ def test_walk_public_constants_and_wrappers_delegate_at_call_time(
     ]
     for public_name, private_name, args in cases:
         seen: list[tuple[Any, ...]] = []
-        monkeypatch.setattr(walk, private_name, lambda *a, out=seen: out.append(a))
-        getattr(walk, public_name)(*args)
+        result = object()
+        monkeypatch.setattr(
+            walk,
+            private_name,
+            lambda *a, out=seen, value=result: out.append(a) or value,
+        )
+        actual = getattr(walk, public_name)(*args)
         assert seen == [args]
+        assert actual is result
 
 
 def test_default_help_lines_is_canonical_immutable_tuple() -> None:

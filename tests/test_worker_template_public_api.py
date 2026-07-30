@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TEMPLATE_SRC = _REPO_ROOT / "worker-template" / "src"
@@ -28,9 +31,13 @@ _FORBIDDEN = (
 
 def _find_forbidden(path: str, source: str) -> list[str]:
     findings = [name for name in _FORBIDDEN if name in source]
-    if path.endswith("cli/home_hooks.py") and "_host()" in source:
+    is_doc = path.endswith(".md")
+    if (path.endswith("cli/home_hooks.py") and "_host()" in source) or (
+        is_doc and re.search(r"\bhost\s*=\s*_host\(\)", source)
+    ):
         findings.append("Home hook reconstructs _host()")
-    if "ambient agent mode" in source.lower() or "ambient ``_agent_mode``" in source.lower():
+    normalized = " ".join(source.lower().split())
+    if "ambient" in normalized and "_agent_mode" in normalized:
         findings.append("ambient agent-mode Host reconstruction guidance")
     return findings
 
@@ -80,3 +87,40 @@ render_panels.DEFAULT_HELP_LINES
 obs.event_buffer("worker")
 """
     assert _find_forbidden("package/cli/cockpit.py", accepted) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "source", "expected"),
+    [
+        (
+            "package/cli/home_hooks.py",
+            "def activate_pill(pill, screen, read_key):\n    host = _host()\n",
+            "Home hook reconstructs _host()",
+        ),
+        (
+            "docs/adopting-the-agent-channel.md",
+            "read an\nambient module-level `_AGENT_MODE` flag before rebuilding `_host()`",
+            "ambient agent-mode Host reconstruction guidance",
+        ),
+    ],
+)
+def test_private_seam_guard_covers_hand_written_rules(path, source, expected) -> None:
+    assert expected in _find_forbidden(path, source)
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        (
+            "package/cli/home_hooks.py",
+            "def handle_extra_key_with_session(state, selection, key, session):\n"
+            "    session.open_capability('child')\n",
+        ),
+        (
+            "docs/adopting-the-agent-channel.md",
+            "Reuse the exact active `ShellSession`; never rebuild the Host in a callback.",
+        ),
+    ],
+)
+def test_private_seam_guard_accepts_session_guidance(path, source) -> None:
+    assert _find_forbidden(path, source) == []

@@ -132,6 +132,13 @@ _QUIET_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
 _RUN_BUFFERS: ContextVar[dict[str, list[dict]] | None] = ContextVar(
     "clonway_obs_run_buffers", default=None
 )
+# Buffer presence alone cannot identify a live run: ``event_buffer`` may bind
+# the same worker first. Track lifecycle ownership separately so only a nested
+# ``run_session`` joins as a no-op; a public buffer binder never disarms the
+# lifecycle pair or JSONL flush.
+_RUN_SESSION_WORKERS: ContextVar[frozenset[str]] = ContextVar(
+    "clonway_obs_run_session_workers", default=frozenset()
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +151,11 @@ class EventBufferScope:
 
 @contextmanager
 def event_buffer(worker_id: str) -> Iterator[EventBufferScope]:
-    """Bind or join one worker's event list without exposing ContextVar state."""
+    """Bind or join one worker's event list without exposing ContextVar state.
+
+    Entering this scope before ``run_session`` is supported: the session reuses
+    this exact list while retaining ownership of lifecycle emission and flush.
+    """
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ValueError("worker_id must be a non-blank string")
 
@@ -166,11 +177,13 @@ def event_buffer(worker_id: str) -> Iterator[EventBufferScope]:
 @contextmanager
 def isolated_event_buffers() -> Iterator[None]:
     """Temporarily isolate telemetry buffers for tests, restoring on every exit."""
-    token = _RUN_BUFFERS.set(None)
+    buffer_token = _RUN_BUFFERS.set(None)
+    session_token = _RUN_SESSION_WORKERS.set(frozenset())
     try:
         yield
     finally:
-        _RUN_BUFFERS.reset(token)
+        _RUN_SESSION_WORKERS.reset(session_token)
+        _RUN_BUFFERS.reset(buffer_token)
 
 
 CloudLoggingSink = Callable[[str, str, dict[str, Any]], None]
@@ -351,22 +364,29 @@ def make_obs(
     ) -> Iterator[None]:
         """Wrap a run — emit ``run.started`` / ``run.finished`` and flush JSONL.
 
-        Reentrant: if a session for this ``worker_id`` is already active on the
-        contextvar (e.g. a CLI callback opened one and the command opens another),
-        join it as a no-op rather than emitting a second lifecycle pair or
-        double-flushing.
+        Reentrant: if a session for this ``worker_id`` is already active (e.g. a
+        CLI callback opened one and the command opens another), join it as a
+        no-op rather than emitting a second lifecycle pair or double-flushing.
+        A list pre-bound by :func:`event_buffer` is reused but does not count as
+        an active session, so this context still emits and flushes normally.
         """
-        buffers = _RUN_BUFFERS.get()
-        if buffers is not None and worker_id in buffers:
+        active_workers = _RUN_SESSION_WORKERS.get()
+        if worker_id in active_workers:
             yield
             return
 
+        buffers = _RUN_BUFFERS.get()
         rid = resolve_run_id(run_id)
         started_at = time.monotonic()
-        buffer: list[dict] = []
-        new_buffers = dict(buffers) if buffers is not None else {}
-        new_buffers[worker_id] = buffer
-        token = _RUN_BUFFERS.set(new_buffers)
+        buffer_token = None
+        if buffers is not None and worker_id in buffers:
+            buffer = buffers[worker_id]
+        else:
+            buffer = []
+            new_buffers = dict(buffers) if buffers is not None else {}
+            new_buffers[worker_id] = buffer
+            buffer_token = _RUN_BUFFERS.set(new_buffers)
+        session_token = _RUN_SESSION_WORKERS.set(active_workers | {worker_id})
 
         # Resolved once per session so run.started and run.finished agree.
         # Legacy ``cloud_run`` for runtime_env=None workers (xquill — wire
@@ -397,7 +417,9 @@ def make_obs(
                 summary=summary,
                 source=source,
             )
-            _RUN_BUFFERS.reset(token)
+            _RUN_SESSION_WORKERS.reset(session_token)
+            if buffer_token is not None:
+                _RUN_BUFFERS.reset(buffer_token)
             if _flush_allowed():
                 flush_buffer(
                     buffer,

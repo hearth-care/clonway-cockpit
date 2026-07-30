@@ -152,10 +152,6 @@ class Host:
     # Fired once per cockpit open — catalog registration + best-effort signal
     # emit. Worker-specific; the loop just calls it before the first paint.
     on_open: Callable[[], None]
-    # Opt-in nested-screen pill hook. It receives the exact active session and
-    # wins over ``activate_pill`` when configured. Agent mode refuses before
-    # either hook is reached.
-    activate_pill_with_session: Callable[[object, ShellSession], None] | None = None
     # The worker's capability registry accessors. A worker may keep its own
     # registry dict (e.g. xbook does, so its tests can snapshot/restore it) rather
     # than share ``clonway_cockpit.registry``'s module global — so the loop reads
@@ -213,15 +209,6 @@ class Host:
         [CockpitState, tuple[str, object] | None, str, Screen, Callable[[], str]],
         bool,
     ] = field(default=lambda state, sel, key, screen, read_key: False)
-    # Opt-in worker Home hook carrying the exact active Host/screen/key reader.
-    # When absent, ``handle_extra_key`` keeps its legacy arguments and behavior.
-    handle_extra_key_with_session: (
-        Callable[
-            [CockpitState, tuple[str, object] | None, str, ShellSession],
-            bool,
-        ]
-        | None
-    ) = None
     # Observer the shell calls with the ScreenModel for every screen it draws (home,
     # shelf menu) and threads into each walk's WizardContext so walk screens emit too.
     # Default no-op so existing Host constructions are byte-identical and the live
@@ -245,6 +232,20 @@ class Host:
     # Optional framework audit sink. Worker code usually passes make_audit_sink(worker_id).
     audit_sink: AuditSink | None = None
     audit_worker: str = "cockpit"
+    # Session-aware hooks are appended after every pre-existing Host field so
+    # positional construction by pinned workers keeps its original binding.
+    # The pill hook wins over ``activate_pill`` when configured; agent mode
+    # refuses before either hook is reached.
+    activate_pill_with_session: Callable[[object, ShellSession], None] | None = None
+    # Opt-in worker Home hook carrying the exact active Host/screen/key reader.
+    # When absent, ``handle_extra_key`` keeps its legacy arguments and behavior.
+    handle_extra_key_with_session: (
+        Callable[
+            [CockpitState, tuple[str, object] | None, str, ShellSession],
+            bool,
+        ]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True, slots=True)
