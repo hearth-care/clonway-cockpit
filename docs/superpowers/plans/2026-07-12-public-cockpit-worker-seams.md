@@ -222,7 +222,7 @@ or claims product value before #1046 lands.
 
 ## HANDOFF NOTES
 
-- Phase: Task 4 scoped telemetry GREEN complete; Task 5 worker-template migration is next.
+- Phase: Task 5 template RED captured; migrate Home entry/hook/wiring/docs next.
 - Base: `origin/main@8694e302`; branch is zero commits behind. No public symbols from this plan
   exist on main, so no SOL amendment was required.
 - Parallel plans: #114 (`1d4e9513`) and #115 (`ccf4a8ef`) remain open code-bearing PRs. Their
@@ -243,5 +243,8 @@ or claims product value before #1046 lands.
   walk/render/contract/agent tests passed.
 - Task 4 verification: 67 public/obs/package tests passed, including BaseException,
   cancellation, nested isolation, cross-worker and copied-context rows.
-- Known failing tests: none.
+- Task 5 RED: the generated-production guard reports `shell._home` and ambient agent-mode Host
+  reconstruction guidance; its complete forbidden/public-equivalent self-test passes.
+- Known failing tests: `tests/test_worker_template_public_api.py::
+  test_generated_production_uses_only_public_framework_seams` (intentional Task 5 RED).
 - Product value: pending implementation, independent QA, merge and downstream acceptance.
