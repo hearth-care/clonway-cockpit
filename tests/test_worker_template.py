@@ -458,6 +458,44 @@ def test_template_host_wires_framework_audit_sink(tmp_path: Path) -> None:
     assert 'audit_worker="{{ worker_id }}"' in source
 
 
+def test_template_host_wires_typed_doctor_callbacks(tmp_path: Path) -> None:
+    from clonway_cockpit.doctor import (
+        DoctorActionKind,
+        DoctorActionResult,
+        DoctorClosure,
+        DoctorRemedyReceipt,
+    )
+
+    dst = _generate(tmp_path, worker_id="xgendoctor")
+    with _importable(dst, "xgendoctor"):
+        cockpit = importlib.import_module("xgendoctor.cli.cockpit")
+        host = cockpit._host()
+        failure = RuntimeError("raw-secret")
+
+        probe = host.doctor_classify_report_failure(failure)
+        assert probe.probe_id == "scaffold.report"
+        assert "RuntimeError" in probe.detail
+        assert "raw-secret" not in probe.detail
+
+        receipt = DoctorRemedyReceipt(
+            schema_version=1,
+            remedy_id="remedy.example",
+            probe_id="probe.example",
+            action_kind=DoctorActionKind.CALLBACK,
+            action_result=DoctorActionResult.RAN,
+            capability_key=None,
+            focus=None,
+            before_level="warn",
+            before_revision="rev-1",
+            after_level=None,
+            after_revision=None,
+            closure=DoctorClosure.RESOLVED,
+            safe_message="Doctor remedy ran; probe closure resolved.",
+        )
+        assert host.doctor_on_receipt is not None
+        host.doctor_on_receipt(receipt)
+
+
 # --- AC-C6-2 — emits the C0 wire shape, flag-guarded -----------------------
 
 
