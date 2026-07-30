@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from rich.console import Console
 
 from clonway_cockpit import contract, render, shell
@@ -54,6 +55,9 @@ def test_unstructured_is_explicitly_flagged():
 # so the two projections of one screen provably stay one screen.
 
 _N_ITEMS = 16
+_SIXTEEN_ROUTES = tuple(
+    zip(render.assign_menu_shortcuts(_N_ITEMS), range(1, _N_ITEMS + 1), strict=True)
+)
 
 
 def _register_sixteen_item_shelf() -> dict[str, list]:
@@ -95,6 +99,26 @@ def _register_sixteen_item_shelf() -> dict[str, list]:
             money_movement=True,
         )
     )
+    return ran
+
+
+def _register_sixteen_route_shelf() -> dict[str, list]:
+    """A side-effect-free catalog where every ordinal has a distinct public effect."""
+    ran: dict[str, list] = {}
+    for ordinal in range(1, _N_ITEMS + 1):
+        key = f"route-{ordinal}"
+        marks: list = []
+        ran[key] = marks
+        register_capability(
+            CapabilitySpec(
+                key=key,
+                shelf="B",
+                title=f"Route {ordinal}",
+                summary=f"route summary {ordinal}",
+                equivalent_cli=f"x route {ordinal}",
+                run=lambda ctx, marks=marks: marks.append(True),
+            )
+        )
     return ran
 
 
@@ -143,13 +167,15 @@ def _sixteen_item_host(**over) -> shell.Host:
 
 
 def test_sixteen_item_shelf_drives_clean_with_no_unstructured_frame():
-    """DYNAMIC conformance (assert_drives_clean) over the real 16-item shape:
-    open the shelf, press every shortcut in turn, decline the write gate, quit —
-    no screen may fall through to `unstructured`."""
+    """Dynamic conformance over a representative gated route on the 16-item shape.
+
+    Exact exhaustive routing belongs to the fresh-session 2 × 16 matrix below;
+    this test only proves the gate path itself never emits ``unstructured``.
+    """
     clear_capabilities()
     _register_sixteen_item_shelf()
     host = _sixteen_item_host()
-    keys_script = ["b", *render.assign_menu_shortcuts(_N_ITEMS), "n", "q", "q"]
+    keys_script = ["b", "g", "n", "q", "q"]
     stream = contract.assert_drives_clean(host, keys_script)
     assert any(s.kind == "shelf_menu" for s in stream)
     clear_capabilities()
@@ -189,6 +215,63 @@ def test_sixteen_item_shelf_human_shortcut_opens_exact_capability_once():
     shell.run_cockpit(host, read_key=_keys(["b", "g", "q"]), screen=scr)
     assert ran["cap-16"] == []  # write-gated: opening it does NOT post
     assert usage_stub.opens == {"cap-16": 1}
+    clear_capabilities()
+
+
+@pytest.mark.parametrize("channel", ["human", "stdio"])
+@pytest.mark.parametrize(("token", "ordinal"), _SIXTEEN_ROUTES)
+def test_every_displayed_sixteen_item_shortcut_routes_exactly_once(channel, token, ordinal):
+    """Exhaustive 2 × 16 channel/token protocol matrix, one fresh session per cell."""
+    clear_capabilities()
+    ran = _register_sixteen_route_shelf()
+    usage = _CountingUsage()
+    events: list[AuditEvent] = []
+    models = []
+    host = _sixteen_item_host(usage=usage, audit_sink=events.append, on_screen=models.append)
+
+    if channel == "human":
+
+        class _Screen:
+            def __init__(self):
+                self.frames = []
+
+            def update(self, renderable):
+                self.frames.append(renderable)
+
+        keys_script = iter(["b", token, "q"])
+        screen = _Screen()
+        shell.run_cockpit(host, read_key=lambda: next(keys_script, "q"), screen=screen)
+        shelf_model = next(model for model in models if model.kind == "shelf_menu")
+        rendered_frames = []
+        for frame in screen.frames:
+            rendered = Console(record=True, width=160)
+            rendered.print(frame)
+            rendered_frames.append(rendered.export_text())
+        assert any(f"{token}." in text for text in rendered_frames)
+        shelf_wire = shelf_model.to_dict()
+    else:
+        import io
+
+        inp = io.StringIO("".join(json.dumps({"key": key}) + "\n" for key in ("b", token, "q")))
+        out = io.StringIO()
+        serve_stdio(host, stdin=inp, stdout=out)
+        frames = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+        shelf_wire = next(frame for frame in frames if frame.get("kind") == "shelf_menu")
+        assert all(frame.get("kind") != "unstructured" for frame in frames)
+
+    rows = shelf_wire["regions"][0]["rows"]
+    selected_row = rows[ordinal - 1]
+    shortcut = next(
+        field["value"] for field in selected_row["fields"] if field["label"] == "shortcut"
+    )
+    assert shortcut == token
+    assert token in shelf_wire["actions"]
+    assert ran[f"route-{ordinal}"] == [True]
+    assert sum(len(opens) for opens in ran.values()) == 1
+    assert usage.opens == {f"route-{ordinal}": 1}
+    launches = [event for event in events if event.event == "capability.launched"]
+    assert len(launches) == 1
+    assert launches[0].capability_key == f"route-{ordinal}"
     clear_capabilities()
 
 
