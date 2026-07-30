@@ -208,4 +208,12 @@ Foundry completes only when hermetic public-path tests prove:
   and leaks no raw exception sentinel through any serialized frame or receipt.
 - Task 3 gates: capability/drive/shell/contract suite `137 passed`; Ruff, format and mypy passed;
   `git diff --check` clean.
+- Task 4 pairing matrix crosses 7 pairing states with 2 display layouts (14 generated cells).
+  Unique `Fix.probe_id` pairs to a unique `Probe.probe_id` before legacy identity/equality fallback;
+  duplicate explicit IDs fail closed to an unattributed/unknown receipt.
+- Task 4 callback safety uses the real in-process `CockpitDriver` because `serve_stdio` correctly
+  forces agent mode and cannot execute opaque callbacks. Serialized models and the receipt contain
+  bounded class-only failure copy and no raw callback sentinel.
+- Task 4 gates: receipt/drive/shell suite `147 passed`; Ruff, format and mypy passed;
+  `git diff --check` clean.
 - Known-failing tests: none.

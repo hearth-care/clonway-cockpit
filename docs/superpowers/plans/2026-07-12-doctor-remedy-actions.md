@@ -485,8 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2, Task 3 capability exception-model safety complete.
-- Next concrete step: Task 4 RED stable-ID pairing matrix, then callback exception-model safety.
+- Current phase: QA FAIL round 2, Task 4 pairing/receipt/callback safety complete.
+- Next concrete step: Task 5 parity regression sweep, then Task 6 runbook delta, history cleanup,
+  full gates, rebase and finish protocol.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -500,8 +501,18 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   capability/drive/shell/contract suite `137 passed`; Ruff and format passed; mypy passed;
   `git diff --check` clean. Framework-owned crash copy is capability title plus exception class;
   raw worker/provider exception text is absent from Rich, model frames, and receipts.
+- Task 4 pairing matrix:
+  `tests/test_doctor_receipt_integration.py::test_doctor_remedy_pairing_state_matrix` crosses pairing
+  (`same_object`, `equal_clone`, `stable_id_clone`, `shared_equal_values`, `unpaired`,
+  `reordered_subset`, `ambiguous_duplicate_id`) with display layout (`absent`, `interleaved`) for
+  14 cells. Unique explicit probe ID wins; duplicate explicit IDs fail closed; legacy
+  identity/equality is consume-on-match fallback.
+- Task 4 verification: pairing matrix `14 passed`; callback/capability redaction focused set
+  `15 passed`; receipt/drive/shell suite `147 passed`; Ruff and format passed; mypy passed;
+  `git diff --check` clean. A real `CockpitDriver` serialization proves raw callback exception text
+  is absent while `serve_stdio` remains unable to execute opaque callbacks by design.
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: stable-ID pairing matrix, callback exception redaction, runbook delta,
-  prohibited commit trailer, full gates, rebase, and finish protocol.
+- Pending QA findings: runbook delta, prohibited commit trailer, full gates, rebase, and finish
+  protocol.

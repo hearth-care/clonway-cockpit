@@ -296,6 +296,57 @@ def test_cockpit_client_redacts_throwing_doctor_capability_from_every_frame() ->
         clear_capabilities()
 
 
+def test_cockpit_driver_redacts_throwing_callback_from_every_frame() -> None:
+    clear_capabilities()
+    receipts: list[DoctorRemedyReceipt] = []
+    sentinel = "RAW-CUSTOMER-TOKEN-123"
+    try:
+        register_capability(CapabilitySpec("doctor", "G", "Doctor", "Health", "worker doctor"))
+
+        def callback() -> str:
+            raise RuntimeError(sentinel)
+
+        fix = Fix(
+            "Repair",
+            "worker repair",
+            run=callback,
+            remedy_id="remedy.repair",
+            probe_id="probe.repair",
+        )
+        probe = Probe("Repair", "error", "Safe detail", fix, "probe.repair", "rev-1")
+        state = CockpitState(
+            tenant_name="Clonway",
+            needs=(NeedsItem("Repair", "Open Doctor", "error", "doctor", "probe.repair"),),
+        )
+        host = shell.Host(
+            capture_state=lambda: state,
+            build_walk_ctx=_ctx,
+            activate_pill=lambda *args: None,
+            doctor_build_report=lambda: object(),
+            doctor_build_probes=lambda report: [probe],
+            doctor_fixes_for=fixes_for,
+            doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Unavailable"),
+            usage=_Usage(),
+            on_open=lambda: None,
+            doctor_on_receipt=receipts.append,
+        )
+
+        stream = agent.CockpitDriver(
+            host,
+            keys=[keys.ENTER, keys.ENTER, "dismiss", "q", "q"],
+        ).run()
+        frames = [model.to_dict() for model in stream]
+
+        result = next(frame for frame in frames if frame["kind"] == "walk.result")
+        assert result["meta"]["ok"] is False
+        assert result["meta"]["message"] == "Doctor remedy failed (RuntimeError)."
+        assert len(receipts) == 1
+        assert sentinel not in json.dumps(frames)
+        assert sentinel not in repr(receipts[0])
+    finally:
+        clear_capabilities()
+
+
 _LEGACY_CHILD = r"""
 from rich.console import Console
 from clonway_cockpit import agent, render, shell

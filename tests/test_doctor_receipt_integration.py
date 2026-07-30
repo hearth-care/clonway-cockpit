@@ -193,6 +193,155 @@ def test_capability_receipt_reports_resolved_only_after_reprobe() -> None:
     assert receipts[0].closure is DoctorClosure.RESOLVED
 
 
+@pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+@pytest.mark.parametrize(
+    "pairing_case",
+    [
+        "same_object",
+        "equal_clone",
+        "stable_id_clone",
+        "shared_equal_values",
+        "unpaired",
+        "reordered_subset",
+        "ambiguous_duplicate_id",
+    ],
+)
+def test_doctor_remedy_pairing_state_matrix(
+    pairing_case: str,
+    display_layout: str,
+) -> None:
+    """Dispatch and receipt attribution share one ordered, fail-closed pairing."""
+    receipts: list[DoctorRemedyReceipt] = []
+    models = []
+    calls: list[str] = []
+
+    def run() -> str:
+        calls.append("target")
+        return "done"
+
+    target = Fix(
+        "Target",
+        "worker target",
+        run=run,
+        remedy_id="remedy.target",
+        probe_id="probe.target",
+    )
+    target_probe = Probe(
+        "Target",
+        "error",
+        "Safe detail",
+        target,
+        "probe.target",
+        "rev-target",
+    )
+    expected_probe_id = "probe.target"
+    expected_revision = "rev-target"
+    expected_closure = DoctorClosure.STILL_PRESENT
+
+    if pairing_case == "same_object":
+        probes = [target_probe]
+        fixes = [target]
+        target_index = 0
+    elif pairing_case == "equal_clone":
+        probes = [target_probe]
+        fixes = [replace(target)]
+        target_index = 0
+    elif pairing_case == "stable_id_clone":
+        probes = [target_probe]
+        fixes = [replace(target, note="worker-normalized display copy")]
+        target_index = 0
+    elif pairing_case == "shared_equal_values":
+        legacy = Fix("Target", "worker target", run=run)
+        probes = [
+            Probe("First", "warn", "first", legacy, "probe.first", "rev-first"),
+            Probe(
+                "Target",
+                "error",
+                "target",
+                replace(legacy),
+                "probe.target",
+                "rev-target",
+            ),
+        ]
+        fixes = [replace(legacy), replace(legacy)]
+        target_index = 1
+    elif pairing_case == "unpaired":
+        probes = [Probe("Other", "warn", "other", None, "probe.other", "rev-other")]
+        fixes = [target]
+        target_index = 0
+        expected_probe_id = ""
+        expected_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+    elif pairing_case == "reordered_subset":
+        before = Fix(
+            "Before",
+            "worker before",
+            run=lambda: "before",
+            remedy_id="remedy.before",
+            probe_id="probe.before",
+        )
+        after = Fix(
+            "After",
+            "worker after",
+            run=lambda: "after",
+            remedy_id="remedy.after",
+            probe_id="probe.after",
+        )
+        probes = [
+            Probe("Before", "warn", "before", before, "probe.before", "rev-before"),
+            target_probe,
+            Probe("After", "warn", "after", after, "probe.after", "rev-after"),
+        ]
+        fixes = [after, target]
+        target_index = 1
+    else:
+        duplicate = Probe(
+            "Duplicate",
+            "warn",
+            "duplicate",
+            replace(target, note="duplicate"),
+            "probe.target",
+            "rev-duplicate",
+        )
+        probes = [target_probe, duplicate]
+        fixes = [target]
+        target_index = 0
+        expected_probe_id = ""
+        expected_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+
+    if display_layout == "interleaved":
+        display = Fix("Display only", "worker explain", note="Read the runbook")
+        fixes = [display, *fixes, display]
+
+    host = replace(
+        _host(lambda report: probes, receipts),
+        doctor_fixes_for=lambda current_probes: fixes,
+        on_screen=models.append,
+    )
+
+    shell._doctor(
+        host,
+        _Screen(),
+        _keys([str(target_index + 1), "dismiss", "q"]),
+    )
+
+    first_doctor = next(model for model in models if model.kind == "doctor")
+    rows = next(region.rows for region in first_doctor.regions if region.role == "fixes")
+    target_row = next(row for row in rows if row.id == f"fix:{target_index}")
+    fields = {field.label: field.value for field in target_row.fields}
+    assert target_row.enabled is True
+    assert (
+        fields["remedy_id"]
+        == fixes[(target_index + 1) if display_layout == "interleaved" else target_index].remedy_id
+    )
+    assert calls == ["target"]
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == expected_probe_id
+    assert receipts[0].before_revision == expected_revision
+    assert receipts[0].closure is expected_closure
+
+
 @pytest.mark.parametrize(
     ("agent_mode", "raises", "keys_in", "result"),
     [

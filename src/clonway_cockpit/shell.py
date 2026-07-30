@@ -931,15 +931,29 @@ def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe | N
         if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
             continue
         probe = None
-        for index, candidate in enumerate(available):
-            if candidate.fix is fix:
-                probe = available.pop(index)
-                break
-        else:
+        stable_id_ambiguous = False
+        if fix.probe_id:
+            stable_matches = [
+                index
+                for index, candidate in enumerate(available)
+                if candidate.probe_id == fix.probe_id
+            ]
+            if len(stable_matches) == 1:
+                probe = available.pop(stable_matches[0])
+            elif len(stable_matches) > 1:
+                # Duplicate explicit identity cannot authorize attribution to
+                # either probe, even if one happens to share object identity.
+                stable_id_ambiguous = True
+        if probe is None and not stable_id_ambiguous:
             for index, candidate in enumerate(available):
-                if candidate.fix == fix:
+                if candidate.fix is fix:
                     probe = available.pop(index)
                     break
+            else:
+                for index, candidate in enumerate(available):
+                    if candidate.fix == fix:
+                        probe = available.pop(index)
+                        break
         remedies.append((probe, fix))
     return remedies
 
@@ -1298,7 +1312,9 @@ def _run_doctor_fix(
             msg = fix.run()
         ok = True
     except Exception as e:  # noqa: BLE001 — surface any failure as a clean result
-        msg, ok = str(e), False
+        # Worker callback exceptions may contain customer/provider details. The
+        # framework model and Rich result expose only a bounded class name.
+        msg, ok = f"Doctor remedy failed ({type(e).__name__}).", False
     _doctor_action_result(host, screen, read_key, ok=ok, message=msg)
     return DoctorActionResult.RAN if ok else DoctorActionResult.FAILED
 
