@@ -116,8 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Tasks 2–4 identity-coherence fixes complete.
-- Next concrete step: add and satisfy the Task 5 matched/unmatched Rich focus parity assertions.
+- Current phase: QA FAIL round 3 Tasks 2–5 complete.
+- Next concrete step: drive the generated-worker unconfigured path and make its classifier example
+  opt-in so the documented setup hint remains reachable.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -161,6 +162,11 @@ Foundry completes only when hermetic public-path tests prove:
   pairing is preserved.
 - Task 4 verification: receipt matrix `56 passed`; Ruff passed; mypy reported no issues in
   `shell.py`; `git diff --check` clean.
+- Task 5 Rich/model parity now crosses matched and unmatched focus. Rich renders the stable focus
+  decision and tells the operator to review selection on an unmatched focus, while ScreenModel
+  retains the same requested/matched metadata.
+- Task 5 verification: Doctor drive/model/contract/screen-model suite `32 passed`; Ruff passed;
+  mypy reported no issues in `render_panels.py`; `git diff --check` clean.
 - Current phase known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in

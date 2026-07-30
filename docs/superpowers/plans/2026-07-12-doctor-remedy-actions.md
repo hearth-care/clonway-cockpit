@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 3 Tasks 2–4 identity-coherence fixes complete.
-- Next concrete step: add matched/unmatched Rich focus assertions for Task 5, watch them fail, then
-  render the same focus decision carried by the ScreenModel.
+- Current phase: QA FAIL round 3 Tasks 2–5 complete.
+- Next concrete step: add the generated-worker unconfigured-path drive for Task 6, watch the
+  always-wired classifier violate it, then make classifier adoption opt-in in the scaffold.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -527,7 +527,7 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: Rich focus parity and generated-worker fallback.
+- Pending QA findings: generated-worker fallback.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -546,4 +546,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   of order; absent unique IDs remain `resolved`; legacy consume-on-match pairing remains supported.
 - QA FAIL round 3 Task 4 verification: receipt matrix `56 passed`; Ruff passed; mypy reported no
   issues in `shell.py`; `git diff --check` clean.
+- QA FAIL round 3 Task 5 parity: the Rich projection now renders either
+  `focus ✓ <stable-id> matched` or `focus ⚠ <stable-id> not found — review selection`, matching the
+  model's `focus_requested`/`focus_matched` decision. The existing mixed-snapshot test crosses
+  matched/unmatched focus for 2 generated cells.
+- QA FAIL round 3 Task 5 verification: Doctor drive/model/contract/screen-model suite `32 passed`;
+  Ruff passed; mypy reported no issues in `render_panels.py`; `git diff --check` clean.
 - QA FAIL round 3 known-failing tests: none.

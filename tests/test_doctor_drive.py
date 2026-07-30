@@ -6,6 +6,7 @@ import sys
 import threading
 from pathlib import Path
 
+import pytest
 from rich.console import Console
 
 from clonway_cockpit import agent, keys, render, shell
@@ -59,7 +60,29 @@ def _wire(host: shell.Host):
     return client, thread
 
 
-def test_mixed_doctor_projection_carries_action_identity_and_focus() -> None:
+@pytest.mark.parametrize(
+    ("focus_requested", "focus_matched", "selected", "human_focus"),
+    [
+        (
+            "probe.review",
+            "probe.review",
+            1,
+            "focus     ✓ probe.review matched",
+        ),
+        (
+            "probe.missing",
+            None,
+            0,
+            "focus     ⚠ probe.missing not found — review selection",
+        ),
+    ],
+)
+def test_mixed_doctor_projection_carries_action_identity_and_focus(
+    focus_requested: str,
+    focus_matched: str | None,
+    selected: int,
+    human_focus: str,
+) -> None:
     display = Fix("Explain", "worker explain", note="Read the runbook")
     callback = Fix(
         "Repair",
@@ -85,9 +108,9 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus() -> None:
     kwargs = {
         "probes": probes,
         "fixes": fixes_for(probes),
-        "selected": 1,
-        "focus_requested": "probe.review",
-        "focus_matched": "probe.review",
+        "selected": selected,
+        "focus_requested": focus_requested,
+        "focus_matched": focus_matched,
     }
 
     model = render.model_doctor(**kwargs)
@@ -98,7 +121,7 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus() -> None:
     capability_fields = {field.label: field.value for field in rows[2].fields}
 
     assert [row.id for row in rows] == ["fix:display:0", "fix:0", "fix:1"]
-    assert model.selection == "fix:1"
+    assert model.selection == f"fix:{selected}"
     assert capability_fields == {
         "cmd": "worker review",
         "remedy_id": "remedy.review",
@@ -110,8 +133,9 @@ def test_mixed_doctor_projection_carries_action_identity_and_focus() -> None:
     }
     assert model.meta["warnings"] == 1
     assert model.meta["errors"] == 1
-    assert model.meta["focus_requested"] == "probe.review"
-    assert model.meta["focus_matched"] == "probe.review"
+    assert model.meta["focus_requested"] == focus_requested
+    assert model.meta["focus_matched"] == focus_matched
+    assert human_focus in human
     assert "Open Review" in human
     assert "worker review" in human
     assert "run in a terminal" in human

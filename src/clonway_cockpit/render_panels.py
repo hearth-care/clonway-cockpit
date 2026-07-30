@@ -444,6 +444,19 @@ def render_doctor(
 
     parts: list[RenderableType] = [head, Rule(style=DIM), probe_body, Rule(style=DIM), vline]
 
+    if focus_requested is not None:
+        focus_line = Text("focus     ", style="bold")
+        if focus_matched is not None:
+            focus_line.append("✓ ", style="green")
+            focus_line.append(f"{focus_matched} matched", style=DIM)
+        else:
+            focus_line.append("⚠ ", style=ACCENT)
+            focus_line.append(
+                f"{focus_requested} not found — review selection",
+                style=ACCENT,
+            )
+        parts.append(focus_line)
+
     if fixes:
         parts.append(Text(""))
         ftable = Table(show_header=False, box=None, padding=(0, 2))
