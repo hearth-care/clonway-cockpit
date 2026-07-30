@@ -116,10 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2 behavioral, runbook and history fixes complete; exact-head full
-  gates and finish protocol pending.
-- Next concrete step: run exact-head full gates, update/push this receipt, verify a clean
-  synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
+- Current phase: QA FAIL round 2 complete; final full gate sequence green.
+- Next concrete step: commit/push this receipt, repeat the full gates at that exact head, verify a
+  clean synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -136,7 +135,7 @@ Foundry completes only when hermetic public-path tests prove:
   `git diff --check` clean. `CockpitClient` drives focused Home -> Doctor -> nested capability ->
   refreshed Doctor with one receipt and unchanged schema `1.0`.
 - Task 6 gates: generated-worker suite `26 passed`; true subprocess legacy and opt-in acceptance
-  drives `2 passed`; exact-head full suite `1,171 passed in 39.43s`; Ruff passed; Ruff format
+  drives `2 passed, 4 deselected`; full suite `1,213 passed in 26.27s`; Ruff passed; Ruff format
   reported `167 files already formatted`; mypy reported no issues in 67 source files; all-file
   pre-commit passed all eight hooks; `git diff --check` clean.
 - Deviation: the merge commit/release tag requested by the plan cannot exist before operator

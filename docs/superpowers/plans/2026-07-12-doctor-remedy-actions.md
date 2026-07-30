@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2, Task 6 runbook/history requirements complete.
-- Next concrete step: run exact-head full gates, update final evidence, commit/push, verify a clean
-  worktree, then execute the finish protocol.
+- Current phase: QA FAIL round 2 complete; final full gate sequence green.
+- Next concrete step: commit/push this final receipt, repeat the gate sequence at that exact head,
+  verify a clean synchronized worktree, then execute the finish protocol.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -520,7 +520,11 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Task 6 history: rebased onto latest `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`,
   removed the prohibited co-author trailer while preserving the commit tree, verified no
   `Co-Authored-By`/AI trailer remains, and force-pushed with an exact lease.
+- Task 6 final gates: full suite `1,213 passed in 26.27s`; Ruff passed; Ruff format reported
+  `167 files already formatted`; mypy reported no issues in 67 source files; all eight pre-commit
+  hooks passed; `git diff --check` clean; generated-worker suite `26 passed`; subprocess
+  legacy/opt-in acceptance `2 passed, 4 deselected in 10.47s`.
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: exact-head full gates and finish protocol only.
+- Pending QA findings: none; final exact-head repeat and finish protocol remain.
