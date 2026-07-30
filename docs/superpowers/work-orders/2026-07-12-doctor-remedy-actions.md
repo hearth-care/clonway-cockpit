@@ -116,9 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: Task 6 implementation complete; final static/pre-commit gates and rebase pending.
-- Next concrete step: commit/push handoff docs, rebase onto fetched `origin/main`, rerun all final
-  gates, verify a clean worktree, then execute the ready/needs-QA/DONE finish protocol.
+- Current phase: all six tasks complete; exact-head receipt commit and finish protocol pending.
+- Next concrete step: push this final receipt, rerun exact-head pytest/pre-commit/diff checks,
+  verify a clean synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -134,9 +134,10 @@ Foundry completes only when hermetic public-path tests prove:
 - Task 5 gates: real-client/model/contract suite `27 passed`; Ruff and mypy passed;
   `git diff --check` clean. `CockpitClient` drives focused Home -> Doctor -> nested capability ->
   refreshed Doctor with one receipt and unchanged schema `1.0`.
-- Task 6 evidence so far: generated-worker suite `26 passed`; true subprocess legacy and opt-in
-  acceptance drives `2 passed`; full suite `1,171 passed in 63.80s`. Final static/pre-commit gates
-  pending after the handoff-doc commit/rebase.
+- Task 6 gates: generated-worker suite `26 passed`; true subprocess legacy and opt-in acceptance
+  drives `2 passed`; exact-head full suite `1,171 passed in 39.43s`; Ruff passed; Ruff format
+  reported `167 files already formatted`; mypy reported no issues in 67 source files; all-file
+  pre-commit passed all eight hooks; `git diff --check` clean.
 - Deviation: the merge commit/release tag requested by the plan cannot exist before operator
   merge. The readiness receipt records exact post-merge pin steps and assigns the final identifier
   insertion to the release owner.

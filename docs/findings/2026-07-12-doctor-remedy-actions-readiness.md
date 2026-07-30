@@ -129,3 +129,14 @@ should:
 
 The exact merge commit and release tag do not exist before operator merge/release and must be
 filled in by the release owner. No data migration or operator cutover step is introduced.
+
+## Final local verification
+
+- `uv run pytest -q`: 1,171 passed in 39.43 seconds.
+- `uv run ruff check .`: all checks passed.
+- `uv run ruff format --check .`: 167 files already formatted.
+- `uv run mypy src`: success, no issues in 67 source files.
+- `uv run pre-commit run --all-files`: all eight hooks passed.
+- `git diff --check`: clean.
+- Generated-worker suite: 26 passed.
+- True subprocess `CockpitClient` legacy/opt-in acceptance: 2 passed.
