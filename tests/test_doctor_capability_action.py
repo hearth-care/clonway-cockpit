@@ -240,6 +240,16 @@ def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> N
 
 @pytest.mark.parametrize("selection_source", ["focused", "manual"])
 @pytest.mark.parametrize(
+    "focus_identity",
+    [
+        "unique_probe_id",
+        "duplicate_probe_id",
+        "unique_remedy_id",
+        "duplicate_remedy_id",
+        "unknown",
+    ],
+)
+@pytest.mark.parametrize(
     "rebuild_shape",
     [
         "unchanged",
@@ -251,6 +261,7 @@ def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> N
 )
 def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     selection_source: str,
+    focus_identity: str,
     rebuild_shape: str,
 ) -> None:
     """A rebuild may change every positional index around the selected remedy.
@@ -277,16 +288,41 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     _, probe_c = remedy("c")
     _, probe_x = remedy("x")
     initial = [probe_a, probe_b, probe_c]
-    target = "c" if selection_source == "focused" else "b"
-    target_probe = probe_c if target == "c" else probe_b
+    if focus_identity == "duplicate_probe_id":
+        probe_x = replace(
+            probe_x,
+            fix=replace(probe_x.fix, probe_id="probe.c"),
+        )
+        initial.append(probe_x)
+        focus = "probe.c"
+    elif focus_identity == "duplicate_remedy_id":
+        probe_x = replace(
+            probe_x,
+            fix=replace(probe_x.fix, remedy_id="remedy.c"),
+        )
+        initial.append(probe_x)
+        focus = "remedy.c"
+    elif focus_identity == "unique_remedy_id":
+        focus = "remedy.c"
+    elif focus_identity == "unknown":
+        focus = "probe.missing"
+    else:
+        focus = "probe.c"
+
+    focus_is_unique = focus_identity in {"unique_probe_id", "unique_remedy_id"}
+    target_probe = (
+        probe_b if selection_source == "manual" else (probe_c if focus_is_unique else probe_a)
+    )
+    target = target_probe.name.lower()
     if rebuild_shape == "unchanged":
         after = initial
     elif rebuild_shape == "predecessor_removed":
-        after = [target_probe, probe_c] if target == "b" else [probe_b, probe_c]
+        removable = next((probe for probe in initial if probe is not target_probe), None)
+        after = [probe for probe in initial if probe is not removable]
     elif rebuild_shape == "predecessor_inserted":
         after = [probe_x, *initial]
     elif rebuild_shape == "reordered":
-        after = [probe_c, probe_b, probe_a]
+        after = list(reversed(initial))
     else:
         after = [probe for probe in initial if probe is not target_probe]
 
@@ -320,25 +356,22 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     )
     sequence = []
     if selection_source == "manual":
-        sequence.append(keys.UP)
-    sequence.append(keys.ENTER)
+        sequence.append("2")
+    else:
+        sequence.append(keys.ENTER)
     if rebuild_shape != "target_removed":
         sequence.append(keys.ENTER)
     sequence.append("q")
 
-    shell._doctor(host, _Screen(), _keys(sequence), focus="probe.c")
+    shell._doctor(host, _Screen(), _keys(sequence), focus=focus)
 
     final = [model for model in models if model.kind == "doctor"][-1]
     assert opened == ([target] if rebuild_shape == "target_removed" else [target, target])
     if rebuild_shape != "target_removed":
-        target_index = next(
-            index for index, probe in enumerate(after) if probe.probe_id == f"probe.{target}"
-        )
+        target_index = next(index for index, probe in enumerate(after) if probe is target_probe)
         assert final.selection == f"fix:{target_index}"
-    if selection_source == "focused":
-        assert final.meta["focus_matched"] == (
-            None if rebuild_shape == "target_removed" else "probe.c"
-        )
+    expected_focus_match = focus if focus_is_unique and probe_c in after else None
+    assert final.meta["focus_matched"] == expected_focus_match
 
 
 def test_unknown_focus_keeps_first_remedy_selected_after_rebuild() -> None:

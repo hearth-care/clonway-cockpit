@@ -116,9 +116,9 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2 complete; final full gate sequence green.
-- Next concrete step: commit/push this receipt, repeat the full gates at that exact head, verify a
-  clean synchronized worktree, then execute ready -> `agent:needs-qa` -> DONE.
+- Current phase: QA FAIL round 3 Task 2 focus-identity fix complete.
+- Next concrete step: extend Task 4's receipt matrix across unique/absent/duplicate after-probe
+  identity, then make ambiguous after-state comparison fail closed.
 - Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
   or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
 - Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
@@ -143,7 +143,20 @@ Foundry completes only when hermetic public-path tests prove:
   insertion to the release owner.
 - Current-main deviation: the plan named a generated-worker test file that is not present; the
   canonical worker-template subprocess suite is used instead.
-- Known-failing tests: none.
+- QA FAIL round 2 known-failing tests at its handoff: none.
+
+### QA FAIL round 3 (qa-claude-20260730T151553Z-89916-7) — fixer-codex-20260730T214708Z-84400-47
+
+- Task 2 focus matrix now crosses selection source (`focused`, `manual`), focus identity
+  (`unique_probe_id`, `duplicate_probe_id`, `unique_remedy_id`, `duplicate_remedy_id`, `unknown`)
+  and rebuild shape (`unchanged`, `predecessor_removed`, `predecessor_inserted`, `reordered`,
+  `target_removed`) for 50 generated cells.
+- A shared `_unique_match` is the fail-closed resolver used by before attribution, focus matching,
+  post-rebuild selection and after-probe comparison. Duplicate focus IDs report
+  `focus_matched=None`; Enter then follows the visible first-row fallback.
+- Task 2 verification: focus matrix `50 passed`; Ruff passed; mypy reported no issues in
+  `shell.py`; `git diff --check` clean.
+- Current phase known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in
   35.58 seconds.

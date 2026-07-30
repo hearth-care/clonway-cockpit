@@ -485,9 +485,9 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 2 complete; final full gate sequence green.
-- Next concrete step: commit/push this final receipt, repeat the gate sequence at that exact head,
-  verify a clean synchronized worktree, then execute the finish protocol.
+- Current phase: QA FAIL round 3 Task 2 focus-identity fix complete.
+- Next concrete step: extend the Task 4 receipt matrix with after-probe identity states, watch the
+  ambiguity cells fail, then make the shared unique-match resolver govern after-state comparison.
 - Decisions: selection after a rebuild is resolved by unique stable remedy ID, then unique probe ID,
   then unique legacy object/value identity. The remedy actually selected by focus, number, Enter, or
   manual arrows is the preservation anchor; ambiguous matches fail closed to a visible fallback.
@@ -527,4 +527,14 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: none; final exact-head repeat and finish protocol remain.
+- Pending QA findings: after-probe ambiguity, Rich focus parity, and generated-worker fallback.
+- QA FAIL round 3 focus matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
+  crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
+  `duplicate_probe_id`, `unique_remedy_id`, `duplicate_remedy_id`, `unknown`) and rebuild shape
+  (`unchanged`, `predecessor_removed`, `predecessor_inserted`, `reordered`, `target_removed`) for
+  50 generated cells. A shared `_unique_match` now governs all Doctor stable-identity resolvers;
+  ambiguous focus claims fail closed to `focus_matched=None` and the visible first-row fallback.
+- QA FAIL round 3 Task 2 verification: focus matrix `50 passed`; Ruff passed; mypy reported no
+  issues in `shell.py`; `git diff --check` clean.
+- QA FAIL round 3 known-failing tests: none.

@@ -29,6 +29,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any, Protocol
 
 from rich.console import RenderableType
@@ -41,6 +42,7 @@ from clonway_cockpit.doctor import (
     DoctorActionKind,
     DoctorActionResult,
     DoctorRemedyReceipt,
+    Fix,
     Probe,
     action_kind,
     build_remedy_receipt,
@@ -913,7 +915,21 @@ def _doctor_probes(host: Host, build: DoctorBuild) -> list[Probe]:
     return host.doctor_build_probes(build.report)
 
 
-def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe | None, Any]]:
+def _unique_match[T](candidates: list[T], predicate: Callable[[T], bool]) -> T | None:
+    """Return the sole matching candidate; fail closed on zero or many matches."""
+    matches = [candidate for candidate in candidates if predicate(candidate)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _probe_id_matches(candidate: Probe, *, probe_id: str) -> bool:
+    return candidate.probe_id == probe_id
+
+
+def _probe_fix_matches(candidate: Probe, *, fix: Fix, by_identity: bool) -> bool:
+    return candidate.fix is fix if by_identity else candidate.fix == fix
+
+
+def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Probe | None, Fix]]:
     """Pair every non-display-only fix with its originating probe, in ``fixes``
     order — the exact order/count ``render_doctor``/``model_doctor`` number rows
     in, so the shell's dispatch list can never diverge from what's on screen.
@@ -926,55 +942,76 @@ def _runnable_remedies(probes: list[Probe], fixes: list) -> list[tuple[Probe | N
     each frame and loses object identity — resolve to distinct probes instead
     of every equal fix collapsing onto the first match."""
     available = list(probes)
-    remedies: list[tuple[Probe | None, Any]] = []
+    remedies: list[tuple[Probe | None, Fix]] = []
     for fix in fixes:
         if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
             continue
         probe = None
-        stable_id_ambiguous = False
+        stable_id_claimed = False
         if fix.probe_id:
-            stable_matches = [
-                index
-                for index, candidate in enumerate(available)
-                if candidate.probe_id == fix.probe_id
-            ]
-            if len(stable_matches) == 1:
-                probe = available.pop(stable_matches[0])
-            elif len(stable_matches) > 1:
+            stable_id_claimed = any(candidate.probe_id == fix.probe_id for candidate in available)
+            stable_match = _unique_match(
+                available,
+                partial(_probe_id_matches, probe_id=fix.probe_id),
+            )
+            if stable_match is not None:
+                available.remove(stable_match)
+                probe = stable_match
+            elif stable_id_claimed:
                 # Duplicate explicit identity cannot authorize attribution to
                 # either probe, even if one happens to share object identity.
-                stable_id_ambiguous = True
-        if probe is None and not stable_id_ambiguous:
-            for index, candidate in enumerate(available):
-                if candidate.fix is fix:
-                    probe = available.pop(index)
-                    break
+                probe = None
+        if probe is None and not stable_id_claimed:
+            identity_match = _unique_match(
+                available,
+                partial(_probe_fix_matches, fix=fix, by_identity=True),
+            )
+            if identity_match is not None:
+                available.remove(identity_match)
+                probe = identity_match
             else:
-                for index, candidate in enumerate(available):
-                    if candidate.fix == fix:
-                        probe = available.pop(index)
-                        break
+                equality_match = _unique_match(
+                    available,
+                    partial(_probe_fix_matches, fix=fix, by_identity=False),
+                )
+                if equality_match is not None:
+                    available.remove(equality_match)
+                    probe = equality_match
         remedies.append((probe, fix))
     return remedies
 
 
 def _focused_remedy(
-    runnable: list[tuple[Probe | None, Any]], focus: str | None
+    runnable: list[tuple[Probe | None, Fix]], focus: str | None
 ) -> tuple[int, str | None]:
     if focus is None:
         return 0, None
-    for index, (probe, fix) in enumerate(runnable):
-        if (probe is not None and probe.probe_id == focus) or fix.probe_id == focus:
-            return index, focus
-    for index, (_, fix) in enumerate(runnable):
-        if fix.remedy_id == focus:
-            return index, focus
+    indexed = list(enumerate(runnable))
+    probe_id_claimed = any(
+        (probe is not None and probe.probe_id == focus) or fix.probe_id == focus
+        for probe, fix in runnable
+    )
+    if probe_id_claimed:
+        match = _unique_match(
+            indexed,
+            lambda item: (
+                (item[1][0] is not None and item[1][0].probe_id == focus)
+                or item[1][1].probe_id == focus
+            ),
+        )
+        return (match[0], focus) if match is not None else (0, None)
+    remedy_match = _unique_match(
+        indexed,
+        lambda item: item[1][1].remedy_id == focus,
+    )
+    if remedy_match is not None:
+        return remedy_match[0], focus
     return 0, None
 
 
 def _preserved_remedy_index(
-    runnable: list[tuple[Probe | None, Any]],
-    selected: tuple[Probe | None, Any],
+    runnable: list[tuple[Probe | None, Fix]],
+    selected: tuple[Probe | None, Fix],
 ) -> int | None:
     """Resolve a selected remedy after a Doctor rebuild without trusting its old index.
 
@@ -985,9 +1022,12 @@ def _preserved_remedy_index(
     """
     selected_probe, selected_fix = selected
 
-    def unique_index(predicate: Callable[[Probe | None, Any], bool]) -> int | None:
-        matches = [index for index, pair in enumerate(runnable) if predicate(*pair)]
-        return matches[0] if len(matches) == 1 else None
+    def unique_index(predicate: Callable[[Probe | None, Fix], bool]) -> int | None:
+        match = _unique_match(
+            list(enumerate(runnable)),
+            lambda indexed: predicate(*indexed[1]),
+        )
+        return match[0] if match is not None else None
 
     if selected_fix.remedy_id:
         index = unique_index(lambda _probe, fix: fix.remedy_id == selected_fix.remedy_id)
@@ -1053,7 +1093,7 @@ def _doctor(
     sel = 0
     focus_matched: str | None = None
     focus_pending = True
-    selection_anchor: tuple[Probe | None, Any] | None = None
+    selection_anchor: tuple[Probe | None, Fix] | None = None
     cached_probes: list[Probe] | None = None
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
     # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
@@ -1203,15 +1243,16 @@ def _doctor(
             _deliver_doctor_receipt(host, receipt)
             return
         after_probes = _doctor_probes(host, rebuilt)
-        after_probe = (
-            next(
-                (probe for probe in after_probes if probe.probe_id == selected_probe.probe_id),
-                None,
-            )
-            if selected_probe is not None and selected_probe.probe_id
-            else None
+        if selected_probe is not None and selected_probe.probe_id:
+            selected_probe_id = selected_probe.probe_id
+            after_matches = [probe for probe in after_probes if probe.probe_id == selected_probe_id]
+        else:
+            after_matches = []
+        after_probe = _unique_match(after_matches, lambda _probe: True)
+        after_identity_ambiguous = len(after_matches) > 1
+        comparison_available = not after_identity_ambiguous and not (
+            rebuilt.failure_probe is not None and after_probe is None
         )
-        comparison_available = not (rebuilt.failure_probe is not None and after_probe is None)
         receipt = build_remedy_receipt(
             fix=selected_fix,
             before=selected_probe,
