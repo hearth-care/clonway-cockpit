@@ -191,3 +191,16 @@ Foundry completes only when hermetic public-path tests prove:
   67 source files; `uv run pre-commit run --all-files` -> all 8 hooks passed.
 - `RUNBOOK DELTA: none` — this round is fixes to framework-internal Doctor logic and tests only; no
   operator-facing step changed.
+
+### QA FAIL round 2 (qa-codex-20260730T143737Z-89916-1) — fixer-codex-20260730T145425Z-89916-5
+
+- Current phase: Task 2 focus-coherence fix complete; Task 3 exception-model safety is next.
+- Doctor now preserves the remedy the operator actually selected by unique stable remedy/probe
+  identity across predecessor insertion/removal and reorder. A manual arrow selection remains
+  authoritative after the initial focus jump; a disappeared target is never treated as preserved.
+- Public-path focus matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
+  crosses 2 selection sources with 5 rebuild shapes (10 cells).
+- Focus phase gates: focused matrix `11 passed`; shell/capability/model suite `145 passed`;
+  generated-worker suite `26 passed`; Ruff and mypy passed; `git diff --check` clean.
+- Known-failing tests: none.

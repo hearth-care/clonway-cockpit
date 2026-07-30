@@ -958,6 +958,47 @@ def _focused_remedy(
     return 0, None
 
 
+def _preserved_remedy_index(
+    runnable: list[tuple[Probe | None, Any]],
+    selected: tuple[Probe | None, Any],
+) -> int | None:
+    """Resolve a selected remedy after a Doctor rebuild without trusting its old index.
+
+    Explicit stable identities win. Legacy object/value matching remains available,
+    but only when it resolves uniquely; ambiguous identities fail closed and leave
+    the caller to select a visible fallback row instead of authorizing an arbitrary
+    twin.
+    """
+    selected_probe, selected_fix = selected
+
+    def unique_index(predicate: Callable[[Probe | None, Any], bool]) -> int | None:
+        matches = [index for index, pair in enumerate(runnable) if predicate(*pair)]
+        return matches[0] if len(matches) == 1 else None
+
+    if selected_fix.remedy_id:
+        index = unique_index(lambda _probe, fix: fix.remedy_id == selected_fix.remedy_id)
+        if index is not None:
+            return index
+    selected_probe_id = (
+        selected_probe.probe_id
+        if selected_probe is not None and selected_probe.probe_id
+        else selected_fix.probe_id
+    )
+    if selected_probe_id:
+        index = unique_index(
+            lambda probe, fix: (
+                (probe is not None and probe.probe_id == selected_probe_id)
+                or fix.probe_id == selected_probe_id
+            )
+        )
+        if index is not None:
+            return index
+    index = unique_index(lambda probe, fix: probe is selected_probe and fix is selected_fix)
+    if index is not None:
+        return index
+    return unique_index(lambda probe, fix: probe == selected_probe and fix == selected_fix)
+
+
 def _deliver_doctor_receipt(host: Host, receipt: DoctorRemedyReceipt) -> None:
     if host.doctor_on_receipt is None:
         return
@@ -998,6 +1039,7 @@ def _doctor(
     sel = 0
     focus_matched: str | None = None
     focus_pending = True
+    selection_anchor: tuple[Probe | None, Any] | None = None
     cached_probes: list[Probe] | None = None
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
     # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
@@ -1032,6 +1074,13 @@ def _doctor(
             if focus_pending:
                 sel = index
                 focus_pending = False
+            elif selection_anchor is not None:
+                preserved = _preserved_remedy_index(runnable_remedies, selection_anchor)
+                if preserved is not None:
+                    sel = preserved
+                else:
+                    sel %= len(runnable)
+                selection_anchor = None
             else:
                 sel %= len(runnable)
         else:
@@ -1159,6 +1208,7 @@ def _doctor(
         _deliver_doctor_receipt(host, receipt)
         build = rebuilt
         cached_probes = after_probes
+        selection_anchor = (selected_probe, selected_fix)
         dirty = True
 
 

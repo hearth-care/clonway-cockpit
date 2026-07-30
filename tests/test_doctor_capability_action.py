@@ -238,6 +238,167 @@ def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> N
     assert final.selection == "fix:1"
 
 
+@pytest.mark.parametrize("selection_source", ["focused", "manual"])
+@pytest.mark.parametrize(
+    "rebuild_shape",
+    [
+        "unchanged",
+        "predecessor_removed",
+        "predecessor_inserted",
+        "reordered",
+        "target_removed",
+    ],
+)
+def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
+    selection_source: str,
+    rebuild_shape: str,
+) -> None:
+    """A rebuild may change every positional index around the selected remedy.
+
+    Preserve the selected stable identity when it survives. Manual movement is
+    authoritative after the initial focus jump, so it must preserve the remedy
+    the operator selected rather than snapping back to the requested focus.
+    """
+    models = []
+    opened: list[str] = []
+
+    def remedy(name: str) -> tuple[Fix, Probe]:
+        fix = Fix(
+            f"Open {name.upper()}",
+            f"worker {name}",
+            remedy_id=f"remedy.{name}",
+            probe_id=f"probe.{name}",
+            capability_key=name,
+        )
+        return fix, Probe(name.upper(), "warn", name, fix, f"probe.{name}", "rev-1")
+
+    _, probe_a = remedy("a")
+    _, probe_b = remedy("b")
+    _, probe_c = remedy("c")
+    _, probe_x = remedy("x")
+    initial = [probe_a, probe_b, probe_c]
+    target = "c" if selection_source == "focused" else "b"
+    target_probe = probe_c if target == "c" else probe_b
+    if rebuild_shape == "unchanged":
+        after = initial
+    elif rebuild_shape == "predecessor_removed":
+        after = [target_probe, probe_c] if target == "b" else [probe_b, probe_c]
+    elif rebuild_shape == "predecessor_inserted":
+        after = [probe_x, *initial]
+    elif rebuild_shape == "reordered":
+        after = [probe_c, probe_b, probe_a]
+    else:
+        after = [probe for probe in initial if probe is not target_probe]
+
+    probes_holder = {"list": initial}
+
+    def handler(name: str):
+        def run(ctx: WizardContext) -> None:
+            opened.append(name)
+            if len(opened) == 1:
+                probes_holder["list"] = after
+            assert ctx.on_screen is not None
+            ctx.on_screen(render.model_note("Nested", name))
+
+        return run
+
+    for name in ("a", "b", "c", "x"):
+        register_capability(
+            CapabilitySpec(
+                key=name,
+                shelf="C",
+                title=name.upper(),
+                summary=name,
+                equivalent_cli=f"worker {name}",
+                run=handler(name),
+            )
+        )
+    host = replace(
+        _host([]),
+        doctor_build_probes=lambda report: probes_holder["list"],
+        on_screen=models.append,
+    )
+    sequence = []
+    if selection_source == "manual":
+        sequence.append(keys.UP)
+    sequence.append(keys.ENTER)
+    if rebuild_shape != "target_removed":
+        sequence.append(keys.ENTER)
+    sequence.append("q")
+
+    shell._doctor(host, _Screen(), _keys(sequence), focus="probe.c")
+
+    final = [model for model in models if model.kind == "doctor"][-1]
+    assert opened == ([target] if rebuild_shape == "target_removed" else [target, target])
+    if rebuild_shape != "target_removed":
+        target_index = next(
+            index for index, probe in enumerate(after) if probe.probe_id == f"probe.{target}"
+        )
+        assert final.selection == f"fix:{target_index}"
+    if selection_source == "focused":
+        assert final.meta["focus_matched"] == (
+            None if rebuild_shape == "target_removed" else "probe.c"
+        )
+
+
+def test_unknown_focus_keeps_first_remedy_selected_after_rebuild() -> None:
+    models = []
+    opened: list[str] = []
+    probes_holder: dict[str, list[Probe]] = {}
+
+    def make_probe(name: str) -> Probe:
+        fix = Fix(
+            f"Open {name}",
+            f"worker {name}",
+            remedy_id=f"remedy.{name}",
+            probe_id=f"probe.{name}",
+            capability_key=name,
+        )
+        return Probe(name, "warn", name, fix, f"probe.{name}", "rev-1")
+
+    probe_a, probe_b = make_probe("a"), make_probe("b")
+    probes_holder["list"] = [probe_a, probe_b]
+
+    def handler(ctx: WizardContext) -> None:
+        opened.append("a")
+        probes_holder["list"] = [probe_b, probe_a]
+        assert ctx.on_screen is not None
+        ctx.on_screen(render.model_note("Nested", "a"))
+
+    register_capability(
+        CapabilitySpec(
+            key="a",
+            shelf="C",
+            title="A",
+            summary="a",
+            equivalent_cli="worker a",
+            run=handler,
+        )
+    )
+    register_capability(
+        CapabilitySpec(
+            key="b",
+            shelf="C",
+            title="B",
+            summary="b",
+            equivalent_cli="worker b",
+            run=lambda ctx: opened.append("b"),
+        )
+    )
+    host = replace(
+        _host([]),
+        doctor_build_probes=lambda report: probes_holder["list"],
+        on_screen=models.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, keys.ENTER, "q"]), focus="probe.unknown")
+
+    final = [model for model in models if model.kind == "doctor"][-1]
+    assert opened == ["a", "a"]
+    assert final.meta["focus_matched"] is None
+    assert final.selection == "fix:1"
+
+
 def test_missing_capability_is_safe_and_never_runs_a_command() -> None:
     models = []
     fix = Fix(
