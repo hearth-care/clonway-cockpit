@@ -218,6 +218,71 @@ The framework spine still treats `ctx.client` as opaque. The type parameter is f
 worker code: mypy will now catch a handler that expects one client type being wired
 to a builder that supplies another.
 
+## Typed Doctor remedies
+
+Workers may classify a Doctor report-build failure, route a remedy into an existing
+capability, and observe whether the same probe closed without adding a worker-local Doctor loop.
+Use stable namespaced IDs and evidence revisions; empty legacy IDs remain compatible but their
+closure is always `unknown`.
+
+```python
+from clonway_cockpit.doctor import DoctorRemedyReceipt, Fix, Probe
+
+
+def classify_doctor_failure(exc: Exception) -> Probe:
+    # The worker owns the taxonomy and redaction. Never copy str(exc) into a probe.
+    failure_class = type(exc).__name__
+    return Probe(
+        name="Source health",
+        level="error",
+        detail=f"Source status is unavailable ({failure_class}).",
+        fix=Fix(
+            title="Review source",
+            cmd="worker review-source",  # display/equivalent CLI; never executed by Doctor
+            remedy_id="source.review",
+            probe_id="source.health",
+            capability_key="review-source",  # must already be registered
+            focus="unavailable",
+        ),
+        probe_id="source.health",
+        evidence_revision=failure_class,
+    )
+
+
+def observe_doctor_receipt(receipt: DoctorRemedyReceipt) -> None:
+    # Best effort: add an injected clock or persist through the worker's existing
+    # content-safe observability channel here.
+    obs.event(
+        "doctor.remedy",
+        remedy_id=receipt.remedy_id,
+        probe_id=receipt.probe_id,
+        result=receipt.action_result.value,
+        closure=receipt.closure.value,
+    )
+```
+
+Append the callbacks to the worker's existing `Host` construction:
+
+```python
+return shell.Host(
+    # existing required fields...
+    doctor_classify_report_failure=classify_doctor_failure,
+    doctor_on_receipt=observe_doctor_receipt,
+)
+```
+
+A display-only fix has neither `run` nor `capability_key`. A callback fix uses `run`; it may ask
+for confirmation for a human and is skipped in agent mode. A capability fix uses
+`capability_key` plus optional `focus`; Doctor opens it through the same capability router,
+usage/audit path, effect policy, and guarded-write gate as Home and shelf navigation. Never set
+both `run` and `capability_key`, execute `cmd`, call `CapabilitySpec.run` directly, or copy the
+framework's private Doctor loop.
+
+After a selected action returns, Doctor rebuilds and compares the same stable `probe_id`. The
+receipt reports `resolved`, `still_present`, `changed`, or `unknown`; `opened` only says navigation
+occurred and is not evidence that the domain problem resolved. Receipt callbacks are isolated
+from product behavior, and the worker owns persistence/redaction policy.
+
 ---
 
 ## 2. `signals/build.py` — the pure signal builder

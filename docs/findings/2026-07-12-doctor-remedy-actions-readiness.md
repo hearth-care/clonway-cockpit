@@ -1,11 +1,11 @@
-# Doctor remedy actions — Foundry readiness receipt
+# Doctor remedy actions — Foundry implementation receipt
 
 - **Repository:** `hearth-care/clonway-cockpit`
 - **PR:** #114
 - **Branch:** `Codex/doctor-remedy-actions-plan`
 - **Base:** `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`
-- **Mode:** new doc-only framework foundation, personally SOL-authored
-- **Verdict:** dispatchable after publication; no implementation dependency
+- **Mode:** implemented additive framework foundation
+- **Verdict:** implementation complete; ready for independent QA
 
 ## Artifact set
 
@@ -90,3 +90,42 @@ receipt and generated-worker compatibility as one coherent public seam. Auto-Boo
 then pin the merged revision and implement only domain diagnosis/remedies.
 
 `RUNBOOK DELTA: none` — shared framework API; consumer documents operator-visible change.
+
+## Implemented public contract
+
+The public import surface is `clonway_cockpit.doctor`:
+
+- `DoctorActionKind`, `DoctorActionResult`, `DoctorClosure`;
+- frozen `Fix`, `Probe`, and `DoctorRemedyReceipt`;
+- `action_kind(fix)` and `build_remedy_receipt(...)`.
+
+`Fix` appends `remedy_id`, `probe_id`, `capability_key`, and `focus`; `Probe` appends
+`probe_id` and `evidence_revision`. `shell.Host` appends optional
+`doctor_classify_report_failure` and `doctor_on_receipt` callbacks. Existing positional
+constructors and hosts without either callback remain supported.
+
+Doctor capability remedies delegate to the existing `_open_capability` route and preserve its
+usage, audit, effect, agent model, and guarded-write behavior. Callback remedies remain disabled
+in agent mode. Report classifier and receipt observer failures are isolated and do not expose raw
+exception text through framework-generated receipt copy.
+
+ScreenModel fields are additive, so the wire protocol remains `schema_version = "1.0"`. Doctor
+probe/remedy rows now carry stable identity/action fields; metadata carries requested/matched
+focus. Human, in-process agent, `serve_stdio`, and true subprocess `CockpitClient` drives cover the
+same route.
+
+## Consumer pin handoff
+
+After this PR is merged and included in a release tag, Auto-Bookkeeper #1008 (and later workers)
+should:
+
+1. update its `clonway-cockpit` `rev` to that release tag and run `uv lock`;
+2. add stable probe/remedy IDs and evidence revisions;
+3. express navigable remedies with an already registered `capability_key` and optional `focus`;
+4. wire a redacting `doctor_classify_report_failure` and best-effort `doctor_on_receipt`;
+5. run its render/model parity, clean-drive, focused Doctor route, and full local gates; and
+6. avoid copying `_doctor`, executing `Fix.cmd`, calling `CapabilitySpec.run` directly, or adding
+   another write gate while waiting for the release.
+
+The exact merge commit and release tag do not exist before operator merge/release and must be
+filled in by the release owner. No data migration or operator cutover step is introduced.

@@ -463,22 +463,22 @@ docs(doctor): record framework remedy handoff
 
 ## Final completion checklist
 
-- [ ] Existing `Fix`/`Probe` positional calls remain green.
-- [ ] Action-kind validation is strict and additive.
-- [ ] Worker classifier renders modeled report failures.
-- [ ] Legacy unconfigured fallback remains when classifier absent.
-- [ ] Doctor focus threads from a normal capability open.
-- [ ] Capability remedies use `_open_capability` once with exact focus.
-- [ ] Display-only fixes stay nonselectable.
-- [ ] Callbacks preserve confirmation/progress and agent denial.
-- [ ] Nested write routes preserve the one guarded-apply gate.
-- [ ] Stable before/after probe comparison produces one typed receipt.
-- [ ] Receipt callback failure is isolated.
-- [ ] Rich/model/agent projections share action/identity metadata.
-- [ ] No real path emits `unstructured` for classified failure/remedy navigation.
-- [ ] Generated workers and old Host constructions remain compatible.
-- [ ] Protocol version decision is explicitly tested/documented.
-- [ ] Full pytest/static/pre-commit/diff gates pass.
-- [ ] Consumer pin-bump/public contract handoff is recorded.
+- [x] Existing `Fix`/`Probe` positional calls remain green.
+- [x] Action-kind validation is strict and additive.
+- [x] Worker classifier renders modeled report failures.
+- [x] Legacy unconfigured fallback remains when classifier absent.
+- [x] Doctor focus threads from a normal capability open.
+- [x] Capability remedies use `_open_capability` once with exact focus.
+- [x] Display-only fixes stay nonselectable.
+- [x] Callbacks preserve confirmation/progress and agent denial.
+- [x] Nested write routes preserve the one guarded-apply gate.
+- [x] Stable before/after probe comparison produces one typed receipt.
+- [x] Receipt callback failure is isolated.
+- [x] Rich/model/agent projections share action/identity metadata.
+- [x] No real path emits `unstructured` for classified failure/remedy navigation.
+- [x] Generated workers and old Host constructions remain compatible.
+- [x] Protocol version decision is explicitly tested/documented.
+- [x] Full pytest/static/pre-commit/diff gates pass.
+- [x] Consumer pin-bump/public contract handoff is recorded.
 
 Completion is the public-path agent/human drive and receipt proof, not merely new dataclass fields.

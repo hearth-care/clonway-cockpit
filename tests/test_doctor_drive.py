@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
+import sys
 import threading
+from pathlib import Path
 
 from rich.console import Console
 
@@ -224,3 +227,121 @@ def test_cockpit_client_drives_focused_capability_and_one_receipt() -> None:
         assert not thread.is_alive()
     finally:
         clear_capabilities()
+
+
+_LEGACY_CHILD = r"""
+from rich.console import Console
+from clonway_cockpit import agent, render, shell
+from clonway_cockpit.doctor import fixes_for
+from clonway_cockpit.registry import CapabilitySpec, WizardContext, register_capability
+from clonway_cockpit.state import CockpitState, NeedsItem
+
+class Usage:
+    def record(self, key, action="open"): pass
+    def load(self): return {}
+
+def ctx(screen, read_key, *, focus=None):
+    return WizardContext({}, None, Console(), lambda p, d: "", lambda p: False,
+                         screen.update, read_key, focus)
+
+register_capability(CapabilitySpec("doctor", "G", "Doctor", "Health", "worker doctor"))
+state = CockpitState("Clonway", needs=(NeedsItem("Doctor", "Open", "error", "doctor"),))
+host = shell.Host(
+    capture_state=lambda: state,
+    build_walk_ctx=ctx,
+    activate_pill=lambda *args: None,
+    doctor_build_report=lambda: (_ for _ in ()).throw(RuntimeError("legacy")),
+    doctor_build_probes=lambda report: [],
+    doctor_fixes_for=fixes_for,
+    doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Legacy fallback"),
+    usage=Usage(),
+    on_open=lambda: None,
+)
+agent.serve_stdio(host)
+"""
+
+
+_OPT_IN_CHILD = r"""
+import json
+import os
+from dataclasses import asdict
+from pathlib import Path
+from rich.console import Console
+from clonway_cockpit import agent, render, shell
+from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.registry import CapabilitySpec, WizardContext, register_capability
+from clonway_cockpit.state import CockpitState, NeedsItem
+
+class Usage:
+    def record(self, key, action="open"): pass
+    def load(self): return {}
+
+def ctx(screen, read_key, *, focus=None):
+    return WizardContext({}, None, Console(), lambda p, d: "", lambda p: False,
+                         screen.update, read_key, focus)
+
+resolved = {"value": False}
+def nested(ctx):
+    resolved["value"] = True
+    ctx.on_screen(render.model_note("Nested", "Structured capability"))
+
+register_capability(CapabilitySpec("doctor", "G", "Doctor", "Health", "worker doctor"))
+register_capability(CapabilitySpec("review", "C", "Review", "Review", "worker review", run=nested))
+fix = Fix("Review", "worker review", remedy_id="remedy.focused", probe_id="probe.focused",
+          capability_key="review", focus="row.focused")
+probe = Probe("Focused", "error", "Review", fix, "probe.focused", "rev-1")
+state = CockpitState(
+    "Clonway",
+    needs=(NeedsItem("Focused", "Review", "error", "doctor", "probe.focused"),),
+)
+def receipt(value):
+    Path(os.environ["DOCTOR_RECEIPT_PATH"]).write_text(json.dumps(asdict(value)))
+
+host = shell.Host(
+    capture_state=lambda: state,
+    build_walk_ctx=ctx,
+    activate_pill=lambda *args: None,
+    doctor_build_report=lambda: object(),
+    doctor_build_probes=lambda report: [] if resolved["value"] else [probe],
+    doctor_fixes_for=fixes_for,
+    doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Unavailable"),
+    usage=Usage(),
+    on_open=lambda: None,
+    doctor_on_receipt=receipt,
+)
+agent.serve_stdio(host)
+"""
+
+
+def test_subprocess_client_preserves_legacy_doctor_fallback() -> None:
+    with agent.CockpitClient.spawn([sys.executable, "-c", _LEGACY_CHILD], timeout=10) as client:
+        assert client.read_home()["kind"] == "home"
+        fallback = client.press(keys.ENTER)
+        assert fallback["kind"] == "unstructured"
+        assert "Legacy fallback" in fallback["regions"][0]["text"]
+
+
+def test_subprocess_client_drives_opt_in_remedy_and_receipt(tmp_path: Path) -> None:
+    receipt_path = tmp_path / "receipt.json"
+    environment = dict(os.environ)
+    environment["DOCTOR_RECEIPT_PATH"] = str(receipt_path)
+
+    with agent.CockpitClient.spawn(
+        [sys.executable, "-c", _OPT_IN_CHILD],
+        env=environment,
+        timeout=10,
+    ) as client:
+        assert client.read_home()["kind"] == "home"
+        doctor = client.press(keys.ENTER)
+        assert doctor["kind"] == "doctor"
+        assert doctor["selection"] == "fix:0"
+        nested = client.press(keys.ENTER)
+        assert nested["kind"] == "note"
+        trailing = client.drain(idle=0.2)
+        assert trailing[-1]["kind"] == "doctor"
+        assert all(frame.get("kind") != "unstructured" for frame in [doctor, nested, *trailing])
+
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["remedy_id"] == "remedy.focused"
+    assert receipt["action_result"] == "opened"
+    assert receipt["closure"] == "resolved"
