@@ -116,7 +116,13 @@ Foundry completes only when hermetic public-path tests prove:
 
 ## HANDOFF NOTES
 
-- Current phase: SOL authoring complete after current-source/framework audit.
+- Current phase: Task 1 complete.
+- Next concrete step: Task 2 RED tests for classified report-build failures and focused Doctor
+  selection.
+- Decisions: public contracts live in `clonway_cockpit.doctor`; identity fields reject surrounding
+  or embedded whitespace while legacy empty IDs remain accepted and produce unknown closure.
+- Task 1 gates: `19 passed`; Ruff passed; mypy passed; `git diff --check` clean.
+- Known-failing tests: none.
 - Base inspected: `origin/main@8694e30233bcfe24f45d1a3103b95dcd252054f2`.
 - Initial baseline: 1,122 passed in 40.61 seconds; committed publication baseline: 1,122 passed in
   35.58 seconds.
