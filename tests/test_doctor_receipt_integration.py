@@ -381,12 +381,14 @@ def test_doctor_remedy_pairing_state_matrix(
 @pytest.mark.parametrize("selected_position", ["first", "middle", "last"])
 @pytest.mark.parametrize("remedy_order", ["natural", "reversed"])
 @pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+@pytest.mark.parametrize("after_identity", ["changed", "same", "absent", "duplicate_id"])
 def test_doctor_remedy_cardinality_pairing_matrix(
     probe_cardinality: str,
     remedy_count: int,
     selected_position: str,
     remedy_order: str,
     display_layout: str,
+    after_identity: str,
 ) -> None:
     """Explicit probe identity is 1:N from probe to remedies.
 
@@ -394,6 +396,11 @@ def test_doctor_remedy_cardinality_pairing_matrix(
     before/after attribution, independent of remedy order or display-only rows.
     Missing and duplicate probe identities fail closed for every remedy and
     never borrow an unrelated probe through legacy object/value matching.
+
+    Remedy cardinality is crossed with the AFTER-side identity shape: which
+    remedy of a 1:N probe ran must not change how the rebuilt probe is
+    re-identified, so every closure verdict has to hold for every remedy count,
+    order and row.
     """
     receipts: list[DoctorRemedyReceipt] = []
     models = []
@@ -425,13 +432,6 @@ def test_doctor_remedy_cardinality_pairing_matrix(
     )
     if probe_cardinality == "unique":
         before_probes = [shared_probe]
-        after_probes = [
-            replace(
-                shared_probe,
-                level="warn",
-                evidence_revision="rev-after",
-            )
-        ]
         expected_probe_id = "probe.shared"
         expected_before_revision = "rev-before"
         expected_closure = DoctorClosure.CHANGED
@@ -443,7 +443,6 @@ def test_doctor_remedy_cardinality_pairing_matrix(
             evidence_revision="rev-duplicate",
         )
         before_probes = [shared_probe, duplicate]
-        after_probes = before_probes
         expected_probe_id = ""
         expected_before_revision = ""
         expected_closure = DoctorClosure.UNKNOWN
@@ -460,10 +459,31 @@ def test_doctor_remedy_cardinality_pairing_matrix(
             "rev-unrelated",
         )
         before_probes = [unrelated]
-        after_probes = before_probes
         expected_probe_id = ""
         expected_before_revision = ""
         expected_closure = DoctorClosure.UNKNOWN
+
+    # The after side is an independent axis: which of a 1:N probe's remedies ran
+    # must not change how the rebuilt probe is re-identified.
+    def reshape(probe: Probe) -> list[Probe]:
+        if probe.probe_id != "probe.shared":
+            return [probe]
+        if after_identity == "same":
+            return [probe]
+        if after_identity == "absent":
+            return []
+        if after_identity == "changed":
+            return [replace(probe, level="warn", evidence_revision="rev-after")]
+        return [probe, replace(probe, name="Shared twin", evidence_revision="rev-twin")]
+
+    after_probes = [reshaped for probe in before_probes for reshaped in reshape(probe)]
+    if expected_probe_id:
+        expected_closure = {
+            "changed": DoctorClosure.CHANGED,
+            "same": DoctorClosure.STILL_PRESENT,
+            "absent": DoctorClosure.RESOLVED,
+            "duplicate_id": DoctorClosure.UNKNOWN,
+        }[after_identity]
 
     ordered = remedies if remedy_order == "natural" else list(reversed(remedies))
     positions = {
@@ -504,6 +524,15 @@ def test_doctor_remedy_cardinality_pairing_matrix(
     assert receipts[0].probe_id == expected_probe_id
     assert receipts[0].before_revision == expected_before_revision
     assert receipts[0].closure is expected_closure
+    if expected_closure in (DoctorClosure.UNKNOWN, DoctorClosure.RESOLVED):
+        # No comparable after probe → the after fields stay empty rather than
+        # borrowing one of the twins (or the departed probe's stale values).
+        assert receipts[0].after_level is None
+        assert receipts[0].after_revision is None
+    elif after_identity == "same":
+        assert receipts[0].after_revision == "rev-before"
+    else:
+        assert receipts[0].after_revision == "rev-after"
 
 
 @pytest.mark.parametrize(

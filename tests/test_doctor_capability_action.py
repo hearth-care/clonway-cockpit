@@ -391,11 +391,23 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     if rebuild_shape != "target_removed":
         target_index = next(index for index, probe in enumerate(after) if probe is target_probe)
         assert final.selection == f"fix:{target_index}"
-    expected_focus_match = focus if focus_is_unique and probe_c in after else None
+    else:
+        # The selected remedy went away: fail closed to the documented visible
+        # first row, not to whatever now occupies its stale numeric index.
+        assert final.selection == "fix:0"
+    focus_survives = focus_is_unique and probe_c in after
+    expected_focus_match = focus if focus_survives else None
     assert final.meta["focus_matched"] == expected_focus_match
+    if focus_survives:
+        expected_state = "matched"
+    elif focus_identity.startswith("duplicate"):
+        expected_state = "ambiguous"
+    else:
+        expected_state = "unknown"
+    assert final.meta["focus_state"] == expected_state
 
 
-def test_unknown_focus_keeps_first_remedy_selected_after_rebuild() -> None:
+def test_unknown_focus_starts_on_first_remedy_then_follows_its_identity() -> None:
     models = []
     opened: list[str] = []
     probes_holder: dict[str, list[Probe]] = {}
@@ -798,3 +810,203 @@ def test_doctor_focus_verdict_matrix(
     # The identity is never reported as absent while Doctor is rendering it.
     if expected_state != "unknown":
         assert f"{focus} not found" not in " ".join(text.split())
+
+
+def _lock_probe(ran: list[str]) -> Probe:
+    """The unrelated state-changing remedy a mis-parked cursor would run."""
+    return Probe(
+        "Lock",
+        "error",
+        "stale lock",
+        Fix(
+            "Remove stale lock",
+            "worker unlock",
+            remedy_id="remedy.lock",
+            probe_id="p.lock",
+            run=lambda: ran.append("lock") or "done",
+        ),
+        "p.lock",
+        "rev-1",
+    )
+
+
+def test_present_focus_runs_nothing_on_a_single_enter() -> None:
+    """A PRESENT focus pre-selects nothing, so ⏎ must reveal, not run.
+
+    The hazard this closes: the operator asked for p.auth, whose only remedy is
+    display-only, and the one runnable row belongs to an unrelated probe. If the
+    cursor were parked there, a single ⏎ on a screen the operator believes shows
+    their target runs somebody else's state-changing remedy."""
+    ran: list[str] = []
+    probes = [
+        Probe(
+            "Auth",
+            "error",
+            "expired",
+            _display_only_fix("Re-auth in browser", probe_id="p.auth", remedy_id="remedy.auth"),
+            "p.auth",
+            "rev-1",
+        ),
+        _lock_probe(ran),
+    ]
+    models: list = []
+    host = replace(_host(probes), on_screen=models.append)
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]), focus="p.auth")
+
+    assert ran == []
+    doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    assert doctor_models[0].meta["focus_state"] == "present"
+    assert doctor_models[0].selection is None
+    # The reveal frame shows the fallback cursor and has still run nothing.
+    assert doctor_models[-1].selection == "fix:0"
+    assert doctor_models[-1].meta["focus_state"] == "present"
+
+
+@pytest.mark.parametrize("reveal_key", [keys.UP, keys.DOWN, keys.ENTER])
+def test_any_reveal_key_uncovers_the_fallback_without_running_it(reveal_key: str) -> None:
+    ran: list[str] = []
+    probes = [
+        Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2"),
+        _lock_probe(ran),
+    ]
+    models: list = []
+    host = replace(_host(probes), on_screen=models.append)
+
+    shell._doctor(host, _Screen(), _keys([reveal_key, "q"]), focus="p.auth")
+
+    assert ran == []
+    doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    assert doctor_models[0].selection is None
+    assert doctor_models[-1].selection == "fix:0"
+
+
+def test_present_focus_still_runs_an_explicitly_numbered_remedy() -> None:
+    """A digit is an unambiguous choice — it needs no reveal step."""
+    ran: list[str] = []
+    probes = [Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2"), _lock_probe(ran)]
+    models: list = []
+    host = replace(_host(probes), on_screen=models.append)
+
+    shell._doctor(host, _Screen(), _keys(["1", "dismiss", "q"]), focus="p.auth")
+
+    assert ran == ["lock"]
+
+
+@pytest.mark.parametrize("focus", [None, ""])
+def test_falsy_focus_is_no_focus_not_a_focus_on_the_empty_identity(focus: str | None) -> None:
+    """``NeedsItem.focus`` is an unvalidated ``str | None``, so "" reaches Doctor.
+
+    Legacy probes all carry an empty ``probe_id``, so an empty focus used to
+    "match" one and render ``focus  ✓  matched`` with a blank identifier."""
+    probes = [_lock_probe([])]
+    models: list = []
+    screen = _Screen()
+    host = replace(_host(probes), on_screen=models.append)
+
+    shell._doctor(host, screen, _keys([]), focus=focus)
+
+    model = [frame for frame in models if frame.kind == "doctor"][-1]
+    assert model.meta["focus_requested"] is None
+    assert model.meta["focus_matched"] is None
+    assert model.meta["focus_state"] is None
+    assert model.selection == "fix:0"
+    assert "focus" not in _doctor_frame_text(screen.frames)
+
+
+@pytest.mark.parametrize(
+    "after_shape", ["recovered_no_fix", "display_only", "absent", "duplicated"]
+)
+@pytest.mark.parametrize("selection_source", ["focused_enter", "manual_digit"])
+def test_focus_verdict_stays_honest_across_a_rebuild(
+    after_shape: str,
+    selection_source: str,
+) -> None:
+    """The verdict tracks the CURRENT snapshot; the cursor stays the operator's.
+
+    After a remedy runs, the focus target may have recovered, degraded to a
+    display-only remedy, vanished or duplicated. Each is a different verdict, and
+    none of them may report a probe Doctor is still rendering as "not found".
+    """
+    ran: list[str] = []
+    holder: dict[str, list[Probe]] = {}
+
+    def runner(name: str):
+        def run() -> str:
+            ran.append(name)
+            holder["list"] = after
+            return "done"
+
+        return run
+
+    auth_fix = Fix(
+        "Repair auth",
+        "worker auth",
+        remedy_id="remedy.auth",
+        probe_id="p.auth",
+        run=runner("auth"),
+    )
+    lock_fix = Fix(
+        "Remove stale lock",
+        "worker unlock",
+        remedy_id="remedy.lock",
+        probe_id="p.lock",
+        run=runner("lock"),
+    )
+    auth = Probe("Auth", "error", "expired", auth_fix, "p.auth", "rev-1")
+    lock = Probe("Lock", "error", "stale lock", lock_fix, "p.lock", "rev-1")
+    before = [auth, lock]
+    if after_shape == "recovered_no_fix":
+        after = [replace(auth, level="ok", detail="Recovered", fix=None), lock]
+        expected_state = "present"
+    elif after_shape == "display_only":
+        after = [
+            replace(
+                auth,
+                fix=_display_only_fix(
+                    "Re-auth in browser", probe_id="p.auth", remedy_id="remedy.auth"
+                ),
+            ),
+            lock,
+        ]
+        expected_state = "present"
+    elif after_shape == "absent":
+        after = [lock]
+        expected_state = "unknown"
+    else:
+        after = [auth, replace(auth, name="Auth twin", fix=None), lock]
+        expected_state = "ambiguous"
+    holder["list"] = before
+
+    models: list = []
+    screen = _Screen()
+    host = replace(
+        _host(before),
+        doctor_build_probes=lambda report: holder["list"],
+        on_screen=models.append,
+    )
+    # Row 1 is auth's remedy (the focus target); row 2 is the unrelated lock remedy.
+    ran_title, sequence = (
+        ("Repair auth", [keys.ENTER])
+        if selection_source == "focused_enter"
+        else ("Remove stale lock", ["2"])
+    )
+
+    shell._doctor(host, screen, _keys([*sequence, "dismiss", "q"]), focus="p.auth")
+
+    doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    assert doctor_models[0].meta["focus_state"] == "matched"
+    assert doctor_models[0].meta["focus_matched"] == "p.auth"
+    assert doctor_models[0].selection == "fix:0"
+    assert ran == ["auth" if selection_source == "focused_enter" else "lock"]
+    final = doctor_models[-1]
+    assert final.meta["focus_state"] == expected_state
+    assert final.meta["focus_matched"] is None
+    # The operator's remedy keeps the cursor while it survives; when it doesn't,
+    # fail closed to the documented visible first row.
+    surviving = [fix.title for fix in fixes_for(after) if fix.run is not None or fix.capability_key]
+    expected_title = ran_title if ran_title in surviving else surviving[0]
+    rows = next(region.rows for region in final.regions if region.role == "fixes")
+    assert next(row for row in rows if row.id == final.selection).label == expected_title
+    text = " ".join(_doctor_frame_text(screen.frames).split())
+    assert _FOCUS_VERDICT_LINES[expected_state].format(focus="p.auth") in text
