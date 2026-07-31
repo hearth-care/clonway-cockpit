@@ -96,11 +96,12 @@ closure as `unknown`.
 
 The probe's `fix_id` names the row rendering that probe's own `Fix`, and it comes from the **same
 pairing decision** the shell dispatches and receipts from — so what an agent reads as "this probe
-owns that remedy" is exactly what ⏎ will act on. It resolves by object identity first, then
-through that pairing, which is what keeps the link alive for a worker whose `doctor_fixes_for`
-normalizes or rebuilds its fixes while preserving stable IDs. A probe whose fix is not rendered,
-or whose remedy identity is claimed by more than one probe, carries **no** `fix_id` rather than a
-guessed one — the same fail-closed rule the dispatch pairing uses.
+owns that remedy" is exactly what ⏎ will act on. Object identity may help the shared pairing choose
+a candidate, but the model publishes a link only when that final pairing attributes the remedy row
+to the probe. This keeps links aligned for workers whose `doctor_fixes_for` normalizes fixes while
+preserving stable IDs, repeated legacy fix instances, and fixes whose explicit owner differs from
+the probe carrying the direct object. A remedy whose owner is missing or ambiguous carries **no**
+`fix_id` rather than a guessed one — the same fail-closed rule dispatch and receipts use.
 
 The three action kinds are:
 
@@ -155,7 +156,10 @@ After any selected action, Doctor re-probes the same stable `probe_id` and const
 `DoctorRemedyReceipt`. `resolved` means the probe is absent from a successful rebuild;
 `still_present` means level and revision are unchanged; `changed` means either differs; and
 `unknown` covers legacy identity or an unavailable comparison. Opening a capability is only
-`action_result="opened"`—it is never itself proof of resolution.
+`action_result="opened"`—it is never itself proof of resolution. A capability `ShellOut`
+intentionally ends the current session, so Doctor cannot re-probe; it delivers exactly one
+`action_result="opened"`, `closure="unknown"` receipt before preserving the human shell-out or
+agent shell-out-note boundary.
 
 Workers opt into typed report failures with `Host.doctor_classify_report_failure(exception)` and
 receive receipts through `Host.doctor_on_receipt(receipt)`. The classifier owns exception typing,

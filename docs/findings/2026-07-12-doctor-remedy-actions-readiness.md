@@ -119,7 +119,9 @@ failure classification. The receipt callback remains a wired best-effort no-op e
 Doctor capability remedies delegate to the existing `_open_capability` route and preserve its
 usage, audit, effect, agent model, and guarded-write behavior. Callback remedies remain disabled
 in agent mode. Report classifier and receipt observer failures are isolated and do not expose raw
-exception text through framework-generated receipt copy.
+exception text through framework-generated receipt copy. A capability that terminates through the
+supported `ShellOut` path delivers one `OPENED`/`UNKNOWN` receipt before the human control-flow
+exception or agent shell-out note ends the session.
 
 ScreenModel fields are additive, so the wire protocol remains `schema_version = "1.0"`. Doctor
 probe/remedy rows now carry stable identity/action fields; metadata carries the requested focus

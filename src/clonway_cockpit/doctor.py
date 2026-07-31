@@ -277,27 +277,19 @@ def pair_remedies(probes: list[Probe], fixes: list[Fix]) -> list[DoctorRemedyRow
 
 
 def probe_fix_links(probes: list[Probe], rows: list[DoctorRemedyRow]) -> dict[int, str]:
-    """Map each probe's position to the ``row_id`` rendering that probe's own ``Fix``.
+    """Map each paired probe position to its first rendered remedy ``row_id``.
 
     The flat agent-facing probe/fix regions lose the ``Probe.fix`` adjacency the Rich
     table shows by layout, so every probe row carries it back as a ``fix_id``
-    cross-reference. Resolution is object identity first — the direct relation — then
-    the shared :func:`pair_remedies` decision, which is what keeps the link alive for a
-    worker that normalizes or rebuilds its fixes while preserving stable IDs. A probe
-    whose fix is not rendered, or whose remedy pairing failed closed, carries no link
-    rather than a guessed one."""
-    by_object = {id(row.fix): row.row_id for row in rows}
-    paired: dict[int, str] = {}
+    cross-reference. ``DoctorRemedyRow.probe_index`` is the authoritative relationship
+    already used by dispatch and receipts: object identity may help ``pair_remedies``
+    choose that relationship, but it must never override a failed, ambiguous or
+    different pairing here. A probe with no paired row carries no link rather than a
+    guessed one; a probe with multiple remedies links to its first rendered row."""
+    links: dict[int, str] = {}
     for row in rows:
         if row.probe_index is not None:
-            paired.setdefault(row.probe_index, row.row_id)
-    links: dict[int, str] = {}
-    for index, probe in enumerate(probes):
-        if probe.fix is None:
-            continue
-        row_id = by_object.get(id(probe.fix), paired.get(index))
-        if row_id is not None:
-            links[index] = row_id
+            links.setdefault(row.probe_index, row.row_id)
     return links
 
 

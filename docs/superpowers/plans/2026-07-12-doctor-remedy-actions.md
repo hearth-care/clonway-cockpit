@@ -485,11 +485,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 7 Task 4 (capability `ShellOut` receipt) is fixed and its focused
-  human/agent verification is green; Task 5 relationship/link coherence remains in progress.
-- Next concrete step: add the QA-requested probe/remedy relationship x display-layout matrix, watch
-  the contradictory `fix_id` cells fail, then make `probe_fix_links` consume only the authoritative
-  `DoctorRemedyRow.probe_index` relationship.
+- Current phase: both QA FAIL round 7 findings are fixed; focused Task 4/5 verification is green at
+  the code head and documentation/static verification is in progress.
+- Next concrete step: commit and push the Task 5 relationship/link phase, then rebase onto current
+  `origin/main` and run the complete foreground gate sequence at the exact documentation head.
 - Decisions: a capability `ShellOut` is an attempted `OPENED` action whose same-session re-probe is
   unavailable, so `_doctor` delivers exactly one `closure=unknown` receipt before preserving the
   existing exception/session-ending behavior. Focus resolves probe identity against the full probe
@@ -532,8 +531,7 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: round 7 finding 1 (fail-closed probe `fix_id` links) remains; round 7 finding
-  2 (`ShellOut` exact-once receipt) is closed at the current code head.
+- Pending QA findings: none; exact-head rebase, full gates, and finish protocol remain.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -724,3 +722,21 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   failure. The agent drive also proves the child process is not executed by `serve_stdio`.
 - QA FAIL round 7 Task 4 verification: terminal matrix plus real agent shell-out drive `11 passed`;
   known-failing tests: none in this completed phase.
+- QA FAIL round 7 Task 5 RED: the generated relationship x display-layout matrix failed 8 of 18
+  cells (duplicate-ID direct, shared repeated legacy instance, conflicting explicit owner, and
+  unresolvable explicit owner in both layouts). Correcting the existing 60-cell coherence matrix's
+  ambiguous direct-object expectations exposed 8 more false-green cells, for `16 failed, 62 passed`.
+- QA FAIL round 7 Task 5 GREEN: `probe_fix_links` now projects only the authoritative
+  `DoctorRemedyRow.probe_index` relationship used by shell dispatch and receipts. Object identity
+  remains an input to `pair_remedies`, but cannot restore a failed, ambiguous, or different owner.
+- QA FAIL round 7 Task 5 matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_relationship_layout_state_coherence_matrix`
+  crosses relationship (`unique_direct`, `equal_legacy_clone`, `stable_id_clone`,
+  `duplicate_id_direct`, `duplicate_id_clone`, `shared_repeated_legacy_instance`,
+  `conflicting_explicit_owner`, `unresolvable_explicit_owner`, `unpaired_global`) with display
+  layout (`absent`, `interleaved`) for 18 generated cells. Every cell jointly asserts modeled
+  `fix_id`, authoritative pairing and shell dispatch attribution, selected callback, and receipt
+  owner/closure.
+- QA FAIL round 7 Task 5 verification: relationship matrix plus the corrected 60-cell coherence
+  matrix `78 passed`; full Doctor capability/receipt/drive/screen-model phase `766 passed in
+  12.00s`; known-failing tests: none.

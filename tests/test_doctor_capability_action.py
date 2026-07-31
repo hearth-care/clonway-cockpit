@@ -9,7 +9,7 @@ from rich.console import Console
 
 from clonway_cockpit import keys, render, shell, walk
 from clonway_cockpit.agent import serve_stdio
-from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.doctor import DoctorClosure, Fix, Probe, fixes_for, pair_remedies
 from clonway_cockpit.registry import (
     CapabilitySpec,
     WizardContext,
@@ -1276,10 +1276,10 @@ def test_doctor_remedy_state_coherence_matrix(
     probe_rows = next(region.rows for region in final.regions if region.role == "probes")
     fix_rows = next(region.rows for region in final.regions if region.role == "fixes")
     labels = {row.id: row.label for row in fix_rows}
-    ambiguous_clone = focus_shape == "ambiguous" and remedy_pairing == "stable_id_clone"
     for index, probe in enumerate(probes):
         link = _linked_fix_id(probe_rows[index])
-        if probe.fix is None or (ambiguous_clone and probe.probe_id == "p.auth"):
+        ambiguous_relationship = focus_shape == "ambiguous" and probe.probe_id == "p.auth"
+        if probe.fix is None or ambiguous_relationship:
             # No fix, or an identity two probes claim: fail closed rather than
             # cross-referencing a guess.
             assert link is None
@@ -1375,71 +1375,136 @@ def test_moving_the_cursor_off_a_focused_remedy_stops_claiming_a_match(
     )
 
 
-def _pairing_case(pairing: str) -> tuple[list[Probe], list[Fix], dict[int, str | None]]:
-    """(probes, remedy fixes as the worker returns them, expected probe -> row link).
+def _relationship_case(
+    relationship: str,
+    ran: list[str],
+) -> tuple[list[Probe], list[Fix], dict[int, str | None], list[int | None], int]:
+    """Build one complete probe/remedy relationship state.
 
-    Each shape is a worker style the framework documents as supported (or, for the
-    last two, explicitly fails closed on)."""
-    legacy = Fix("Sync now", "worker sync", run=lambda: "done")
-    identified = Fix(
-        "Repair auth", "worker auth", remedy_id="remedy.auth", probe_id="p.auth", run=lambda: "done"
-    )
-    if pairing == "same_object":
-        probe = Probe("Auth", "error", "expired", identified, "p.auth", "rev-1")
-        return [probe], [identified], {0: "fix:0"}
-    if pairing == "equal_clone":
-        # Legacy, ID-less, rebuilt into an equal value: identity fails, equality wins.
-        probe = Probe("Sync", "warn", "stale", legacy)
-        return [probe], [replace(legacy)], {0: "fix:0"}
-    if pairing == "stable_id_clone":
-        # The finding-3 shape: normalized copy, stable IDs preserved.
-        probe = Probe("Auth", "error", "expired", identified, "p.auth", "rev-1")
-        return [probe], [replace(identified, note="normalized copy")], {0: "fix:0"}
-    if pairing == "shared_equal_values":
-        # Two probes carrying EQUAL legacy fixes: consume-on-match keeps them apart
-        # instead of collapsing both onto the first probe.
-        first = Probe("Sync A", "warn", "stale", legacy)
-        second = Probe("Sync B", "error", "stale", replace(legacy))
-        return [first, second], [replace(legacy), replace(legacy)], {0: "fix:0", 1: "fix:1"}
-    if pairing == "unpaired":
-        # A probe-independent global remedy, and a probe with no fix at all.
-        probe = Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2")
-        return [probe], [Fix("Global resync", "worker resync", run=lambda: "done")], {0: None}
-    twin = replace(identified, remedy_id="remedy.twin")
+    Returns probes, rendered remedies, expected modeled links, expected authoritative
+    probe indices for each runnable remedy, and the remedy row the drive selects.
+    """
+
+    def callback(title: str, *, remedy_id: str = "", probe_id: str = "") -> Fix:
+        return Fix(
+            title,
+            f"worker {title.lower().replace(' ', '-')}",
+            run=lambda: ran.append(title) or "done",
+            remedy_id=remedy_id,
+            probe_id=probe_id,
+        )
+
+    if relationship == "unique_direct":
+        fix = callback("Unique", remedy_id="r.unique", probe_id="p.unique")
+        return (
+            [Probe("Unique", "error", "detail", fix, "p.unique", "rev-unique")],
+            [fix],
+            {0: "fix:0"},
+            [0],
+            0,
+        )
+    if relationship == "equal_legacy_clone":
+        fix = callback("Legacy equal")
+        return (
+            [Probe("Legacy", "warn", "detail", fix)],
+            [replace(fix)],
+            {0: "fix:0"},
+            [0],
+            0,
+        )
+    if relationship == "stable_id_clone":
+        fix = callback("Stable clone", remedy_id="r.stable", probe_id="p.stable")
+        return (
+            [Probe("Stable", "error", "detail", fix, "p.stable", "rev-stable")],
+            [replace(fix, note="normalized")],
+            {0: "fix:0"},
+            [0],
+            0,
+        )
+    if relationship in {"duplicate_id_direct", "duplicate_id_clone"}:
+        first = callback("Duplicate A", remedy_id="r.duplicate.a", probe_id="p.duplicate")
+        second = callback("Duplicate B", remedy_id="r.duplicate.b", probe_id="p.duplicate")
+        remedies = [first, second]
+        if relationship == "duplicate_id_clone":
+            remedies = [replace(first, note="normalized A"), replace(second, note="normalized B")]
+        return (
+            [
+                Probe("Duplicate A", "error", "detail", first, "p.duplicate", "rev-a"),
+                Probe("Duplicate B", "error", "detail", second, "p.duplicate", "rev-b"),
+            ],
+            remedies,
+            {0: None, 1: None},
+            [None, None],
+            1,
+        )
+    if relationship == "shared_repeated_legacy_instance":
+        shared = callback("Shared legacy")
+        return (
+            [
+                Probe("Shared A", "warn", "detail", shared),
+                Probe("Shared B", "error", "detail", shared),
+            ],
+            [shared, shared],
+            {0: "fix:0", 1: "fix:1"},
+            [0, 1],
+            1,
+        )
+    if relationship == "conflicting_explicit_owner":
+        fix = callback("Conflicting owner", remedy_id="r.conflict", probe_id="p.actual")
+        return (
+            [
+                Probe("Direct owner", "error", "detail", fix, "p.direct", "rev-direct"),
+                Probe("Explicit owner", "warn", "detail", None, "p.actual", "rev-actual"),
+            ],
+            [fix],
+            {0: None, 1: "fix:0"},
+            [1],
+            0,
+        )
+    if relationship == "unresolvable_explicit_owner":
+        fix = callback("Missing owner", remedy_id="r.missing", probe_id="p.missing")
+        return (
+            [Probe("Direct owner", "error", "detail", fix, "p.direct", "rev-direct")],
+            [fix],
+            {0: None},
+            [None],
+            0,
+        )
+    global_fix = callback("Global resync")
     return (
-        [
-            Probe("Auth", "error", "expired", identified, "p.auth", "rev-1"),
-            Probe("Auth twin", "error", "expired", twin, "p.auth", "rev-1"),
-        ],
-        [replace(identified, note="n"), replace(twin, note="n")],
-        {0: None, 1: None},
+        [Probe("Recovered", "ok", "detail", None, "p.recovered", "rev-recovered")],
+        [global_fix],
+        {0: None},
+        [None],
+        0,
     )
 
 
 @pytest.mark.parametrize(
-    "pairing",
+    "relationship",
     [
-        "same_object",
-        "equal_clone",
+        "unique_direct",
+        "equal_legacy_clone",
         "stable_id_clone",
-        "shared_equal_values",
-        "unpaired",
-        "ambiguous_duplicate_id",
+        "duplicate_id_direct",
+        "duplicate_id_clone",
+        "shared_repeated_legacy_instance",
+        "conflicting_explicit_owner",
+        "unresolvable_explicit_owner",
+        "unpaired_global",
     ],
 )
 @pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
-def test_modeled_probe_fix_link_uses_the_dispatch_pairing(
-    pairing: str,
+def test_doctor_relationship_layout_state_coherence_matrix(
+    relationship: str,
     display_layout: str,
 ) -> None:
-    """The agent-facing probe -> remedy link and the dispatch pairing are ONE decision.
-
-    ``model_doctor`` used to keep its own object-identity-only relation, so a worker
-    that normalized its fix list while preserving stable IDs lost the ``fix_id``
-    cross-reference even though the shell paired, ran and receipted that remedy
-    against the probe. Deliberately breaking the shared pairing must fail this test
-    and the dispatch tests together."""
-    probes, remedies, expected_links = _pairing_case(pairing)
+    """Model link, dispatch, selected callback and receipt share ONE relationship."""
+    ran: list[str] = []
+    receipts = []
+    probes, remedies, expected_links, expected_pairing, target = _relationship_case(
+        relationship, ran
+    )
     if display_layout == "interleaved":
         # Display-only rows are numbered separately (``fix:display:<i>``), so they
         # must not shift the runnable row ids the shell dispatches on.
@@ -1466,9 +1531,35 @@ def test_modeled_probe_fix_link_uses_the_dispatch_pairing(
 
     # The link the agent reads is the pairing the shell dispatches from.
     assert {i: _linked_fix_id(row) for i, row in enumerate(probe_rows)} == expected_links
+    rows = [row for row in pair_remedies(probes, fixes) if row.runnable]
+    assert [row.probe_index for row in rows] == expected_pairing
     paired = shell._runnable_remedies(probes, fixes)
     assert [fix.title for _, fix in paired] == [fix.title for fix in remedies]
-    dispatch_links = {
-        probes.index(probe): f"fix:{row}" for row, (probe, _) in enumerate(paired) if probe
-    }
-    assert dispatch_links == {i: link for i, link in expected_links.items() if link is not None}
+    assert [
+        None
+        if probe is None
+        else next(i for i, candidate in enumerate(probes) if candidate is probe)
+        for probe, _ in paired
+    ] == expected_pairing
+
+    host = replace(
+        _host(probes),
+        doctor_fixes_for=lambda current: fixes,
+        doctor_on_receipt=receipts.append,
+    )
+    shell._doctor(host, _Screen(), _keys([str(target + 1), "dismiss", "q"]))
+
+    assert ran == [remedies[target].title]
+    assert len(receipts) == 1
+    paired_index = expected_pairing[target]
+    if paired_index is None:
+        assert receipts[0].probe_id == ""
+        assert receipts[0].before_revision == ""
+        assert receipts[0].closure is DoctorClosure.UNKNOWN
+    else:
+        paired_probe = probes[paired_index]
+        assert receipts[0].probe_id == paired_probe.probe_id
+        assert receipts[0].before_revision == paired_probe.evidence_revision
+        assert receipts[0].closure is (
+            DoctorClosure.STILL_PRESENT if paired_probe.probe_id else DoctorClosure.UNKNOWN
+        )
