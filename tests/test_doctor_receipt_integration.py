@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 from rich.console import Console
 
-from clonway_cockpit import keys, render, shell
+from clonway_cockpit import keys, render, shell, shellout
 from clonway_cockpit.doctor import (
     DoctorActionResult,
     DoctorClosure,
@@ -191,6 +191,128 @@ def test_capability_receipt_reports_resolved_only_after_reprobe() -> None:
     assert len(receipts) == 1
     assert receipts[0].action_result is DoctorActionResult.OPENED
     assert receipts[0].closure is DoctorClosure.RESOLVED
+
+
+@pytest.mark.parametrize(
+    ("terminal", "expected_result", "expected_closure"),
+    [
+        ("callback_success", DoctorActionResult.RAN, DoctorClosure.STILL_PRESENT),
+        ("callback_failure", DoctorActionResult.FAILED, DoctorClosure.STILL_PRESENT),
+        ("decline", DoctorActionResult.DECLINED, DoctorClosure.STILL_PRESENT),
+        ("agent_skip", DoctorActionResult.SKIPPED_AGENT_MODE, DoctorClosure.STILL_PRESENT),
+        ("capability_return", DoctorActionResult.OPENED, DoctorClosure.STILL_PRESENT),
+        ("capability_exception", DoctorActionResult.OPENED, DoctorClosure.STILL_PRESENT),
+        ("capability_missing", DoctorActionResult.FAILED, DoctorClosure.UNKNOWN),
+        ("capability_shellout", DoctorActionResult.OPENED, DoctorClosure.UNKNOWN),
+        ("rebuild_failure", DoctorActionResult.RAN, DoctorClosure.UNKNOWN),
+        ("receipt_sink_failure", DoctorActionResult.RAN, DoctorClosure.STILL_PRESENT),
+    ],
+)
+def test_doctor_terminal_outcome_receipt_cardinality_matrix(
+    terminal: str,
+    expected_result: DoctorActionResult,
+    expected_closure: DoctorClosure,
+) -> None:
+    """Every terminal action exit reaches the worker receipt callback exactly once."""
+    delivered: list[DoctorRemedyReceipt] = []
+    builds = 0
+
+    def callback() -> str:
+        if terminal == "callback_failure":
+            raise RuntimeError("worker-secret")
+        return "done"
+
+    if terminal.startswith("capability_"):
+
+        def capability(ctx: WizardContext) -> None:
+            if terminal == "capability_exception":
+                raise RuntimeError("capability-secret")
+            if terminal == "capability_shellout":
+                raise shellout.ShellOut(
+                    "reauth",
+                    argv=("worker", "auth", "login"),
+                    label="Re-authenticate",
+                )
+
+        if terminal != "capability_missing":
+            register_capability(
+                CapabilitySpec(
+                    "review",
+                    "C",
+                    "Review",
+                    "Review",
+                    "worker review",
+                    run=capability,
+                )
+            )
+        fix = Fix(
+            "Review",
+            "worker review",
+            remedy_id="remedy.health",
+            probe_id="probe.health",
+            capability_key="review",
+            focus="health",
+        )
+    else:
+        fix = Fix(
+            "Repair",
+            "worker repair",
+            run=callback,
+            confirm=terminal == "decline",
+            remedy_id="remedy.health",
+            probe_id="probe.health",
+        )
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if terminal == "rebuild_failure" and builds == 2:
+            raise RuntimeError("rebuild-secret")
+        return object()
+
+    host = _host(
+        lambda report: [_probe(fix)],
+        delivered,
+        build_report=build_report,
+        agent_mode=terminal == "agent_skip",
+    )
+    if terminal == "receipt_sink_failure":
+
+        def failing_sink(receipt: DoctorRemedyReceipt) -> None:
+            delivered.append(receipt)
+            raise RuntimeError("sink-secret")
+
+        host = replace(host, doctor_on_receipt=failing_sink)
+
+    keys_in = [keys.ENTER]
+    if terminal == "decline":
+        keys_in.extend(["n", "q"])
+    elif terminal in {
+        "callback_success",
+        "callback_failure",
+        "capability_exception",
+        "capability_missing",
+        "rebuild_failure",
+        "receipt_sink_failure",
+    }:
+        keys_in.extend(["dismiss", "q"])
+    elif terminal != "capability_shellout":
+        keys_in.append("q")
+
+    if terminal == "capability_shellout":
+        with pytest.raises(shellout.ShellOut) as raised:
+            shell._doctor(host, _Screen(), _keys(keys_in))
+        assert raised.value.key == "reauth"
+        assert tuple(raised.value.argv) == ("worker", "auth", "login")
+    else:
+        shell._doctor(host, _Screen(), _keys(keys_in))
+
+    assert builds == (1 if terminal in {"capability_missing", "capability_shellout"} else 2)
+    assert len(delivered) == 1
+    assert delivered[0].action_result is expected_result
+    assert delivered[0].closure is expected_closure
+    assert delivered[0].remedy_id == "remedy.health"
+    assert delivered[0].probe_id == "probe.health"
 
 
 @pytest.mark.parametrize("display_layout", ["absent", "interleaved"])

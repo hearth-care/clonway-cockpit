@@ -485,11 +485,15 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: QA FAIL round 6 (all three findings) is fixed; the full local gate sequence is
-  green at the code head.
-- Next concrete step: repeat the complete gate sequence at the documentation head, post the
-  runbook delta, verify a clean synchronized worktree, then execute the finish protocol.
-- Decisions: focus resolves probe identity against the full probe snapshot, where exactly one
+- Current phase: QA FAIL round 7 Task 4 (capability `ShellOut` receipt) is fixed and its focused
+  human/agent verification is green; Task 5 relationship/link coherence remains in progress.
+- Next concrete step: add the QA-requested probe/remedy relationship x display-layout matrix, watch
+  the contradictory `fix_id` cells fail, then make `probe_fix_links` consume only the authoritative
+  `DoctorRemedyRow.probe_index` relationship.
+- Decisions: a capability `ShellOut` is an attempted `OPENED` action whose same-session re-probe is
+  unavailable, so `_doctor` delivers exactly one `closure=unknown` receipt before preserving the
+  existing exception/session-ending behavior. Focus resolves probe identity against the full probe
+  snapshot, where exactly one
   matching probe may own one or many remedies; the first matching runnable remedy is selected.
   Duplicate probe IDs and duplicate remedy IDs remain fail-closed.
 - QA focus matrix:
@@ -528,7 +532,8 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - Known-failing tests: none.
 - Current-main deviation: the plan named `tests/test_generated_worker.py`, which does not exist;
   `tests/test_worker_template.py` remains the canonical generated-worker suite.
-- Pending QA findings: none; exact-receipt-head gate repeat and finish protocol remain.
+- Pending QA findings: round 7 finding 1 (fail-closed probe `fix_id` links) remains; round 7 finding
+  2 (`ShellOut` exact-once receipt) is closed at the current code head.
 - QA FAIL round 3 focus matrix:
   `tests/test_doctor_capability_action.py::test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix`
   crosses selection source (`focused`, `manual`), focus identity (`unique_probe_id`,
@@ -709,3 +714,13 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   `focus_matched` reddens 9 coherence cells and all 6 cursor cells; an object-identity-only probe
   link reddens 20 coherence cells and 6 pairing cells.
 - QA FAIL round 6 known-failing tests: none.
+- QA FAIL round 7 Task 4 RED: the 10-cell terminal-outcome matrix had exactly one failure,
+  `capability_shellout`, with zero receipts; the real `serve_stdio` drive likewise emitted
+  `home -> doctor -> note` and ended with zero receipts.
+- QA FAIL round 7 Task 4 GREEN: `_doctor` now treats `ShellOut` as an attempted `OPENED` capability,
+  delivers one fail-closed `UNKNOWN` receipt before re-raising, and leaves the human and agent
+  session-ending boundaries unchanged. The matrix covers callback success/failure, decline, agent
+  skip, capability return/ordinary exception/missing/`ShellOut`, rebuild failure, and receipt-sink
+  failure. The agent drive also proves the child process is not executed by `serve_stdio`.
+- QA FAIL round 7 Task 4 verification: terminal matrix plus real agent shell-out drive `11 passed`;
+  known-failing tests: none in this completed phase.

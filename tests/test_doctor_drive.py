@@ -9,8 +9,15 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
-from clonway_cockpit import agent, keys, render, shell
-from clonway_cockpit.doctor import DoctorRemedyReceipt, Fix, Probe, fixes_for
+from clonway_cockpit import agent, keys, render, shell, shellout
+from clonway_cockpit.doctor import (
+    DoctorActionResult,
+    DoctorClosure,
+    DoctorRemedyReceipt,
+    Fix,
+    Probe,
+    fixes_for,
+)
 from clonway_cockpit.registry import (
     CapabilitySpec,
     WizardContext,
@@ -272,6 +279,79 @@ def test_cockpit_client_drives_focused_capability_and_one_receipt() -> None:
         home_again = client.press("q")
         assert home_again["kind"] == "home"
         client.quit()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    finally:
+        clear_capabilities()
+
+
+def test_cockpit_client_shellout_capability_emits_one_unknown_receipt_and_ends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_capabilities()
+    receipts: list[DoctorRemedyReceipt] = []
+    children_run: list[shellout.ShellOut] = []
+    try:
+        monkeypatch.setattr(shellout, "run_shellout", children_run.append)
+        register_capability(CapabilitySpec("doctor", "G", "Doctor", "Health", "worker doctor"))
+
+        def reauthenticate(ctx: WizardContext) -> None:
+            raise shellout.ShellOut(
+                "reauth",
+                argv=("worker", "auth", "login"),
+                label="Re-authenticate",
+            )
+
+        register_capability(
+            CapabilitySpec(
+                "reauth",
+                "C",
+                "Re-authenticate",
+                "Re-authenticate",
+                "worker auth login",
+                run=reauthenticate,
+            )
+        )
+        fix = Fix(
+            "Re-authenticate",
+            "worker auth login",
+            remedy_id="remedy.reauth",
+            probe_id="probe.reauth",
+            capability_key="reauth",
+            focus="account.primary",
+        )
+        probe = Probe("Authentication", "error", "Login required", fix, "probe.reauth", "rev-1")
+        state = CockpitState(
+            tenant_name="Clonway",
+            needs=(NeedsItem("Authentication", "Open Doctor", "error", "doctor", "probe.reauth"),),
+        )
+        host = shell.Host(
+            capture_state=lambda: state,
+            build_walk_ctx=_ctx,
+            activate_pill=lambda *args: None,
+            doctor_build_report=lambda: object(),
+            doctor_build_probes=lambda report: [probe],
+            doctor_fixes_for=fixes_for,
+            doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Unavailable"),
+            usage=_Usage(),
+            on_open=lambda: None,
+            doctor_on_receipt=receipts.append,
+        )
+        client, thread = _wire(host)
+
+        home = client.read_home()
+        doctor = client.press(keys.ENTER)
+        terminal = client.press(keys.ENTER)
+
+        assert [home["kind"], doctor["kind"], terminal["kind"]] == ["home", "doctor", "note"]
+        assert terminal["meta"] == {"shellout": True}
+        assert len(receipts) == 1
+        assert receipts[0].action_result is DoctorActionResult.OPENED
+        assert receipts[0].closure is DoctorClosure.UNKNOWN
+        assert receipts[0].remedy_id == "remedy.reauth"
+        assert receipts[0].probe_id == "probe.reauth"
+        assert children_run == []
+
         thread.join(timeout=5)
         assert not thread.is_alive()
     finally:

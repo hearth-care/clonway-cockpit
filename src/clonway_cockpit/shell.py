@@ -1246,25 +1246,31 @@ def _doctor(
             # An explicit numbered choice is unambiguous — it needs no reveal step.
             explicit_selection = True
             sel = int(key) - 1
-            selected_probe, selected_fix = runnable_remedies[sel]
-            action_result = _run_doctor_fix(
-                host,
-                selected_fix,
-                screen,
-                read_key,
-                _nav=_nav,
-            )
-        elif key == keys.ENTER:
-            selected_probe, selected_fix = runnable_remedies[sel]
-            action_result = _run_doctor_fix(
-                host,
-                selected_fix,
-                screen,
-                read_key,
-                _nav=_nav,
-            )
-        else:
+        elif key != keys.ENTER:
             continue  # inert key — no repaint
+        selected_probe, selected_fix = runnable_remedies[sel]
+        try:
+            action_result = _run_doctor_fix(
+                host,
+                selected_fix,
+                screen,
+                read_key,
+                _nav=_nav,
+            )
+        except shellout.ShellOut:
+            # A capability shell-out is an attempted open that intentionally ends
+            # this Doctor session. There can be no same-session re-probe, but the
+            # worker must still observe the attempt exactly once before the
+            # existing control-flow exception reaches the human/agent boundary.
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=DoctorActionResult.OPENED,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
+            raise
         capability_missing = (
             action_kind(selected_fix) is DoctorActionKind.OPEN_CAPABILITY
             and action_result is DoctorActionResult.FAILED
