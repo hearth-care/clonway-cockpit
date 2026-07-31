@@ -1110,3 +1110,365 @@ def test_focus_verdict_stays_honest_across_a_rebuild(
     assert final.meta["focus_state"] == expected_state
     text = " ".join(_doctor_frame_text(screen.frames).split())
     assert _FOCUS_VERDICT_LINES[expected_state].format(focus="p.auth") in text
+
+
+# ---------------------------------------------------------------------------
+# QA round 6 — the doctor-remedy-state-coherence class, closed as a state space
+# rather than cell by cell. Six rounds of findings were all the same defect in
+# different clothes: Doctor derived "which remedy is armed", "where did the focus
+# resolve" and "which probe owns this remedy" in more than one place, so a frame
+# could claim one thing while ⏎ did another. These matrices assert the Rich
+# projection, the ScreenModel projection and the executed callback TOGETHER, so a
+# divergence cannot be green in any one of them.
+# ---------------------------------------------------------------------------
+
+
+def _linked_fix_id(row) -> str | None:  # noqa: ANN001
+    return next((field.value for field in row.fields if field.label == "fix_id"), None)
+
+
+def _coherence_probes(focus_shape: str, ran: list[str]) -> list[Probe]:
+    """The probe snapshot for one ``focus_shape``.
+
+    ``Sync`` leads and ``Lock`` trails, so every cell has at least two numbered
+    rows whatever the focus target is (keeping the ``cursor_action`` axis
+    independent of it) and — crucially — the focus NEVER resolves to row 1. Row 1
+    is the documented fail-closed fallback, so a matrix that put the target there
+    could not tell "the focus selected this" from "we fell back to row one"."""
+
+    def callback(title: str) -> Fix:
+        slug = title.lower().replace(" ", "-")
+        return Fix(
+            title,
+            f"worker {slug}",
+            remedy_id=f"remedy.{slug}",
+            probe_id=f"p.{slug.split('-')[-1]}",
+            run=lambda: ran.append(title) or "done",
+        )
+
+    head = Probe("Sync", "warn", "stale", callback("Sync now"), "p.now", "rev-1")
+    tail = Probe("Lock", "error", "stale lock", callback("Remove stale lock"), "p.lock", "rev-1")
+    auth = replace(callback("Repair auth"), probe_id="p.auth")
+    if focus_shape == "matched_runnable":
+        target = [Probe("Auth", "error", "expired", auth, "p.auth", "rev-1")]
+    elif focus_shape == "present_display_only":
+        display = _display_only_fix("Re-auth in browser", probe_id="p.auth", remedy_id="remedy.web")
+        target = [Probe("Auth", "error", "expired", display, "p.auth", "rev-1")]
+    elif focus_shape == "present_no_fix":
+        target = [Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2")]
+    elif focus_shape == "ambiguous":
+        twin = replace(callback("Repair auth twin"), probe_id="p.auth")
+        target = [
+            Probe("Auth", "error", "expired", auth, "p.auth", "rev-1"),
+            Probe("Auth twin", "error", "expired", twin, "p.auth", "rev-1"),
+        ]
+    else:
+        target = []  # "unknown" — nothing Doctor renders claims p.auth
+    return [head, *target, tail]
+
+
+_COHERENCE_STATES = {
+    "matched_runnable": "matched",
+    "present_display_only": "present",
+    "present_no_fix": "present",
+    "ambiguous": "ambiguous",
+    "unknown": "unknown",
+}
+
+
+@pytest.mark.parametrize(
+    "focus_shape",
+    ["matched_runnable", "present_display_only", "present_no_fix", "ambiguous", "unknown"],
+)
+@pytest.mark.parametrize("cursor_action", ["none", "up", "down", "digit"])
+@pytest.mark.parametrize("remedy_pairing", ["same_object", "stable_id_clone", "unpaired_global"])
+def test_doctor_remedy_state_coherence_matrix(
+    focus_shape: str,
+    cursor_action: str,
+    remedy_pairing: str,
+) -> None:
+    """One armed remedy, one focus resolution, one probe->remedy relation.
+
+    Every cell asserts, on the SAME frame: the Rich ❯ cursor, ``ScreenModel``
+    ``selection``/``focus_state``/``focus_row``/``focus_matched``, the probe rows'
+    ``fix_id`` cross-reference, and — for the ``digit`` cell — which callback
+    actually ran. A frame may never claim a match for a row the cursor is not on,
+    may never arm a row while reporting a ``present`` focus, and may never execute
+    a remedy other than the one it numbered.
+    """
+    ran: list[str] = []
+    probes = _coherence_probes(focus_shape, ran)
+    resync = Fix("Global resync", "worker resync", run=lambda: ran.append("Global resync") or "ok")
+
+    def fixes_for_pairing(current: list[Probe]) -> list[Fix]:
+        own = fixes_for(current)
+        if remedy_pairing == "same_object":
+            return own
+        if remedy_pairing == "stable_id_clone":
+            # A worker that normalizes its fix list but preserves stable IDs — a
+            # supported shape the pairing must still resolve.
+            return [replace(fix, note="normalized copy") for fix in own]
+        return [*own, resync]  # a probe-independent global remedy
+
+    models: list = []
+    screen = _Screen()
+    host = replace(
+        _host(probes),
+        doctor_fixes_for=fixes_for_pairing,
+        on_screen=models.append,
+    )
+    rendered = fixes_for_pairing(probes)
+    runnable_titles = [fix.title for fix in rendered if fix.run is not None or fix.capability_key]
+    total = len(runnable_titles)
+    expected_state = _COHERENCE_STATES[focus_shape]
+    # Independently derived: the row the focus resolves to is the numbered row
+    # carrying p.auth, and only when exactly one does.
+    resolved = [index for index, title in enumerate(runnable_titles) if title == "Repair auth"]
+    focus_row = f"fix:{resolved[0]}" if expected_state == "matched" else None
+    assert focus_row != "fix:0"  # never the fail-closed fallback row, by construction
+    # Digit 1 is deliberately NOT the focus row: an explicit choice must win over
+    # the focus, and the receipt/anchor must bring the cursor back to it.
+    sequence = {
+        "none": [],
+        "up": [keys.UP],
+        "down": [keys.DOWN],
+        "digit": ["1", "dismiss"],
+    }[cursor_action]
+
+    shell._doctor(host, screen, _keys([*sequence, "q"]), focus="p.auth")
+
+    final = [frame for frame in models if frame.kind == "doctor"][-1]
+    final_text = _doctor_frame_texts(screen.frames)[-1]
+
+    # --- the focus verdict is the RESOLUTION, and it never moves with the cursor
+    assert final.meta["focus_requested"] == "p.auth"
+    assert final.meta["focus_state"] == expected_state
+    assert final.meta["focus_row"] == focus_row
+
+    # --- what is armed, agreed by both projections
+    #     present + no explicit choice under THIS snapshot => nothing armed. The
+    #     digit cell rebuilds, which starts a new snapshot, so it re-hides too.
+    start = resolved[0] if expected_state == "matched" else 0
+    expected_index: int | None = {
+        "none": None if expected_state == "present" else start,
+        # A reveal keypress uncovers the fallback WITHOUT moving it.
+        "up": 0 if expected_state == "present" else (start - 1) % total,
+        "down": 0 if expected_state == "present" else (start + 1) % total,
+        "digit": None if expected_state == "present" else 0,
+    }[cursor_action]
+    if expected_index is None:
+        assert final.selection is None
+        assert _cursored_lines(final_text) == []
+    else:
+        assert final.selection == f"fix:{expected_index}"
+        assert any(runnable_titles[expected_index] in line for line in _cursored_lines(final_text))
+
+    # --- "the selected row is the one you asked for", and nothing weaker
+    assert final.meta["focus_matched"] == (
+        "p.auth" if focus_row is not None and final.selection == focus_row else None
+    )
+
+    # --- the numbered row is the row that ran
+    assert ran == ([runnable_titles[0]] if cursor_action == "digit" else [])
+
+    # --- one probe->remedy relation, shared with dispatch and receipts
+    paired = shell._runnable_remedies(probes, rendered)
+    probe_rows = next(region.rows for region in final.regions if region.role == "probes")
+    fix_rows = next(region.rows for region in final.regions if region.role == "fixes")
+    labels = {row.id: row.label for row in fix_rows}
+    ambiguous_clone = focus_shape == "ambiguous" and remedy_pairing == "stable_id_clone"
+    for index, probe in enumerate(probes):
+        link = _linked_fix_id(probe_rows[index])
+        if probe.fix is None or (ambiguous_clone and probe.probe_id == "p.auth"):
+            # No fix, or an identity two probes claim: fail closed rather than
+            # cross-referencing a guess.
+            assert link is None
+        else:
+            assert labels[link] == probe.fix.title
+    # The dispatch list attributes the same probes the projection cross-references.
+    for row_index, (probe, fix) in enumerate(paired):
+        if probe is not None:
+            assert _linked_fix_id(probe_rows[probes.index(probe)]) in (None, f"fix:{row_index}")
+        assert labels[f"fix:{row_index}"] == fix.title
+
+
+@pytest.mark.parametrize(
+    "focus_identity", ["unique_probe_id", "one_probe_many_remedies", "unique_remedy_id"]
+)
+@pytest.mark.parametrize("movement", [keys.UP, keys.DOWN])
+def test_moving_the_cursor_off_a_focused_remedy_stops_claiming_a_match(
+    focus_identity: str,
+    movement: str,
+) -> None:
+    """A no-action cursor move must not leave two fields disagreeing.
+
+    ``focus_state``/``focus_row`` describe RESOLUTION and stay put; ``focus_matched``
+    describes the SELECTION and must clear the moment the cursor leaves the resolved
+    row. An agent that read a non-null ``focus_matched`` as "⏎ runs my target" would
+    otherwise run whatever row it had just navigated to."""
+    ran: list[str] = []
+
+    def callback(title: str, *, probe_id: str, remedy_id: str) -> Fix:
+        return Fix(
+            title,
+            f"worker {remedy_id}",
+            remedy_id=remedy_id,
+            probe_id=probe_id,
+            run=lambda: ran.append(title) or "done",
+        )
+
+    auth = callback("Repair auth", probe_id="p.auth", remedy_id="remedy.auth")
+    extra: list[Fix] = []
+    focus = "p.auth"
+    if focus_identity == "one_probe_many_remedies":
+        # One probe legitimately offering two typed remedies: the focus resolves to
+        # the FIRST runnable one, and the second must not be mistaken for it.
+        extra = [callback("Repair auth another way", probe_id="p.auth", remedy_id="remedy.alt")]
+    elif focus_identity == "unique_remedy_id":
+        focus = "remedy.auth"
+    probes = [
+        Probe("Sync", "warn", "stale", callback("Sync now", probe_id="p.now", remedy_id="r.now")),
+        Probe("Auth", "error", "expired", auth, "p.auth", "rev-1"),
+        Probe(
+            "Lock",
+            "error",
+            "stale lock",
+            callback("Remove stale lock", probe_id="p.lock", remedy_id="r.lock"),
+        ),
+    ]
+    models: list = []
+    screen = _Screen()
+    host = replace(
+        _host(probes),
+        doctor_fixes_for=lambda current: [*fixes_for(current), *extra],
+        on_screen=models.append,
+    )
+    titles = [fix.title for fix in host.doctor_fixes_for(probes)]
+
+    shell._doctor(host, screen, _keys([movement, "q"]), focus=focus)
+
+    doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    resolved_row = f"fix:{titles.index('Repair auth')}"
+    entry, moved = doctor_models[0], doctor_models[-1]
+    assert entry.meta["focus_state"] == "matched"
+    assert entry.meta["focus_row"] == resolved_row
+    assert entry.meta["focus_matched"] == focus
+    assert entry.selection == resolved_row
+
+    step = -1 if movement == keys.UP else 1
+    expected_index = (titles.index("Repair auth") + step) % len(titles)
+    assert moved.selection == f"fix:{expected_index}"
+    assert moved.selection != resolved_row
+    # Resolution is unchanged; only the "is the cursor on it" fact flipped.
+    assert moved.meta["focus_state"] == "matched"
+    assert moved.meta["focus_row"] == resolved_row
+    assert moved.meta["focus_matched"] is None
+    assert ran == []
+    # The human projection says the same thing: no bare ✓ next to a cursor that has
+    # moved on to somebody else's remedy.
+    text = " ".join(_doctor_frame_texts(screen.frames)[-1].split())
+    assert f"⚠ {focus} matched — cursor on row {titles.index('Repair auth') + 1}" in text
+    assert f"✓ {focus} matched" not in text
+    assert any(
+        titles[expected_index] in line
+        for line in _cursored_lines(_doctor_frame_texts(screen.frames)[-1])
+    )
+
+
+def _pairing_case(pairing: str) -> tuple[list[Probe], list[Fix], dict[int, str | None]]:
+    """(probes, remedy fixes as the worker returns them, expected probe -> row link).
+
+    Each shape is a worker style the framework documents as supported (or, for the
+    last two, explicitly fails closed on)."""
+    legacy = Fix("Sync now", "worker sync", run=lambda: "done")
+    identified = Fix(
+        "Repair auth", "worker auth", remedy_id="remedy.auth", probe_id="p.auth", run=lambda: "done"
+    )
+    if pairing == "same_object":
+        probe = Probe("Auth", "error", "expired", identified, "p.auth", "rev-1")
+        return [probe], [identified], {0: "fix:0"}
+    if pairing == "equal_clone":
+        # Legacy, ID-less, rebuilt into an equal value: identity fails, equality wins.
+        probe = Probe("Sync", "warn", "stale", legacy)
+        return [probe], [replace(legacy)], {0: "fix:0"}
+    if pairing == "stable_id_clone":
+        # The finding-3 shape: normalized copy, stable IDs preserved.
+        probe = Probe("Auth", "error", "expired", identified, "p.auth", "rev-1")
+        return [probe], [replace(identified, note="normalized copy")], {0: "fix:0"}
+    if pairing == "shared_equal_values":
+        # Two probes carrying EQUAL legacy fixes: consume-on-match keeps them apart
+        # instead of collapsing both onto the first probe.
+        first = Probe("Sync A", "warn", "stale", legacy)
+        second = Probe("Sync B", "error", "stale", replace(legacy))
+        return [first, second], [replace(legacy), replace(legacy)], {0: "fix:0", 1: "fix:1"}
+    if pairing == "unpaired":
+        # A probe-independent global remedy, and a probe with no fix at all.
+        probe = Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2")
+        return [probe], [Fix("Global resync", "worker resync", run=lambda: "done")], {0: None}
+    twin = replace(identified, remedy_id="remedy.twin")
+    return (
+        [
+            Probe("Auth", "error", "expired", identified, "p.auth", "rev-1"),
+            Probe("Auth twin", "error", "expired", twin, "p.auth", "rev-1"),
+        ],
+        [replace(identified, note="n"), replace(twin, note="n")],
+        {0: None, 1: None},
+    )
+
+
+@pytest.mark.parametrize(
+    "pairing",
+    [
+        "same_object",
+        "equal_clone",
+        "stable_id_clone",
+        "shared_equal_values",
+        "unpaired",
+        "ambiguous_duplicate_id",
+    ],
+)
+@pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+def test_modeled_probe_fix_link_uses_the_dispatch_pairing(
+    pairing: str,
+    display_layout: str,
+) -> None:
+    """The agent-facing probe -> remedy link and the dispatch pairing are ONE decision.
+
+    ``model_doctor`` used to keep its own object-identity-only relation, so a worker
+    that normalized its fix list while preserving stable IDs lost the ``fix_id``
+    cross-reference even though the shell paired, ran and receipted that remedy
+    against the probe. Deliberately breaking the shared pairing must fail this test
+    and the dispatch tests together."""
+    probes, remedies, expected_links = _pairing_case(pairing)
+    if display_layout == "interleaved":
+        # Display-only rows are numbered separately (``fix:display:<i>``), so they
+        # must not shift the runnable row ids the shell dispatches on.
+        fixes: list[Fix] = []
+        for index, fix in enumerate(remedies):
+            fixes.append(Fix(f"Read the runbook {index}", f"worker docs {index}"))
+            fixes.append(fix)
+    else:
+        fixes = list(remedies)
+
+    model = render.model_doctor(probes, fixes)
+    probe_rows = next(region.rows for region in model.regions if region.role == "probes")
+    fix_rows = next(region.rows for region in model.regions if region.role == "fixes")
+    runnable_rows = [row for row in fix_rows if row.enabled]
+    display_rows = [row for row in fix_rows if not row.enabled]
+
+    # Row ids: runnable rows stay consecutively numbered whatever the layout.
+    assert [row.id for row in runnable_rows] == [f"fix:{i}" for i in range(len(remedies))]
+    assert [row.label for row in runnable_rows] == [fix.title for fix in remedies]
+    if display_layout == "interleaved":
+        assert [row.id for row in display_rows] == [
+            f"fix:display:{i * 2}" for i in range(len(remedies))
+        ]
+
+    # The link the agent reads is the pairing the shell dispatches from.
+    assert {i: _linked_fix_id(row) for i, row in enumerate(probe_rows)} == expected_links
+    paired = shell._runnable_remedies(probes, fixes)
+    assert [fix.title for _, fix in paired] == [fix.title for fix in remedies]
+    dispatch_links = {
+        probes.index(probe): f"fix:{row}" for row, (probe, _) in enumerate(paired) if probe
+    }
+    assert dispatch_links == {i: link for i, link in expected_links.items() if link is not None}
