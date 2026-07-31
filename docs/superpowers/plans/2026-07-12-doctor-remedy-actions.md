@@ -485,10 +485,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: both QA FAIL round 7 findings are fixed; focused Task 4/5 verification is green at
-  the code head and documentation/static verification is in progress.
-- Next concrete step: commit and push the Task 5 relationship/link phase, then rebase onto current
-  `origin/main` and run the complete foreground gate sequence at the exact documentation head.
+- Current phase: both QA FAIL round 7 findings are fixed; the complete local gate sequence is green
+  at the implementation head and the final documentation-head gate repeat is next.
+- Next concrete step: commit/push these final gate receipts, repeat the complete gate sequence at
+  that exact documentation head, verify clean synchronization, then execute the finish protocol.
 - Decisions: a capability `ShellOut` is an attempted `OPENED` action whose same-session re-probe is
   unavailable, so `_doctor` delivers exactly one `closure=unknown` receipt before preserving the
   existing exception/session-ending behavior. Focus resolves probe identity against the full probe
@@ -740,3 +740,14 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - QA FAIL round 7 Task 5 verification: relationship matrix plus the corrected 60-cell coherence
   matrix `78 passed`; full Doctor capability/receipt/drive/screen-model phase `766 passed in
   12.00s`; known-failing tests: none.
+- QA FAIL round 7 rebase: fetched current `origin/main@00b66418e3ab90c86e4102ade957d52265dabf77`;
+  it was already an ancestor of the branch, so `git rebase origin/main` was a clean no-op and the
+  required exact-lease force-push reported `Everything up-to-date`.
+- QA FAIL round 7 implementation-head gates: `uv run pytest -q` -> `2265 passed in 25.43s`;
+  `uv run ruff check .` -> `All checks passed!`; `uv run ruff format --check .` -> `169 files
+  already formatted`; `uv run mypy src` -> `Success: no issues found in 67 source files`; all eight
+  all-file pre-commit hooks passed; canonical generated-worker suite -> `29 passed in 14.42s`;
+  subprocess legacy/opt-in acceptance -> `2 passed, 7 deselected in 10.51s`.
+- QA FAIL round 7 known-failing tests: none. No operator-facing command, provisioning, sign-off or
+  recurring rhythm changed; the existing runbook deltas already cover the Doctor focus/action and
+  exact-once receipt contract, so no additional runbook comment is required.
