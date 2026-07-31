@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 from typing import Literal
 
 
@@ -184,6 +185,120 @@ def build_remedy_receipt(
         closure=closure,
         safe_message=safe_message,
     )
+
+
+@dataclass(frozen=True)
+class DoctorRemedyRow:
+    """One rendered Doctor fix row — the single record every Doctor projection reads.
+
+    ``row_id`` is the stable id both ``render_doctor`` (as the ``N.`` ordinal) and
+    ``model_doctor`` (as ``MRow.id``) number this fix with, and ``run_index`` is the
+    index the shell dispatches on. Carrying all three together is what keeps the
+    numbered row, the executed remedy and the receipt's probe from ever drifting
+    apart."""
+
+    fix: Fix
+    probe: Probe | None
+    probe_index: int | None
+    row_id: str
+    kind: DoctorActionKind
+    run_index: int | None
+
+    @property
+    def runnable(self) -> bool:
+        return self.kind is not DoctorActionKind.DISPLAY_ONLY
+
+
+def _unique_match[T](candidates: list[T], predicate: Callable[[T], bool]) -> T | None:
+    """Return the sole matching candidate; fail closed on zero or many matches."""
+    matches = [candidate for candidate in candidates if predicate(candidate)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _probe_id_matches(indexed: tuple[int, Probe], *, probe_id: str) -> bool:
+    return indexed[1].probe_id == probe_id
+
+
+def pair_remedies(probes: list[Probe], fixes: list[Fix]) -> list[DoctorRemedyRow]:
+    """Pair EVERY rendered fix with its originating probe, in ``fixes`` order.
+
+    This is the one pairing decision in the framework: the shell dispatches from
+    it, the receipt attributes from it, and both projections number and
+    cross-reference rows from it. Deriving any of those independently is what let
+    the executed remedy, the numbered row and the receipt's probe disagree.
+
+    Never drop an entry: a fix with no (or no longer resolvable) originating probe
+    keeps its row with ``probe=None`` and, if it is not display-only, stays
+    runnable.
+
+    An explicit ``Fix.probe_id`` resolves uniquely against the full probe snapshot
+    and is intentionally not consumed: one probe may offer many typed remedies.
+    Missing or duplicate explicit identities fail closed and never fall back to a
+    different probe. Legacy fixes with no declared probe ID use identity/equality
+    against a shrinking pool so equal legacy values still resolve deterministically
+    without collapsing onto the same probe."""
+    available = list(enumerate(probes))
+    rows: list[DoctorRemedyRow] = []
+    run_index = 0
+    for index, fix in enumerate(fixes):
+        kind = action_kind(fix)
+        if fix.probe_id:
+            matched = _unique_match(
+                list(enumerate(probes)),
+                partial(_probe_id_matches, probe_id=fix.probe_id),
+            )
+        else:
+            matched = None
+            for position, candidate in enumerate(available):
+                if candidate[1].fix is fix:
+                    matched = available.pop(position)
+                    break
+            else:
+                for position, candidate in enumerate(available):
+                    if candidate[1].fix == fix:
+                        matched = available.pop(position)
+                        break
+        if kind is DoctorActionKind.DISPLAY_ONLY:
+            row_id, row_run_index = f"fix:display:{index}", None
+        else:
+            row_id, row_run_index = f"fix:{run_index}", run_index
+            run_index += 1
+        rows.append(
+            DoctorRemedyRow(
+                fix=fix,
+                probe=matched[1] if matched is not None else None,
+                probe_index=matched[0] if matched is not None else None,
+                row_id=row_id,
+                kind=kind,
+                run_index=row_run_index,
+            )
+        )
+    return rows
+
+
+def probe_fix_links(probes: list[Probe], rows: list[DoctorRemedyRow]) -> dict[int, str]:
+    """Map each probe's position to the ``row_id`` rendering that probe's own ``Fix``.
+
+    The flat agent-facing probe/fix regions lose the ``Probe.fix`` adjacency the Rich
+    table shows by layout, so every probe row carries it back as a ``fix_id``
+    cross-reference. Resolution is object identity first — the direct relation — then
+    the shared :func:`pair_remedies` decision, which is what keeps the link alive for a
+    worker that normalizes or rebuilds its fixes while preserving stable IDs. A probe
+    whose fix is not rendered, or whose remedy pairing failed closed, carries no link
+    rather than a guessed one."""
+    by_object = {id(row.fix): row.row_id for row in rows}
+    paired: dict[int, str] = {}
+    for row in rows:
+        if row.probe_index is not None:
+            paired.setdefault(row.probe_index, row.row_id)
+    links: dict[int, str] = {}
+    for index, probe in enumerate(probes):
+        if probe.fix is None:
+            continue
+        row_id = by_object.get(id(probe.fix), paired.get(index))
+        if row_id is not None:
+            links[index] = row_id
+    return links
 
 
 def verdict(probes: list[Probe]) -> tuple[int, int]:

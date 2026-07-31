@@ -411,10 +411,18 @@ def _focus_line(
     focus_requested: str,
     focus_matched: str | None,
     focus_state: str | None,
+    focus_row_label: str | None = None,
 ) -> Text:
-    """The human projection of the focus verdict — the same four states the model
-    reports in ``meta.focus_state``, so neither projection can claim a target is
-    absent while the other shows it on screen.
+    """The human projection of the focus verdict — the same facts the model reports
+    in ``meta.focus_state``/``meta.focus_row``/``meta.focus_matched``, so neither
+    projection can claim a target is absent while the other shows it on screen, nor
+    claim a match for a row the cursor has left.
+
+    ``focus_state`` is the RESOLUTION verdict; ``focus_matched`` additionally says
+    the cursor is on the resolved row. A resolved focus the operator has navigated
+    away from renders as "matched — cursor on <row>" rather than a bare ✓, because a
+    bare ✓ next to a cursor on somebody else's state-changing remedy is the same lie
+    the model contract forbids.
 
     ``focus_state=None`` is the legacy two-valued call (matched / not): derive the
     verdict from ``focus_matched`` so an older caller renders exactly as before."""
@@ -424,13 +432,22 @@ def _focus_line(
     glyph, glyph_style, template = _FOCUS_VERDICTS.get(
         DoctorFocusState(state), _FOCUS_VERDICTS[DoctorFocusState.UNKNOWN]
     )
-    matched = state == DoctorFocusState.MATCHED
+    resolved = state == DoctorFocusState.MATCHED
+    on_focus = resolved and focus_matched is not None
     line = Text("focus     ", style="bold")
-    line.append(glyph, style=glyph_style)
+    if on_focus:
+        line.append(glyph, style=glyph_style)
+    else:
+        line.append("⚠ ", style=ACCENT)
     line.append(
-        template.format(identity=focus_matched if matched else focus_requested),
-        style=DIM if matched else ACCENT,
+        template.format(identity=focus_matched if on_focus else focus_requested),
+        style=DIM if on_focus else ACCENT,
     )
+    if resolved and not on_focus:
+        line.append(
+            f" — cursor on {focus_row_label}" if focus_row_label else " — cursor moved",
+            style=ACCENT,
+        )
     return line
 
 
@@ -445,6 +462,7 @@ def render_doctor(
     focus_requested: str | None = None,
     focus_matched: str | None = None,
     focus_state: str | None = None,
+    focus_row: int | None = None,
 ) -> RenderableType:
     """The Doctor screen — the same probe table + verdict as the static view, but
     the fixes become a navigable list. ``selected`` indexes the RUNNABLE fixes
@@ -481,7 +499,14 @@ def render_doctor(
     parts: list[RenderableType] = [head, Rule(style=DIM), probe_body, Rule(style=DIM), vline]
 
     if focus_requested is not None:
-        parts.append(_focus_line(focus_requested, focus_matched, focus_state))
+        parts.append(
+            _focus_line(
+                focus_requested,
+                focus_matched,
+                focus_state,
+                f"row {focus_row + 1}" if focus_row is not None else None,
+            )
+        )
 
     if fixes:
         parts.append(Text(""))

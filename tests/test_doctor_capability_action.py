@@ -238,6 +238,27 @@ def test_focus_matched_stays_set_when_the_focused_remedy_survives_rebuild() -> N
     assert final.selection == "fix:1"
 
 
+def _row_field(row, name: str) -> str:  # noqa: ANN001
+    return next(field.value for field in row.fields if field.label == name)
+
+
+def _resolved_focus_row(model, focus_identity: str, focus: str) -> str | None:  # noqa: ANN001
+    """Independently derive the row a focus resolves to, from the emitted frame.
+
+    Deliberately re-derived from the modeled remedy rows rather than read out of
+    ``meta['focus_row']`` — the point is to catch the framework agreeing with
+    itself while disagreeing with what it rendered."""
+    rows = next(region.rows for region in model.regions if region.role == "fixes")
+    runnable = [row for row in rows if row.enabled]
+    if focus_identity in {"unique_probe_id", "multiple_remedies_one_probe"}:
+        key = "probe_id"
+    elif focus_identity == "unique_remedy_id":
+        key = "remedy_id"
+    else:  # duplicate identities and unknown focus resolve to no row at all
+        return None
+    return next((row.id for row in runnable if _row_field(row, key) == focus), None)
+
+
 @pytest.mark.parametrize("selection_source", ["focused", "manual"])
 @pytest.mark.parametrize(
     "focus_identity",
@@ -396,8 +417,6 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
         # first row, not to whatever now occupies its stale numeric index.
         assert final.selection == "fix:0"
     focus_survives = focus_is_unique and probe_c in after
-    expected_focus_match = focus if focus_survives else None
-    assert final.meta["focus_matched"] == expected_focus_match
     if focus_survives:
         expected_state = "matched"
     elif focus_identity.startswith("duplicate"):
@@ -405,6 +424,21 @@ def test_doctor_preserves_selected_remedy_identity_across_rebuild_matrix(
     else:
         expected_state = "unknown"
     assert final.meta["focus_state"] == expected_state
+    # Resolution and cursor position are two separate facts. The focus keeps
+    # resolving to its own remedy row (``focus_row``), but ``focus_matched`` — "the
+    # SELECTED row is the one you asked for" — is only set while the cursor is
+    # actually on it. A manual selection moved it away, so a frame that still
+    # claimed a match would tell a driving agent that ⏎ runs its target when ⏎ runs
+    # somebody else's remedy.
+    expected_focus_row = _resolved_focus_row(final, focus_identity, focus)
+    assert (expected_focus_row is not None) == focus_survives
+    assert final.meta["focus_row"] == expected_focus_row
+    assert final.meta["focus_matched"] == (
+        focus if focus_survives and final.selection == expected_focus_row else None
+    )
+    if selection_source == "manual" and focus_survives:
+        assert final.selection != expected_focus_row
+        assert final.meta["focus_matched"] is None
 
 
 def test_unknown_focus_starts_on_first_remedy_then_follows_its_identity() -> None:
@@ -914,20 +948,47 @@ def test_falsy_focus_is_no_focus_not_a_focus_on_the_empty_identity(focus: str | 
     assert "focus" not in _doctor_frame_text(screen.frames)
 
 
+def _cursored_lines(text: str) -> list[str]:
+    """The rendered rows carrying the ❯ cursor — the human half of "what is armed"."""
+    return [" ".join(line.split()) for line in text.splitlines() if "❯" in line]
+
+
+def _doctor_frame_texts(frames: list) -> list[str]:  # noqa: ANN001
+    """Every DOCTOR screen the human saw, in order — the Rich twin of the ``doctor``
+    ScreenModel frames, so cursor and ``selection`` can be compared frame for frame
+    rather than only at the end."""
+    texts = []
+    for frame in frames:
+        console = Console(width=120, record=True, file=io.StringIO())
+        console.print(frame)
+        text = console.export_text()
+        if "deep health check" in text:
+            texts.append(text)
+    return texts
+
+
 @pytest.mark.parametrize(
-    "after_shape", ["recovered_no_fix", "display_only", "absent", "duplicated"]
+    "after_shape",
+    ["recovered_no_fix", "display_only", "absent", "duplicated", "still_runnable"],
 )
-@pytest.mark.parametrize("selection_source", ["focused_enter", "manual_digit"])
+@pytest.mark.parametrize("selection_source", ["focused_enter", "manual_arrow", "manual_digit"])
 def test_focus_verdict_stays_honest_across_a_rebuild(
     after_shape: str,
     selection_source: str,
 ) -> None:
-    """The verdict tracks the CURRENT snapshot; the cursor stays the operator's.
+    """The verdict AND the cursor track the CURRENT snapshot, on every rebuild.
 
     After a remedy runs, the focus target may have recovered, degraded to a
-    display-only remedy, vanished or duplicated. Each is a different verdict, and
-    none of them may report a probe Doctor is still rendering as "not found".
-    """
+    display-only remedy, vanished, duplicated or survived intact. Each is a
+    different verdict, none of them may report a probe Doctor is still rendering as
+    "not found", and the two that leave the target present-but-not-actionable must
+    re-hide the cursor: otherwise the remedy the operator just ran silently arms an
+    unrelated one, and the next ⏎ runs it.
+
+    Selection visibility is therefore derived from the current focus decision after
+    EVERY rebuild, not just on entry. An explicit manual choice is authoritative
+    only under the snapshot it was made in; a rebuild is a new snapshot, so the
+    verdict governs again rather than the operator's stale intent."""
     ran: list[str] = []
     holder: dict[str, list[Probe]] = {}
 
@@ -973,9 +1034,12 @@ def test_focus_verdict_stays_honest_across_a_rebuild(
     elif after_shape == "absent":
         after = [lock]
         expected_state = "unknown"
-    else:
+    elif after_shape == "duplicated":
         after = [auth, replace(auth, name="Auth twin", fix=None), lock]
         expected_state = "ambiguous"
+    else:
+        after = [auth, lock]
+        expected_state = "matched"
     holder["list"] = before
 
     models: list = []
@@ -986,27 +1050,63 @@ def test_focus_verdict_stays_honest_across_a_rebuild(
         on_screen=models.append,
     )
     # Row 1 is auth's remedy (the focus target); row 2 is the unrelated lock remedy.
-    ran_title, sequence = (
-        ("Repair auth", [keys.ENTER])
-        if selection_source == "focused_enter"
-        else ("Remove stale lock", ["2"])
+    ran_title, sequence = {
+        "focused_enter": ("Repair auth", [keys.ENTER]),
+        "manual_arrow": ("Remove stale lock", [keys.DOWN, keys.ENTER]),
+        "manual_digit": ("Remove stale lock", ["2"]),
+    }[selection_source]
+    first = "auth" if selection_source == "focused_enter" else "lock"
+    # After the rebuild, one more ⏎ — the exact keypress that used to run an
+    # unrelated remedy the operator never selected.
+    shell._doctor(
+        host, screen, _keys([*sequence, "dismiss", keys.ENTER, "dismiss", "q"]), focus="p.auth"
     )
 
-    shell._doctor(host, screen, _keys([*sequence, "dismiss", "q"]), focus="p.auth")
-
     doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    doctor_texts = _doctor_frame_texts(screen.frames)
+    # Entry: the focus is resolved AND the cursor is on it, so all three facts agree.
     assert doctor_models[0].meta["focus_state"] == "matched"
     assert doctor_models[0].meta["focus_matched"] == "p.auth"
+    assert doctor_models[0].meta["focus_row"] == "fix:0"
     assert doctor_models[0].selection == "fix:0"
-    assert ran == ["auth" if selection_source == "focused_enter" else "lock"]
+    if selection_source == "manual_arrow":
+        # ↓ moved the cursor off the focused remedy without acting. The focus still
+        # RESOLVES there (focus_state/focus_row), but the frame may no longer claim
+        # the selected row is the requested one.
+        moved = doctor_models[1]
+        assert moved.meta["focus_state"] == "matched"
+        assert moved.meta["focus_row"] == "fix:0"
+        assert moved.meta["focus_matched"] is None
+        assert moved.selection == "fix:1"
+
+    # The refreshed frame, BEFORE the follow-up ⏎ — human and model side by side.
+    rebuilt_index = 2 if selection_source == "manual_arrow" else 1
+    rebuilt = doctor_models[rebuilt_index]
+    rebuilt_text = doctor_texts[rebuilt_index]
+    assert rebuilt.meta["focus_state"] == expected_state
+    surviving = [fix.title for fix in fixes_for(after) if fix.run is not None or fix.capability_key]
+    if expected_state == "present":
+        # Present-but-not-actionable: nothing is armed, in EITHER projection, and
+        # the follow-up ⏎ therefore reveals rather than runs.
+        assert rebuilt.selection is None
+        assert _cursored_lines(rebuilt_text) == []
+        assert ran == [first]
+    else:
+        expected_title = ran_title if ran_title in surviving else surviving[0]
+        rows = next(region.rows for region in rebuilt.regions if region.role == "fixes")
+        assert next(row for row in rows if row.id == rebuilt.selection).label == expected_title
+        assert any(expected_title in line for line in _cursored_lines(rebuilt_text))
+        assert ran == [first, "auth" if expected_title == "Repair auth" else "lock"]
+    # ``focus_matched`` is non-null in exactly one situation: the focus resolved AND
+    # the cursor is sitting on the row it resolved to. Never on the strength of the
+    # verdict alone, and never with no cursor at all.
+    assert rebuilt.meta["focus_matched"] == (
+        "p.auth"
+        if expected_state == "matched" and rebuilt.selection == rebuilt.meta["focus_row"]
+        else None
+    )
+
     final = doctor_models[-1]
     assert final.meta["focus_state"] == expected_state
-    assert final.meta["focus_matched"] is None
-    # The operator's remedy keeps the cursor while it survives; when it doesn't,
-    # fail closed to the documented visible first row.
-    surviving = [fix.title for fix in fixes_for(after) if fix.run is not None or fix.capability_key]
-    expected_title = ran_title if ran_title in surviving else surviving[0]
-    rows = next(region.rows for region in final.regions if region.role == "fixes")
-    assert next(row for row in rows if row.id == final.selection).label == expected_title
     text = " ".join(_doctor_frame_text(screen.frames).split())
     assert _FOCUS_VERDICT_LINES[expected_state].format(focus="p.auth") in text

@@ -29,7 +29,6 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from functools import partial
 from typing import Any, NamedTuple, Protocol
 
 from rich.console import RenderableType
@@ -47,6 +46,7 @@ from clonway_cockpit.doctor import (
     Probe,
     action_kind,
     build_remedy_receipt,
+    pair_remedies,
 )
 from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
@@ -922,66 +922,49 @@ def _unique_match[T](candidates: list[T], predicate: Callable[[T], bool]) -> T |
     return matches[0] if len(matches) == 1 else None
 
 
-def _probe_id_matches(candidate: Probe, *, probe_id: str) -> bool:
-    return candidate.probe_id == probe_id
-
-
 def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Probe | None, Fix]]:
-    """Pair every non-display-only fix with its originating probe, in ``fixes``
-    order — the exact order/count ``render_doctor``/``model_doctor`` number rows
-    in, so the shell's dispatch list can never diverge from what's on screen.
-    Never drop an entry: a fix with no (or no longer resolvable) originating
-    probe stays in the list with ``probe=None`` and remains runnable.
+    """The dispatch list: every non-display-only row of the ONE shared pairing, in
+    the exact order/count ``render_doctor``/``model_doctor`` number rows in, so the
+    shell's dispatch list can never diverge from what's on screen.
 
-    An explicit ``Fix.probe_id`` resolves uniquely against the full probe
-    snapshot and is intentionally not consumed: one probe may offer many typed
-    remedies. Missing or duplicate explicit identities fail closed and never
-    fall back to a different probe. Legacy fixes with no declared probe ID use
-    identity/equality against a shrinking pool so equal legacy values still
-    resolve deterministically without collapsing onto the same probe."""
-    available = list(probes)
-    remedies: list[tuple[Probe | None, Fix]] = []
-    for fix in fixes:
-        if action_kind(fix) is DoctorActionKind.DISPLAY_ONLY:
-            continue
-        if fix.probe_id:
-            probe = _unique_match(
-                probes,
-                partial(_probe_id_matches, probe_id=fix.probe_id),
-            )
-            remedies.append((probe, fix))
-            continue
-        probe = None
-        for index, candidate in enumerate(available):
-            if candidate.fix is fix:
-                probe = available.pop(index)
-                break
-        else:
-            for index, candidate in enumerate(available):
-                if candidate.fix == fix:
-                    probe = available.pop(index)
-                    break
-        remedies.append((probe, fix))
-    return remedies
+    The pairing rules themselves live in :func:`doctor.pair_remedies`, which both
+    projections read too — see its docstring for the explicit-ID and legacy-identity
+    resolution order."""
+    return [(row.probe, row.fix) for row in pair_remedies(probes, fixes) if row.runnable]
 
 
 class _FocusDecision(NamedTuple):
-    """One focus decision, shared by both projections.
+    """One focus RESOLUTION, shared by both projections.
 
-    ``row`` is the runnable row the focus selected, or ``None`` when focus
-    selected NOTHING — either there is no such row (``PRESENT``) or the ordinary
+    ``row`` is the runnable row the focus resolved to, or ``None`` when it resolved
+    to nothing runnable — either there is no such row (``PRESENT``) or the ordinary
     documented first-row fallback applies (``AMBIGUOUS``/``UNKNOWN``, where the
-    caller shows row 1 but ``matched`` stays ``None`` so nobody reads the cursor
-    as authorized by the focus)."""
+    caller shows row 1 but nobody may read that cursor as authorized by the focus).
+
+    Resolution says nothing about where the cursor currently IS: the operator (or a
+    driving agent) may navigate away from a perfectly resolved focus. That second,
+    separate fact is :meth:`matched_identity`, which is what both projections
+    publish as ``focus_matched`` — "the selected row is the one you asked for"."""
 
     row: int | None
-    matched: str | None
+    identity: str | None
     state: DoctorFocusState | None
 
     @property
     def fallback_selection(self) -> bool:
         """True when the caller should show the visible first-row fallback."""
         return self.state in (DoctorFocusState.AMBIGUOUS, DoctorFocusState.UNKNOWN)
+
+    def matched_identity(self, selected: int | None) -> str | None:
+        """The requested identity iff ``selected`` is the row the focus resolved to.
+
+        A frame that reported a match while the cursor sat on an unrelated
+        state-changing remedy told a driving agent that ⏎ would run its target when
+        ⏎ would run somebody else's — the same confused-deputy shape the write gate
+        exists to prevent, one layer up."""
+        if self.state is not DoctorFocusState.MATCHED or self.row is None:
+            return None
+        return self.identity if selected == self.row else None
 
 
 def _focused_remedy(
@@ -1004,7 +987,7 @@ def _focused_remedy(
     two or more remedies, never selects one of them."""
     if not focus:  # "" is a worker-supplied non-identity, not a focus on the empty ID
         return _FocusDecision(0, None, None)
-    probe_matches = [probe for probe in probes if _probe_id_matches(probe, probe_id=focus)]
+    probe_matches = [probe for probe in probes if probe.probe_id == focus]
     fix_probe_matches = [fix for fix in fixes if fix.probe_id == focus]
     remedy_matches = [fix for fix in fixes if fix.remedy_id == focus]
 
@@ -1123,14 +1106,18 @@ def _doctor(
     # legacy probe carries — normalise once, at the entry, so no resolver has to.
     focus = focus or None
     sel = 0
-    focus_matched: str | None = None
-    focus_state: DoctorFocusState | None = None
     focus_pending = True
     # A focus that resolves to something rendered but NOT actionable leaves no row
     # pre-selected: parking the cursor on an unrelated state-changing remedy puts
     # the wrong fix one ⏎ away. The first ↑/↓/⏎ reveals the fallback cursor without
     # running anything; a digit key is an explicit choice and still runs directly.
-    selection_visible = True
+    #
+    # Visibility is DERIVED from the current focus decision on every frame (below),
+    # so it cannot go stale when a remedy rebuilds the focus target into a
+    # non-actionable shape. ``explicit_selection`` is the one override: an operator
+    # who has chosen a row under THIS snapshot keeps their cursor. A rebuild starts a
+    # new snapshot and clears that provenance, so the derived verdict governs again.
+    explicit_selection = False
     selection_anchor: tuple[Probe | None, Fix] | None = None
     cached_probes: list[Probe] | None = None
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
@@ -1162,13 +1149,11 @@ def _doctor(
         # focus_pending — subsequent arrow moves must not be overridden back onto
         # the focus target.
         decision = _focused_remedy(probes, runnable_remedies, fixes, focus)
-        focus_matched, focus_state = decision.matched, decision.state
+        focus_state = decision.state
+        selection_visible = False
         if runnable:
             if focus_pending:
                 sel = decision.row if decision.row is not None else 0
-                # PRESENT resolves to a rendered target with no runnable remedy:
-                # show the list, but authorize nothing.
-                selection_visible = decision.row is not None or decision.fallback_selection
                 focus_pending = False
             elif selection_anchor is not None:
                 preserved = _preserved_remedy_index(runnable_remedies, selection_anchor)
@@ -1179,10 +1164,22 @@ def _doctor(
                 selection_anchor = None
             else:
                 sel %= len(runnable)
+            # PRESENT resolves to a rendered target with no runnable remedy: show
+            # the list, but authorize nothing. Derived here (not only on entry) so a
+            # remedy that rebuilds its own probe into a non-actionable shape cannot
+            # leave a live cursor sitting on an unrelated state-changing remedy.
+            selection_visible = (
+                explicit_selection or decision.row is not None or decision.fallback_selection
+            )
         # Render only when something changed AND no more input is queued — coalesces
         # held-arrow repeat into one repaint (pending() is False off a raw session).
         if dirty and not keys.pending():
             sel_arg = sel if (runnable and selection_visible) else None
+            # "Did it resolve" (focus_state/focus_row) and "is the cursor on it"
+            # (focus_matched) are two facts with one derivation, so no frame can
+            # claim a match for a row the operator is not on.
+            focus_matched = decision.matched_identity(sel_arg)
+            focus_row = decision.row if focus is not None else None
             usage_arg = host.usage.load()  # best-effort; {} on any failure
             specs_arg = host.get_capabilities()
             screen.update(
@@ -1196,6 +1193,7 @@ def _doctor(
                     focus_requested=focus,
                     focus_matched=focus_matched,
                     focus_state=focus_state,
+                    focus_row=focus_row,
                 )
             )
             _safe_emit(
@@ -1210,6 +1208,7 @@ def _doctor(
                     focus_requested=focus,
                     focus_matched=focus_matched,
                     focus_state=focus_state,
+                    focus_row=f"fix:{focus_row}" if focus_row is not None else None,
                 ),
             )
             dirty = False
@@ -1223,27 +1222,31 @@ def _doctor(
             if rebuilt is None:
                 return
             build = rebuilt
+            explicit_selection = False  # a rebuild is a new snapshot
             dirty = True
             continue
         if not selection_visible and key in (keys.UP, keys.DOWN, keys.ENTER):
             # No row is pre-selected (a PRESENT focus). The first move/run keypress
             # reveals the fallback cursor and does NOT run it — otherwise a single ⏎
             # on a screen with no visible ❯ would run an unrelated remedy.
-            selection_visible = True
+            explicit_selection = True
             dirty = True
             continue
         if key == keys.UP:
             sel = (sel - 1) % len(runnable)
+            explicit_selection = True
             dirty = True
             continue
         if key == keys.DOWN:
             sel = (sel + 1) % len(runnable)
+            explicit_selection = True
             dirty = True
             continue
         if key.isdigit() and 1 <= int(key) <= len(runnable):
             # An explicit numbered choice is unambiguous — it needs no reveal step.
-            selection_visible = True
-            selected_probe, selected_fix = runnable_remedies[int(key) - 1]
+            explicit_selection = True
+            sel = int(key) - 1
+            selected_probe, selected_fix = runnable_remedies[sel]
             action_result = _run_doctor_fix(
                 host,
                 selected_fix,
@@ -1315,6 +1318,12 @@ def _doctor(
         build = rebuilt
         cached_probes = after_probes
         selection_anchor = (selected_probe, selected_fix)
+        # A rebuild is a NEW snapshot: whatever the operator explicitly chose was
+        # chosen under the old one. The focus verdict is recomputed against the new
+        # probes/remedies and governs visibility again, so a remedy that turns its
+        # own probe into a non-actionable shape re-hides the cursor instead of
+        # leaving an unrelated state-changing remedy one ⏎ away.
+        explicit_selection = False
         dirty = True
 
 
