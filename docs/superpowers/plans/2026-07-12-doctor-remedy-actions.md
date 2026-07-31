@@ -645,3 +645,13 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   `test_doctor_remedy_cardinality_pairing_matrix` gained the after-side identity axis
   (`changed`, `same`, `absent`, `duplicate_id`), taking it from 108 to 432 cells.
 - QA FAIL round 5 known-failing tests: none.
+- QA FAIL round 5 rebase: `origin/main` had moved from `8694e30` to `00b6641` (PR #116, the stable
+  public shell/walk seams). Rebased all 28 commits onto it. One content conflict, in the `Host`
+  dataclass: both PRs append optional fields. Resolved by keeping #116's session callbacks in
+  place and appending the two Doctor callbacks after them — appending rather than inserting is
+  what preserves a pinned worker's positional `Host(...)` binding, so #116's
+  `test_session_callbacks_are_appended_to_preserve_host_positional_order` was widened from "these
+  two are last" to "this is the tail order, and nothing was inserted ahead of `audit_worker`".
+  #116's public `open_capability`/`run_doctor` seams delegate to the private
+  `_open_capability`/`_doctor` this PR changed, so the focus verdict reaches the public seam with
+  no second code path.
