@@ -21,7 +21,7 @@ any agent script that asserts on it.
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |
 | `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix`) |
-| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched` |
+| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched`, `focus_state` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |
 | `walk.review` | per-walk line-item rows (e.g. `window:<date>`/`bill:<id>`/`settle:<i>`) | **`equivalent_cli`** (the apply command — canonical on every review), plus totals/counts + a full per-item detail list in `meta` |
@@ -104,9 +104,31 @@ The three action kinds are:
   `walk.gate`; agent mode remains dry-run/default-declined.
 
 A Home need may target `capability_key="doctor"` with a probe or remedy ID as `focus`. Doctor
-selects the matching probe first, then a matching remedy, and reports the decision through
-`focus_requested`/`focus_matched`; an unknown focus simply leaves the first actionable remedy
-selected.
+resolves the identity against everything it renders — the full probe snapshot and the full fix
+list, including display-only fixes — matching a probe first, then a remedy, and reports the
+decision as a four-valued `focus_state`. The Rich `focus` line and the model meta are the two
+projections of that one verdict:
+
+| `focus_state` | Meaning | `focus_matched` | `selection` |
+|---|---|---|---|
+| `matched` | Resolved to exactly one runnable remedy | the requested ID | that remedy |
+| `present` | Resolved to exactly one rendered target that has **no runnable remedy** (a display-only fix, or a probe carrying none) | `null` | `null` — **no row is pre-selected** |
+| `ambiguous` | Two or more probes, or two or more remedies, claim the ID | `null` | the visible first row (fail-closed fallback, *not* authorized by the focus) |
+| `unknown` | Nothing Doctor renders claims the ID | `null` | the visible first row |
+
+`focus_matched` stays strictly "the selected row is the one you asked for", so it is non-null
+exactly when the state is `matched`. **A driving agent must branch on `focus_state`, not on
+`focus_matched` alone**: `present` means "your target is on screen, it just has no remedy to
+run", which is a different decision from `unknown`. An identity Doctor is currently rendering is
+never `unknown` — reporting a visible probe as "not found" is false in both projections.
+
+`present` deliberately pre-selects nothing so ⏎ cannot run an unrelated state-changing remedy
+that happens to sit at row 1. The first ↑/↓/⏎ reveals the fallback cursor without running it; a
+numbered key is an explicit choice and still runs directly. An empty `focus` (`""`) is treated as
+no focus at all, not as a focus on the empty ID that legacy probes carry.
+
+`focus_state` is additive — absent focus reports `null`, and the protocol `schema_version` is
+unchanged.
 
 After any selected action, Doctor re-probes the same stable `probe_id` and constructs one
 `DoctorRemedyReceipt`. `resolved` means the probe is absent from a successful rebuild;

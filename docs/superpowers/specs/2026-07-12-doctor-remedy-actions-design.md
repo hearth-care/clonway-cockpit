@@ -164,6 +164,14 @@ if key == "doctor":
 other probes. Model metadata includes `focus_requested` and `focus_matched` so agents/tests can
 prove routing.
 
+**As built (QA round 5):** resolution and *actionability* turned out to be two questions, and a
+two-valued matched/not-found signal answers only one — a probe rendered in the table whose only
+remedy is display-only was reported as "not found" while the cursor sat on an unrelated
+state-changing remedy. The decision is therefore four-valued: `matched`, `present` (rendered,
+uniquely resolved, no runnable remedy — pre-selects nothing), `ambiguous` (fails closed to the
+visible first row) and `unknown`. It is reported through an additive `focus_state` alongside
+`focus_requested`/`focus_matched`, in both projections. See `docs/agent-screen-model.md`.
+
 This lets a worker create a Home need with `capability_key="doctor"` and
 `focus="producer:<key>"` without inventing a new capability per failure.
 

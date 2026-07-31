@@ -613,3 +613,35 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - QA FAIL round 4 change management: no operator commands, provisioning, sign-offs or recurring
   operating steps changed; the existing runbook delta already covers focused selection and
   re-probe behavior, so no additional runbook comment is required.
+- QA FAIL round 5 finding 1 RED: a new
+  `tests/test_doctor_capability_action.py::test_doctor_focus_verdict_matrix` crossing focus target
+  (11 shapes) x target position (`first`, `last`) x entry (`direct`, `capability_open`) for 44
+  generated cells produced `44 failed` — every cell, because the verdict had no state to assert
+  and three shapes reported a rendered probe as "not found".
+- QA FAIL round 5 finding 1 GREEN: the focus decision is four-valued
+  (`clonway_cockpit.doctor.DoctorFocusState`: `matched` / `present` / `ambiguous` / `unknown`).
+  `_focused_remedy` now searches the full probe snapshot AND the full fix list — display-only
+  fixes are rendered as `fix:display:<i>` and are therefore addressable — and returns a
+  `_FocusDecision`. `present` (uniquely resolved, rendered, no runnable remedy) pre-selects NO
+  row: the first arrow/Enter reveals the fallback cursor without running it, so a single Enter can
+  never run an unrelated state-changing remedy. `ambiguous` keeps the documented visible first-row
+  fallback but no longer borrows the "not found" copy. The verdict reaches both projections
+  through the new additive `meta.focus_state` and the Rich `focus` line; `focus_matched` stays
+  strictly "the selection is what you asked for", so it is non-null exactly when the state is
+  `matched`. Protocol `schema_version` is unchanged (purely additive).
+- QA FAIL round 5 deviation from the suggested regression test: QA proposed a
+  `focus_target_runnability` axis inside the existing 60-cell rebuild matrix. Crossing runnability
+  with `focus_identity` generates contradictory cells (`duplicate_probe_id` x `no_fix`), so the
+  verdict lives in its own 44-cell matrix instead, and the existing rebuild matrix gained a
+  `focus_state` assertion plus the previously-skipped `target_removed` selection assertion.
+  Verdict-after-rebuild is covered separately by
+  `test_focus_verdict_stays_honest_across_a_rebuild` (after shape x selection source, 8 cells).
+- QA FAIL round 5 nits, all four closed: falsy focus (`""`) normalises to "no focus" at the
+  `_doctor` entry instead of matching every legacy probe's empty `probe_id`; a failed
+  post-rebuild identity resolve falls back to row 1 rather than the stale numeric index (and the
+  `target_removed` cell now asserts it); the mis-named
+  `test_unknown_focus_keeps_first_remedy_selected_after_rebuild` is now
+  `test_unknown_focus_starts_on_first_remedy_then_follows_its_identity`; and
+  `test_doctor_remedy_cardinality_pairing_matrix` gained the after-side identity axis
+  (`changed`, `same`, `absent`, `duplicate_id`), taking it from 108 to 432 cells.
+- QA FAIL round 5 known-failing tests: none.
