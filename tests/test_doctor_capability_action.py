@@ -570,3 +570,231 @@ def test_agent_callback_is_skipped_without_calling_worker_code() -> None:
         frame.get("kind") == "note" and frame.get("title") == "Fix skipped" for frame in frames
     )
     assert all(frame.get("kind") != "unstructured" for frame in frames)
+
+
+# ---------------------------------------------------------------------------
+# QA round 5 — the Doctor focus verdict is four-valued, and both projections say
+# the same thing. A focus that resolves to something Doctor is RENDERING must
+# never be reported as "not found" (to a human) or as focus_matched=None-with-a-
+# parked-cursor (to an agent). See docs/agent-screen-model.md "focus verdict".
+# ---------------------------------------------------------------------------
+
+
+def _doctor_frame_text(frames: list) -> str:  # noqa: ANN001
+    console = Console(width=120, record=True, file=io.StringIO())
+    console.print(frames[-1])
+    return console.export_text()
+
+
+def _runnable_fix(title: str, *, probe_id: str, remedy_id: str) -> Fix:
+    return Fix(
+        title,
+        f"worker {remedy_id}",
+        remedy_id=remedy_id,
+        probe_id=probe_id,
+        capability_key="noop",
+    )
+
+
+def _display_only_fix(title: str, *, probe_id: str, remedy_id: str) -> Fix:
+    return Fix(title, f"worker {remedy_id}", remedy_id=remedy_id, probe_id=probe_id)
+
+
+def _unrelated_probe() -> Probe:
+    """The state-changing remedy a mis-parked cursor would run by mistake."""
+    return Probe(
+        "Lock",
+        "error",
+        "stale lock",
+        _runnable_fix("Remove stale lock", probe_id="p.lock", remedy_id="remedy.lock"),
+        "p.lock",
+        "rev-1",
+    )
+
+
+def _focus_case(target: str) -> tuple[list[Probe], list[Fix], str, str, str | None]:
+    """(target probes, extra fixes, focus, expected state, title focus must select)."""
+    auth = _runnable_fix("Open auth", probe_id="p.auth", remedy_id="remedy.auth")
+    display = _display_only_fix("Re-auth in browser", probe_id="p.auth", remedy_id="remedy.auth")
+    if target == "probe_one_runnable":
+        return (
+            [Probe("Auth", "error", "expired", auth, "p.auth", "rev-1")],
+            [],
+            "p.auth",
+            ("matched"),
+            "Open auth",
+        )
+    if target == "probe_many_runnable":
+        alternate = _runnable_fix("Open auth another way", probe_id="p.auth", remedy_id="remedy.b")
+        return (
+            [Probe("Auth", "error", "expired", auth, "p.auth", "rev-1")],
+            [alternate],
+            "p.auth",
+            "matched",
+            "Open auth",
+        )
+    if target == "probe_display_only_fix":
+        return (
+            [Probe("Auth", "error", "expired", display, "p.auth", "rev-1")],
+            [],
+            "p.auth",
+            ("present"),
+            None,
+        )
+    if target == "probe_no_fix":
+        return (
+            [Probe("Auth", "ok", "Recovered", None, "p.auth", "rev-2")],
+            [],
+            "p.auth",
+            ("present"),
+            None,
+        )
+    if target == "duplicate_probe_id":
+        twin = _runnable_fix("Open auth twin", probe_id="p.auth", remedy_id="remedy.twin")
+        return (
+            [
+                Probe("Auth", "error", "expired", auth, "p.auth", "rev-1"),
+                Probe("Auth twin", "error", "expired", twin, "p.auth", "rev-1"),
+            ],
+            [],
+            "p.auth",
+            "ambiguous",
+            None,
+        )
+    if target == "remedy_id_runnable":
+        return (
+            [Probe("Auth", "error", "expired", auth, "p.auth", "rev-1")],
+            [],
+            "remedy.auth",
+            ("matched"),
+            "Open auth",
+        )
+    if target == "remedy_id_display_only":
+        return (
+            [Probe("Auth", "error", "expired", display, "p.auth", "rev-1")],
+            [],
+            "remedy.auth",
+            ("present"),
+            None,
+        )
+    if target == "duplicate_remedy_id":
+        twin = _runnable_fix("Open auth twin", probe_id="p.twin", remedy_id="remedy.auth")
+        return (
+            [
+                Probe("Auth", "error", "expired", auth, "p.auth", "rev-1"),
+                Probe("Auth twin", "error", "expired", twin, "p.twin", "rev-1"),
+            ],
+            [],
+            "remedy.auth",
+            "ambiguous",
+            None,
+        )
+    if target == "dangling_probe_id_runnable":
+        return (
+            [Probe("Host", "error", "expired", auth, "p.host", "rev-1")],
+            [],
+            "p.auth",
+            ("matched"),
+            "Open auth",
+        )
+    if target == "dangling_probe_id_display_only":
+        return (
+            [Probe("Host", "error", "expired", display, "p.host", "rev-1")],
+            [],
+            "p.auth",
+            ("present"),
+            None,
+        )
+    sync = _runnable_fix("Open sync", probe_id="p.sync", remedy_id="remedy.sync")
+    return [Probe("Sync", "warn", "stale", sync, "p.sync", "rev-1")], [], "p.auth", "unknown", None
+
+
+_FOCUS_VERDICT_LINES = {
+    "matched": "{focus} matched",
+    "present": "{focus} present — no runnable remedy",
+    "ambiguous": "{focus} ambiguous — review selection",
+    "unknown": "{focus} not found — review selection",
+}
+
+
+@pytest.mark.parametrize(
+    "focus_target",
+    [
+        "probe_one_runnable",
+        "probe_many_runnable",
+        "probe_display_only_fix",
+        "probe_no_fix",
+        "duplicate_probe_id",
+        "remedy_id_runnable",
+        "remedy_id_display_only",
+        "duplicate_remedy_id",
+        "dangling_probe_id_runnable",
+        "dangling_probe_id_display_only",
+        "absent",
+    ],
+)
+@pytest.mark.parametrize("target_position", ["first", "last"])
+@pytest.mark.parametrize("entry", ["direct", "capability_open"])
+def test_doctor_focus_verdict_matrix(
+    focus_target: str,
+    target_position: str,
+    entry: str,
+) -> None:
+    """One focus decision, two projections, four honest verdicts.
+
+    Every cell asserts the Rich line, ``meta['focus_matched']``/``meta['focus_state']``
+    and ``model.selection`` TOGETHER — a verdict that is honest in one projection and
+    wrong in the other is the defect this matrix exists to catch.
+    """
+    target_probes, extra_fixes, focus, expected_state, matched_title = _focus_case(focus_target)
+    probes = (
+        [*target_probes, _unrelated_probe()]
+        if target_position == "first"
+        else [_unrelated_probe(), *target_probes]
+    )
+    models: list = []
+    screen = _Screen()
+    host = replace(
+        _host(probes),
+        doctor_fixes_for=lambda current: [*fixes_for(current), *extra_fixes],
+        on_screen=models.append,
+    )
+    # Independent derivation of the expected row: the ordinal of the remedy whose
+    # TITLE focus must select, among the rows Doctor numbers (non-display-only).
+    all_fixes = host.doctor_fixes_for(probes)
+    runnable_titles = [
+        fix.title for fix in all_fixes if fix.run is not None or fix.capability_key is not None
+    ]
+    if entry == "capability_open":
+        register_capability(
+            CapabilitySpec(
+                key="doctor",
+                shelf="C",
+                title="Doctor",
+                summary="deep health check",
+                equivalent_cli="worker doctor",
+            )
+        )
+        shell._open_capability(host, "doctor", screen, _keys([]), focus=focus)
+    else:
+        shell._doctor(host, screen, _keys([]), focus=focus)
+
+    model = [frame for frame in models if frame.kind == "doctor"][-1]
+    text = _doctor_frame_text(screen.frames)
+
+    assert model.meta["focus_requested"] == focus
+    assert model.meta["focus_state"] == expected_state
+    if expected_state == "matched":
+        assert matched_title is not None
+        assert model.meta["focus_matched"] == focus
+        assert model.selection == f"fix:{runnable_titles.index(matched_title)}"
+    else:
+        assert model.meta["focus_matched"] is None
+        # Present-but-not-actionable must not park the cursor on an unrelated
+        # state-changing remedy; unknown/ambiguous keep the documented visible
+        # first-row fallback.
+        assert model.selection == (None if expected_state == "present" else "fix:0")
+    assert _FOCUS_VERDICT_LINES[expected_state].format(focus=focus) in " ".join(text.split())
+    # The identity is never reported as absent while Doctor is rendering it.
+    if expected_state != "unknown":
+        assert f"{focus} not found" not in " ".join(text.split())

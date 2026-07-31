@@ -18,7 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
-from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, action_kind
+from clonway_cockpit.doctor import DoctorActionKind, DoctorFocusState, Fix, Probe, action_kind
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -399,6 +399,41 @@ def render_help(
     return page(Group(screen_header("help", "Keys", "any key to return"), Text(""), body))
 
 
+_FOCUS_VERDICTS = {
+    DoctorFocusState.MATCHED: ("✓ ", "green", "{identity} matched"),
+    DoctorFocusState.PRESENT: ("⚠ ", ACCENT, "{identity} present — no runnable remedy"),
+    DoctorFocusState.AMBIGUOUS: ("⚠ ", ACCENT, "{identity} ambiguous — review selection"),
+    DoctorFocusState.UNKNOWN: ("⚠ ", ACCENT, "{identity} not found — review selection"),
+}
+
+
+def _focus_line(
+    focus_requested: str,
+    focus_matched: str | None,
+    focus_state: str | None,
+) -> Text:
+    """The human projection of the focus verdict — the same four states the model
+    reports in ``meta.focus_state``, so neither projection can claim a target is
+    absent while the other shows it on screen.
+
+    ``focus_state=None`` is the legacy two-valued call (matched / not): derive the
+    verdict from ``focus_matched`` so an older caller renders exactly as before."""
+    state = focus_state or (
+        DoctorFocusState.MATCHED if focus_matched is not None else DoctorFocusState.UNKNOWN
+    )
+    glyph, glyph_style, template = _FOCUS_VERDICTS.get(
+        DoctorFocusState(state), _FOCUS_VERDICTS[DoctorFocusState.UNKNOWN]
+    )
+    matched = state == DoctorFocusState.MATCHED
+    line = Text("focus     ", style="bold")
+    line.append(glyph, style=glyph_style)
+    line.append(
+        template.format(identity=focus_matched if matched else focus_requested),
+        style=DIM if matched else ACCENT,
+    )
+    return line
+
+
 def render_doctor(
     probes: list[Probe],
     fixes: list[Fix],
@@ -409,6 +444,7 @@ def render_doctor(
     app_label: str = "xbook",
     focus_requested: str | None = None,
     focus_matched: str | None = None,
+    focus_state: str | None = None,
 ) -> RenderableType:
     """The Doctor screen — the same probe table + verdict as the static view, but
     the fixes become a navigable list. ``selected`` indexes the RUNNABLE fixes
@@ -445,17 +481,7 @@ def render_doctor(
     parts: list[RenderableType] = [head, Rule(style=DIM), probe_body, Rule(style=DIM), vline]
 
     if focus_requested is not None:
-        focus_line = Text("focus     ", style="bold")
-        if focus_matched is not None:
-            focus_line.append("✓ ", style="green")
-            focus_line.append(f"{focus_matched} matched", style=DIM)
-        else:
-            focus_line.append("⚠ ", style=ACCENT)
-            focus_line.append(
-                f"{focus_requested} not found — review selection",
-                style=ACCENT,
-            )
-        parts.append(focus_line)
+        parts.append(_focus_line(focus_requested, focus_matched, focus_state))
 
     if fixes:
         parts.append(Text(""))

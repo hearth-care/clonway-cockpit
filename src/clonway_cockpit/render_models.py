@@ -18,7 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
-from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, action_kind
+from clonway_cockpit.doctor import DoctorActionKind, DoctorFocusState, Fix, Probe, action_kind
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -383,6 +383,19 @@ def model_doctor_confirm(fix) -> ScreenModel:  # noqa: ANN001 — mirrors render
     )
 
 
+def _focus_state_value(
+    focus_requested: str | None,
+    focus_matched: str | None,
+    focus_state: str | None,
+) -> str | None:
+    """The wire value of the focus verdict — ``None`` iff no focus was requested."""
+    if focus_requested is None:
+        return None
+    if focus_state is not None:
+        return str(DoctorFocusState(focus_state))
+    return str(DoctorFocusState.MATCHED if focus_matched is not None else DoctorFocusState.UNKNOWN)
+
+
 def model_doctor(
     probes: list[Probe],
     fixes: list[Fix],
@@ -393,11 +406,19 @@ def model_doctor(
     app_label: str = "xbook",
     focus_requested: str | None = None,
     focus_matched: str | None = None,
+    focus_state: str | None = None,
 ) -> ScreenModel:
     """The semantic twin of :func:`render_doctor`. ``selected`` indexes the RUNNABLE
     fixes (those with a ``run``), matching the render. The read-only "what you reach
     for" usage block is telemetry display, not navigable structure, so it is not
-    semanticised here (its presence is flagged in ``meta``)."""
+    semanticised here (its presence is flagged in ``meta``).
+
+    ``focus_state`` is the four-valued verdict (``matched``/``present``/
+    ``ambiguous``/``unknown``) the Rich ``focus`` line paints — an agent must read
+    it, not just ``focus_matched``, to tell "your target is not here" from "your
+    target is here but has no runnable remedy". ``focus_matched`` stays strictly
+    "the selected row is the one your focus asked for", so it is non-``None``
+    exactly when the state is ``matched``."""
     # Build the fixes first so we can give each probe a ``fix_id`` cross-reference —
     # the ``Probe.fix`` relationship the render shows by adjacency but the flat lists
     # would otherwise drop. Match by object identity (fixes_for returns the probes'
@@ -471,6 +492,9 @@ def model_doctor(
         "ok": warns == 0 and errs == 0,
         "focus_requested": focus_requested,
         "focus_matched": focus_matched,
+        # Additive: absent focus → no verdict. A legacy two-valued caller that
+        # passes only focus_matched still gets a coherent state.
+        "focus_state": _focus_state_value(focus_requested, focus_matched, focus_state),
     }
     if usage:
         meta["usage_present"] = True

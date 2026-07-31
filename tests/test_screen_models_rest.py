@@ -164,6 +164,7 @@ def test_doctor_model_parity_and_selection():
         "ok": False,
         "focus_requested": None,
         "focus_matched": None,
+        "focus_state": None,
     }
     assert m.actions[:4] == ["up", "down", "enter", "q"]
 

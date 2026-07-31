@@ -34,6 +34,29 @@ class DoctorClosure(StrEnum):
     UNKNOWN = "unknown"
 
 
+class DoctorFocusState(StrEnum):
+    """What Doctor decided about a requested focus — the SAME verdict in both
+    projections (the Rich ``focus`` line and ``meta.focus_state``).
+
+    The verdict answers "did the identity resolve, and is it actionable?" — two
+    independent questions that a two-valued matched/not-found signal conflates.
+    An identity Doctor is currently RENDERING is never ``unknown``: saying "not
+    found" about a probe on screen is false to the operator and sends a driving
+    agent down an escalation path for a target that is fine."""
+
+    MATCHED = "matched"
+    """Resolved to exactly one runnable remedy, and the cursor is on it."""
+    PRESENT = "present"
+    """Resolved to exactly one rendered target that has no runnable remedy (a
+    display-only fix, or a probe carrying none). No row is pre-selected — the
+    cursor must not be parked on an unrelated state-changing remedy."""
+    AMBIGUOUS = "ambiguous"
+    """Claimed by two or more targets. Fails closed: the visible first-row
+    fallback is selected, but the focus did NOT authorize it."""
+    UNKNOWN = "unknown"
+    """Nothing Doctor renders claims the identity — the only honest "not found"."""
+
+
 def _validate_identity(value: str, field_name: str, *, allow_empty: bool = True) -> None:
     if not value and allow_empty:
         return
