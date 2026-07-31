@@ -93,6 +93,10 @@ then pin the merged revision and implement only domain diagnosis/remedies.
 numbered/selectable, focused selection follows stable remedy identity through rebuilds, capability
 actions retain the guarded-write route, attempted actions re-probe and emit one receipt, and
 operators must review a refreshed selection when the target disappears or identity is ambiguous.
+A follow-up delta records the corrected focus reading: a focused Doctor screen shows `✓ … matched`
+only while the cursor is on the focused remedy (otherwise `⚠ … matched — cursor on row N`), and a
+remedy that leaves its own probe present-but-not-actionable clears the cursor, so the operator
+presses one reveal key before ⏎ acts.
 
 ## Implemented public contract
 
@@ -118,9 +122,17 @@ in agent mode. Report classifier and receipt observer failures are isolated and 
 exception text through framework-generated receipt copy.
 
 ScreenModel fields are additive, so the wire protocol remains `schema_version = "1.0"`. Doctor
-probe/remedy rows now carry stable identity/action fields; metadata carries requested/matched
-focus. Human, in-process agent, `serve_stdio`, and true subprocess `CockpitClient` drives cover the
-same route.
+probe/remedy rows now carry stable identity/action fields; metadata carries the requested focus
+plus three non-contradicting facts about it — `focus_state` (the resolution verdict),
+`focus_row` (where it resolved) and `focus_matched` (whether the cursor is on that row). Human,
+in-process agent, `serve_stdio`, and true subprocess `CockpitClient` drives cover the same route.
+
+One pairing decision (`doctor.pair_remedies`) backs the dispatch list, the receipt attribution,
+the Rich table and the modeled `fix_id` cross-reference, so a worker that normalizes its
+`doctor_fixes_for` output while preserving stable IDs keeps its probe↔remedy relation on the wire.
+Selection visibility is derived from the current focus resolution on every frame, including after
+a rebuild: a `present` focus arms nothing, and an explicit operator choice is authoritative only
+under the snapshot it was made in.
 
 ## Consumer pin handoff
 

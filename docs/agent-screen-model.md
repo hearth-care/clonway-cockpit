@@ -21,7 +21,7 @@ any agent script that asserts on it.
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |
 | `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix`) |
-| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched`, `focus_state` |
+| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched`, `focus_state`, `focus_row` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |
 | `walk.review` | per-walk line-item rows (e.g. `window:<date>`/`bill:<id>`/`settle:<i>`) | **`equivalent_cli`** (the apply command — canonical on every review), plus totals/counts + a full per-item detail list in `meta` |
@@ -94,6 +94,14 @@ Workers should use stable, namespaced IDs (for example `source.feed.health` and
 changes. Legacy empty IDs remain accepted, but a remedy receipt cannot correlate them and reports
 closure as `unknown`.
 
+The probe's `fix_id` names the row rendering that probe's own `Fix`, and it comes from the **same
+pairing decision** the shell dispatches and receipts from — so what an agent reads as "this probe
+owns that remedy" is exactly what ⏎ will act on. It resolves by object identity first, then
+through that pairing, which is what keeps the link alive for a worker whose `doctor_fixes_for`
+normalizes or rebuilds its fixes while preserving stable IDs. A probe whose fix is not rendered,
+or whose remedy identity is claimed by more than one probe, carries **no** `fix_id` rather than a
+guessed one — the same fail-closed rule the dispatch pairing uses.
+
 The three action kinds are:
 
 - `display_only`: shown but not selectable; the operator uses the equivalent CLI or documentation;
@@ -105,30 +113,43 @@ The three action kinds are:
 
 A Home need may target `capability_key="doctor"` with a probe or remedy ID as `focus`. Doctor
 resolves the identity against everything it renders — the full probe snapshot and the full fix
-list, including display-only fixes — matching a probe first, then a remedy, and reports the
-decision as a four-valued `focus_state`. The Rich `focus` line and the model meta are the two
-projections of that one verdict:
+list, including display-only fixes — matching a probe first, then a remedy. The Rich `focus` line
+and the model meta are two projections of one decision, published as three facts that can never
+contradict each other:
 
-| `focus_state` | Meaning | `focus_matched` | `selection` |
+- **`focus_state`** — the four-valued **resolution** verdict. It answers "did the identity
+  resolve, and is it actionable?" and is *independent of where the cursor is*.
+- **`focus_row`** — the row id the focus resolved to, or `null`. Non-null exactly when
+  `focus_state` is `matched`, so a driver whose cursor has moved knows where to move back to.
+- **`focus_matched`** — strictly "the **selected** row IS the one you asked for": the requested
+  ID when `focus_state` is `matched` *and* `selection == focus_row`, otherwise `null`.
+
+| `focus_state` | Meaning | `focus_row` | `selection` on entry |
 |---|---|---|---|
-| `matched` | Resolved to exactly one runnable remedy | the requested ID | that remedy |
+| `matched` | Resolved to exactly one runnable remedy | that remedy's row | that remedy |
 | `present` | Resolved to exactly one rendered target that has **no runnable remedy** (a display-only fix, or a probe carrying none) | `null` | `null` — **no row is pre-selected** |
 | `ambiguous` | Two or more probes, or two or more remedies, claim the ID | `null` | the visible first row (fail-closed fallback, *not* authorized by the focus) |
 | `unknown` | Nothing Doctor renders claims the ID | `null` | the visible first row |
 
-`focus_matched` stays strictly "the selected row is the one you asked for", so it is non-null
-exactly when the state is `matched`. **A driving agent must branch on `focus_state`, not on
-`focus_matched` alone**: `present` means "your target is on screen, it just has no remedy to
-run", which is a different decision from `unknown`. An identity Doctor is currently rendering is
-never `unknown` — reporting a visible probe as "not found" is false in both projections.
+**A driving agent must branch on `focus_state`, not on `focus_matched` alone**: `present` means
+"your target is on screen, it just has no remedy to run", which is a different decision from
+`unknown`. An identity Doctor is currently rendering is never `unknown` — reporting a visible
+probe as "not found" is false in both projections. Conversely, **only `focus_matched` licenses
+⏎**: a resolved focus the cursor has navigated away from still reports `focus_state="matched"`,
+but ⏎ would run the row under the cursor, not your target. The Rich line says the same thing —
+`✓ <id> matched` only while the cursor is on it, otherwise `⚠ <id> matched — cursor on row N`.
 
-`present` deliberately pre-selects nothing so ⏎ cannot run an unrelated state-changing remedy
-that happens to sit at row 1. The first ↑/↓/⏎ reveals the fallback cursor without running it; a
-numbered key is an explicit choice and still runs directly. An empty `focus` (`""`) is treated as
-no focus at all, not as a focus on the empty ID that legacy probes carry.
+Selection visibility is derived from the current resolution on **every** frame, including after
+a remedy rebuilds the report. `present` deliberately pre-selects nothing so ⏎ cannot run an
+unrelated state-changing remedy that happens to sit at row 1; the first ↑/↓/⏎ reveals the
+fallback cursor without running it, and a numbered key is an explicit choice that still runs
+directly. An explicit choice is authoritative only under the snapshot it was made in — a rebuild
+is a new snapshot, so a remedy that leaves its own probe present-but-not-actionable re-hides the
+cursor rather than silently arming a neighbour. An empty `focus` (`""`) is treated as no focus at
+all, not as a focus on the empty ID that legacy probes carry.
 
-`focus_state` is additive — absent focus reports `null`, and the protocol `schema_version` is
-unchanged.
+`focus_state`/`focus_row` are additive — absent focus reports `null`, and the protocol
+`schema_version` is unchanged.
 
 After any selected action, Doctor re-probes the same stable `probe_id` and constructs one
 `DoctorRemedyReceipt`. `resolved` means the probe is absent from a successful rebuild;

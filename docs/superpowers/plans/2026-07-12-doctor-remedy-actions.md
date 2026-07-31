@@ -485,10 +485,10 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 
 ## HANDOFF NOTES
 
-- Current phase: both QA FAIL round 4 cardinality findings are fixed; the rebased code-head full
-  gate sequence is green.
-- Next concrete step: commit/push this final handoff receipt, repeat the complete gate sequence at
-  that documentation head, verify a clean synchronized worktree, then execute the finish protocol.
+- Current phase: QA FAIL round 6 (all three findings) is fixed; the full local gate sequence is
+  green at the code head.
+- Next concrete step: repeat the complete gate sequence at the documentation head, post the
+  runbook delta, verify a clean synchronized worktree, then execute the finish protocol.
 - Decisions: focus resolves probe identity against the full probe snapshot, where exactly one
   matching probe may own one or many remedies; the first matching runnable remedy is selected.
   Duplicate probe IDs and duplicate remedy IDs remain fail-closed.
@@ -655,3 +655,57 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   #116's public `open_capability`/`run_doctor` seams delegate to the private
   `_open_capability`/`_doctor` this PR changed, so the focus verdict reaches the public seam with
   no second code path.
+- QA FAIL round 6 diagnosis: all three findings were one class —
+  `doctor-remedy-state-coherence`. Doctor derived "which remedy is armed", "where did the focus
+  resolve" and "which probe owns this remedy" in more than one place, so a frame could claim one
+  thing while ⏎ did another. Fixed as one rewrite of the derivation, not three patches.
+- QA FAIL round 6 finding 1 GREEN: `selection_visible` was computed only inside the
+  `focus_pending` branch, so it went stale on rebuild. It is now DERIVED every frame from the
+  current focus decision (`explicit_selection or decision.row is not None or
+  decision.fallback_selection`). `explicit_selection` is the one override and is cleared at every
+  rebuild — an operator's choice is authoritative only under the snapshot it was made in, so a
+  remedy that turns its own probe present-but-not-actionable re-hides the cursor instead of
+  leaving an unrelated state-changing remedy one ⏎ away. A digit key now also moves `sel`, so the
+  numbered choice and the cursor never disagree.
+- QA FAIL round 6 finding 2 GREEN: resolution and selection are separated with ONE derivation.
+  `_FocusDecision` carries the resolution (`state`, `row`); `_FocusDecision.matched_identity(sel)`
+  is the projected `focus_matched` and returns the identity only when the cursor is on the
+  resolved row. A new additive `meta.focus_row` publishes where the focus resolved, so
+  "matched but the cursor moved" is navigable rather than merely reported. The Rich line paints
+  the same fact: `✓ <id> matched` on the row, `⚠ <id> matched — cursor on row N` off it.
+  `docs/agent-screen-model.md` now documents `focus_state` as the RESOLUTION verdict and
+  `focus_matched` as the selection-match fact, and states that only `focus_matched` licenses ⏎.
+- QA FAIL round 6 finding 3 GREEN: `model_doctor` kept a second, object-identity-only probe→remedy
+  relation. Both projections and the dispatch list now read one `doctor.pair_remedies` result,
+  which returns an ordered `DoctorRemedyRow(fix, probe, probe_index, row_id, kind, run_index)` for
+  EVERY rendered fix (display-only included, so probes carrying one keep their link).
+  `doctor.probe_fix_links` resolves a probe's `fix_id` by object identity first, then through that
+  pairing — which is what keeps the link alive for a stable-ID clone — and omits the link entirely
+  when the identity is claimed by more than one probe.
+- QA FAIL round 6 recurrence matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_remedy_state_coherence_matrix` crosses
+  focus shape (`matched_runnable`, `present_display_only`, `present_no_fix`, `ambiguous`,
+  `unknown`) x cursor action (`none`, `up`, `down`, `digit`) x remedy pairing (`same_object`,
+  `stable_id_clone`, `unpaired_global`) for 60 generated cells. Every cell asserts the Rich ❯
+  cursor, `selection`, `focus_state`, `focus_row`, `focus_matched`, the probe `fix_id` links and
+  which callback ran, on the same frame. The focus target is deliberately never row 1, so "the
+  focus selected this" cannot be confused with the fail-closed first-row fallback.
+- QA FAIL round 6 targeted matrices: `test_moving_the_cursor_off_a_focused_remedy_stops_claiming_a_match`
+  crosses focus identity (`unique_probe_id`, `one_probe_many_remedies`, `unique_remedy_id`) x
+  movement (`up`, `down`) for 6 no-action cells; `test_modeled_probe_fix_link_uses_the_dispatch_pairing`
+  crosses pairing (`same_object`, `equal_clone`, `stable_id_clone`, `shared_equal_values`,
+  `unpaired`, `ambiguous_duplicate_id`) x display layout (`absent`, `interleaved`) for 12 cells;
+  `test_focus_verdict_stays_honest_across_a_rebuild` crosses after-shape (`recovered_no_fix`,
+  `display_only`, `absent`, `duplicated`, `still_runnable`) x selection provenance
+  (`focused_enter`, `manual_arrow`, `manual_digit`) for 15 cells, each driving one extra ⏎ after
+  the rebuild and asserting zero further callbacks in the `present` cells.
+- QA FAIL round 6 corrected false-green expectations: the 60-cell rebuild matrix's 15
+  manual-selection cells asserted `focus_matched` while `selection` named another remedy — they
+  now assert `focus_state`/`focus_row` survive and `focus_matched` is `None`. The 8-cell rebuild
+  verdict test asserted a selected row for its `present` cells; it is now 15 cells and asserts no
+  cursor and no callback there.
+- QA FAIL round 6 mutation proof (the matrices are adversarial, not merely green): reverting the
+  visibility derivation reddens 24 of the 60 coherence cells and 6 rebuild cells; a cursor-blind
+  `focus_matched` reddens 9 coherence cells and all 6 cursor cells; an object-identity-only probe
+  link reddens 20 coherence cells and 6 pairing cells.
+- QA FAIL round 6 known-failing tests: none.
