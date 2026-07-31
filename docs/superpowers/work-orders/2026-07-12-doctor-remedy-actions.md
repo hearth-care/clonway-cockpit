@@ -305,3 +305,18 @@ Foundry completes only when hermetic public-path tests prove:
   offending commit message without changing its tree; verified the PR history contains no
   prohibited co-author/AI trailer; pushed the rewritten history with an exact lease.
 - Known-failing tests: none.
+- QA round 6 (`doctor-remedy-state-coherence`): the three findings were one defect — Doctor
+  derived "which remedy is armed", "where the focus resolved" and "which probe owns this remedy"
+  in more than one place. Closed by a single derivation each: `doctor.pair_remedies` now backs
+  the dispatch list, both projections and the receipt attribution; selection visibility is derived
+  from the current focus resolution on every frame (an explicit operator choice survives only
+  within its own snapshot, so a rebuild re-hides a `present` cursor); and `focus_state`/`focus_row`
+  (resolution) are separated from `focus_matched` (the cursor is on the resolved row), with the
+  Rich line painting the same distinction.
+- QA round 6 recurrence matrix: `test_doctor_remedy_state_coherence_matrix` crosses focus shape (5)
+  x cursor action (4) x remedy pairing (3) = 60 cells, each asserting the Rich cursor, `selection`,
+  `focus_state`, `focus_row`, `focus_matched`, the probe `fix_id` links and the executed callback
+  on one frame. Supporting matrices: no-action cursor 3x2, projection pairing 6x2, rebuild verdict
+  5x3. Mutation-verified: each reverted fix reddens 9-24 coherence cells plus 6 targeted cells.
+- QA round 6 protocol: `meta.focus_row` is additive; `schema_version` stays `1.0`.
+- Known-failing tests: none.
