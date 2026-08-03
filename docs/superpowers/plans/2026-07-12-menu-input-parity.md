@@ -165,6 +165,8 @@ equivalent key.
     `clonway_cockpit.render`.
   - `render_menu`/`model_menu` now take `Sequence[MenuItem | tuple[str,str,str]]` (legacy tuples
     still accepted, normalized once at the boundary).
+  - `render_chrome.parse_menu_ordinal(value)` is the one fail-closed source for canonical legacy
+    ASCII-decimal ordinals in both tuple normalization and shell agent-alias dispatch.
   - `shell._shelf()` builds `MenuItem`s directly and dispatches through one `by_shortcut` map
     (normalized to lowercase) plus a narrow multi-character-digit legacy ordinal alias branch.
   - `state.NeedsItem.actions: tuple[str, ...] = ()` (appended last, after `source_id`) and
@@ -262,9 +264,11 @@ code.
   loudly at both public render/model boundaries.
 - **QA findings 2–4 RED/GREEN:** generated axes are
   `{numeric sequence, numeric offset/multi-digit, nonnumeric, mixed positional collision, mixed
-  noncollision, empty, duplicate, Unicode-like} × {first selection, last selection}` = 16 cells.
-  All 16 failed before the grammar rewrite; the focused file now passes
-  `70 passed in 0.22s` via `uv run pytest -q tests/test_menu_input_parity.py`.
+  noncollision, empty, duplicate, Unicode-like, oversized ASCII decimal} ×
+  `{first selection, last selection}` = 18 cells. All 18 failed before the grammar rewrite/shared
+  parser; the focused file now passes `73 passed in 0.56s` via
+  `uv run pytest -q tests/test_menu_input_parity.py`. The shell grammar matrix also includes an
+  oversized ASCII decimal and proves it stays inert before the next valid action.
 - **Current phase / next concrete step:** QA findings 1–4 are GREEN and all local gates pass. Commit
   this final evidence, verify the exact pushed head with a clean worktree, then run the finish
   protocol (`ready` → `agent:needs-qa` → one DONE comment).
@@ -272,7 +276,7 @@ code.
   tests/test_menu_input_parity.py tests/test_screen_models.py tests/test_screen_models_rest.py
   tests/test_render_primitives.py tests/test_model.py tests/test_home_actions.py
   tests/test_agent_driver.py tests/test_contract.py tests/test_serve_stdio.py` →
-  `351 passed in 1.01s`.
+  `354 passed in 2.74s`.
 - **Post-fix full gates:** `uv run pytest -q` → `1618 passed in 37.55s`;
   `uv run ruff check src tests` → `All checks passed!`;
   `uv run ruff format --check src tests` → `162 files already formatted`;

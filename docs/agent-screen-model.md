@@ -79,6 +79,8 @@ an agent that cached an older framework's advertised `"10"`-style value still wo
 never rendered, never appears in `ScreenModel.actions`, and two separate single-character
 presses (`"1"` then `"0"`) can never combine into it — each key dispatches (or doesn't)
 immediately. Leading-zero, Unicode digit-like, mixed, unknown and out-of-range strings are inert.
+An oversized ASCII decimal that Python cannot safely convert is also inert; it cannot crash the
+session.
 
 ## Driving headlessly
 

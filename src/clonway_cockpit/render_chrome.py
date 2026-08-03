@@ -234,6 +234,22 @@ def _is_valid_menu_shortcut(value: str) -> bool:
     return value.isdigit() or (value.isalpha() and value.islower())
 
 
+def parse_menu_ordinal(value: str) -> int | None:
+    """Return a canonical positive ASCII-decimal ordinal, else ``None``.
+
+    This is the shared boundary grammar for legacy tuple identities and agent
+    aliases. Conversion is guarded because Python deliberately rejects extremely
+    long decimal strings; malformed/unbounded input must stay inert, not crash a
+    render or session.
+    """
+    if not value or not value.isascii() or not value.isdecimal() or value.startswith("0"):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class MenuItem:
     """One normalized shelf/menu row: a stable ordinal row identity, its
@@ -299,12 +315,9 @@ def normalize_menu_items(
     """
     claimed_ordinals = {opt.ordinal for opt in options if isinstance(opt, MenuItem)}
     claimed_ordinals.update(
-        int(opt[0])
+        ordinal
         for opt in options
-        if not isinstance(opt, MenuItem)
-        and opt[0].isascii()
-        and opt[0].isdecimal()
-        and int(opt[0]) > 0
+        if not isinstance(opt, MenuItem) and (ordinal := parse_menu_ordinal(opt[0])) is not None
     )
 
     next_fallback = 1
@@ -325,11 +338,9 @@ def normalize_menu_items(
             continue
         key, title, summary = opt
         shortcut = key if _is_valid_menu_shortcut(key) else None
-        ordinal = (
-            int(key)
-            if key.isascii() and key.isdecimal() and int(key) > 0
-            else take_fallback_ordinal()
-        )
+        ordinal = parse_menu_ordinal(key)
+        if ordinal is None:
+            ordinal = take_fallback_ordinal()
         items.append(
             MenuItem(
                 ordinal=ordinal,

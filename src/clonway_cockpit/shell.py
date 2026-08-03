@@ -742,6 +742,7 @@ def _shelf(
         _safe_emit(host, r.model_menu(menu_title, menu_items, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
+        legacy_ordinal = render.parse_menu_ordinal(key) if len(key) > 1 else None
         if low in ("q", keys.ESC):
             return
         # Backspace in shelf menu = go back (pop the stack frame that got us here).
@@ -764,13 +765,7 @@ def _shelf(
             # routes (never a second, differently-cased action).
             _open_capability(host, specs[by_shortcut[low]].key, screen, read_key, _nav=_nav)
             return
-        elif (
-            len(key) > 1
-            and key.isascii()
-            and key.isdecimal()
-            and not key.startswith("0")
-            and 1 <= (legacy_ordinal := int(key)) <= n
-        ):
+        elif legacy_ordinal is not None and legacy_ordinal <= n:
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
             # ordinal (e.g. "10") that no human raw keypress can ever produce in
             # one token. Never advertised (absent from actions/Rich); kept so an

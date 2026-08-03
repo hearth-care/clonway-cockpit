@@ -83,7 +83,9 @@ legacy tuples and `MenuItem`; normalize once at their boundary. A legacy tuple `
 today's ordinal/shortcut behavior. Every other legacy tuple preserves its exact key as row identity;
 positive ASCII-decimal keys also supply the internal ordinal, while nonnumeric/empty keys receive
 the lowest free positive ordinal excluding all numeric/direct claims in that menu. Duplicate exact
-identities fail loudly. A legacy key becomes a shortcut only when it passes the ASCII one-character
+identities fail loudly. The shared ordinal parser returns no ordinal for leading-zero, Unicode-like,
+mixed or conversion-limit-exceeding strings; these keep exact identity with a free fallback rather
+than crashing. A legacy key becomes a shortcut only when it passes the ASCII one-character
 validator. `_shelf()` constructs `MenuItem` directly.
 
 Keep fresh row IDs stable as `option:<ordinal>` and legacy tuple row IDs stable as their historical

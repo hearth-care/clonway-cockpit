@@ -231,6 +231,12 @@ _LEGACY_KEY_GRAMMAR_CASES = [
         [],
         id="unicode-digit-letter-like",
     ),
+    pytest.param(
+        [("9" * 5000, "Oversized decimal", "s"), ("2", "Two", "s")],
+        [f"option:{'9' * 5000}", "option:2"],
+        ["2"],
+        id="oversized-ascii-decimal",
+    ),
 ]
 
 
@@ -449,6 +455,7 @@ def test_unknown_and_malformed_inputs_are_inert_in_shelf_menu():
         ("١٠", "cap-16"),
         ("１２", "cap-16"),
         ("²²", "cap-16"),
+        ("9" * 5000, "cap-16"),
         ("1x", "cap-16"),
         ("xx", "cap-16"),
         ("?", "cap-16"),
