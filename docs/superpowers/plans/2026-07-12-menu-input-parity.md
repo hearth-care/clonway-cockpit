@@ -277,7 +277,7 @@ code.
   tests/test_render_primitives.py tests/test_model.py tests/test_home_actions.py
   tests/test_agent_driver.py tests/test_contract.py tests/test_serve_stdio.py` →
   `354 passed in 2.74s`.
-- **Post-fix full gates:** `uv run pytest -q` → `1618 passed in 37.55s`;
+- **Post-fix full gates:** latest code-head `uv run pytest -q` → `1621 passed in 119.33s`;
   `uv run ruff check src tests` → `All checks passed!`;
   `uv run ruff format --check src tests` → `162 files already formatted`;
   `uv run mypy` → `Success: no issues found in 67 source files`;
@@ -288,5 +288,8 @@ code.
   cockpit seams) before the RED/GREEN work. No semantic conflict or implementation deviation was
   required; `origin/main` is an ancestor of the post-fix head.
 - **Fix commits:** `fix(model): reject malformed action declarations` and
-  `fix(menu): define complete legacy key grammar`.
+  `fix(menu): define complete legacy key grammar`, plus the bounded ordinal/parser checkpoint.
+- **Gate-driven correction:** exact-head mypy caught the shared parser missing from the permanent
+  `clonway_cockpit.render` facade. The explicit re-export is now wired; focused mypy GREEN is
+  `Success: no issues found in 67 source files` and menu GREEN is `73 passed in 0.20s`.
 - **Known-failing tests:** none in completed framework phases.

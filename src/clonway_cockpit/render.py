@@ -57,6 +57,7 @@ from clonway_cockpit.render_chrome import (
     chip,
     normalize_menu_items,
     page,
+    parse_menu_ordinal,
     render_cockpit_screen,
     render_header,
     render_needs_you,
