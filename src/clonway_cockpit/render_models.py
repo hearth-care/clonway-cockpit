@@ -41,19 +41,28 @@ def _selection_id(selection: tuple[str, object] | None) -> str | None:
     return f"{kind}:{ref}"
 
 
-def _normalize_actions(raw: tuple[str, ...]) -> tuple[str, ...]:
-    """Trim, drop empty/whitespace-only/non-printable/non-string values, and
-    de-duplicate a worker-declared action tuple in first-seen order. Tolerant by
-    design: a malformed worker hint (wrong type, a control character) is
-    silently dropped rather than crashing Home or corrupting the frame — the
-    framework can't prove a worker's declaration matches its handler, but it
-    must never let a bad one take the screen down."""
+def _normalize_actions(raw: object) -> tuple[str, ...]:
+    """Normalize an untrusted worker action declaration fail-closed.
+
+    Only tuple/list containers are declarations: a bare string must not fan out
+    into character actions, and non-sequences must not crash Home. Tokens are
+    trimmed, printable, whitespace-free key names; commas are rejected because
+    Needs-row actions use a comma-delimited wire field. Valid tokens are
+    de-duplicated in first-seen order.
+    """
+    if not isinstance(raw, (tuple, list)):
+        return ()
     seen: list[str] = []
     for a in raw:
         if not isinstance(a, str):
             continue
         token = a.strip()
-        if not token or not token.isprintable():
+        if (
+            not token
+            or not token.isprintable()
+            or "," in token
+            or any(char.isspace() for char in token)
+        ):
             continue
         if token not in seen:
             seen.append(token)

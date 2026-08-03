@@ -224,7 +224,7 @@ multi-digit agent inputs cannot be retained, overflow would crash, root no-op ca
 existing frame-per-key pump, or the implementation proposes timing/digit buffering or worker-local
 code.
 
-## HANDOFF NOTES — fixer round 2026-07-30
+## HANDOFF NOTES
 
 - **Current phase:** QA findings 1–5 addressed; blocked on finding 6's absent consumer declaration
   implementation.
@@ -242,3 +242,15 @@ code.
   under test is absent from both current Auto-Bookkeeper production and its open #1015 plan branch.
 - **Consumer status:** Auto-Bookkeeper #1014 and #1015 are still open, unmerged plan PRs. No
   consumer implementation has been assumed.
+- **Fixer round 2026-08-03, current phase:** QA finding 1 is GREEN; next concrete step is the
+  recurring legacy-menu-key grammar matrix for findings 2–4.
+- **QA finding 1 decision:** worker action declarations are untrusted at both state fields. Only
+  tuple/list containers are accepted; bare strings and non-sequences normalize to empty. Tokens
+  are trimmed but must remain printable, whitespace-free and comma-free so every fact is one
+  key token and the Needs-row comma-delimited field stays unambiguous.
+- **QA finding 1 RED/GREEN:** the real `run_cockpit` matrix
+  `{home_actions, NeedsItem.actions} × {None, bare string, integer, valid tuple, empty tuple}`
+  failed 6/10 cells before the boundary guard; the focused phase now passes
+  `23 passed in 0.10s` via `uv run pytest -q tests/test_home_actions.py`.
+- **Known-failing tests:** none in completed phases. Findings 2–4 have not yet been implemented;
+  their RED matrix is the next step.
