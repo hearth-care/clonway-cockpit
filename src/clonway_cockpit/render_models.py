@@ -191,13 +191,14 @@ def model_menu(
     exactly the shortcuts Rich renders — no `10`/`11`… fake multi-character tokens
     once a shelf passes nine items. A trailing ``back`` row mirrors the rendered
     Back option. ``selected`` indexes the normalized items, or ``len(items)`` for
-    the Back row (matching the render). Row id stays the stable ``option:<ordinal>``
-    even though the rendered/dispatched shortcut may differ from the ordinal
-    (e.g. ordinal 10 → shortcut ``"a"``)."""
+    the Back row (matching the render). Fresh MenuItems use stable
+    ``option:<ordinal>`` ids; normalized legacy tuples preserve their exact
+    ``option:<key>`` ids. Either identity is independent of the rendered/
+    dispatched shortcut (e.g. fresh ordinal 10 → shortcut ``"a"``)."""
     items = normalize_menu_items(options)
     rows = [
         MRow(
-            id=f"option:{item.ordinal}",
+            id=f"option:{item.row_identity}",
             label=item.title,
             fields=(
                 [MField("summary", item.summary)]
@@ -212,7 +213,7 @@ def model_menu(
     if selected == len(items):
         sel_id = "back"
     elif selected is not None and 0 <= selected < len(items):
-        sel_id = f"option:{items[selected].ordinal}"
+        sel_id = f"option:{items[selected].row_identity}"
     actions = ["up", "down", "enter", "q"] + [item.shortcut for item in items if item.shortcut]
     return ScreenModel(
         kind="shelf_menu",

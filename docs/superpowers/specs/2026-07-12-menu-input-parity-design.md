@@ -73,18 +73,23 @@ class MenuItem:
 Validation:
 
 - ordinal is positive and unique within one menu;
-- shortcut is either `None` or one printable lowercase/digit character;
+- shortcut is either `None` or one ASCII lowercase/digit character;
 - `q` and control/semantic key names are forbidden shortcuts;
 - shortcuts are unique case-insensitively; and
 - title/summary behavior stays current.
 
 `render_menu()` and `model_menu()` are public framework helpers used by tests/workers. Accept both
 legacy tuples and `MenuItem`; normalize once at their boundary. A legacy tuple `("1", ...)` keeps
-today's ordinal/shortcut behavior. `_shelf()` constructs `MenuItem` directly.
+today's ordinal/shortcut behavior. Every other legacy tuple preserves its exact key as row identity;
+positive ASCII-decimal keys also supply the internal ordinal, while nonnumeric/empty keys receive
+the lowest free positive ordinal excluding all numeric/direct claims in that menu. Duplicate exact
+identities fail loudly. A legacy key becomes a shortcut only when it passes the ASCII one-character
+validator. `_shelf()` constructs `MenuItem` directly.
 
-Keep row IDs stable as `option:<ordinal>` and selected IDs likewise. Expose `shortcut` as a row field
-when needed; do not replace stable ordinal identity with the new token. Model `actions` advertises
-only non-None current shortcuts plus `up`, `down`, `enter`, `q`.
+Keep fresh row IDs stable as `option:<ordinal>` and legacy tuple row IDs stable as their historical
+`option:<key>`; selected IDs follow the same identity. Expose `shortcut` as a row field when needed;
+do not replace stable identity with the new token. Model `actions` advertises only non-None current
+shortcuts plus `up`, `down`, `enter`, `q`.
 
 ## 4. Deterministic direct-action tokens
 
@@ -203,7 +208,8 @@ replaced or amended so its key sequence actually contains Backspace and proves a
 - q never assigned; all advertised shortcuts length one and unique;
 - overflow rows blank-token but arrow/Enter reachable;
 - Rich labels, model actions/row fields and dispatch are derived from one normalized tuple; and
-- stable row IDs/selection remain `option:<ordinal>`.
+- stable row IDs/selection remain `option:<ordinal>` for fresh items and exact `option:<key>` for
+  accepted legacy tuples.
 
 ### Exact routing and safety
 

@@ -140,7 +140,7 @@ def test_menu_item_rejects_nonpositive_ordinal():
         MenuItem(ordinal=0, title="x", summary="s")
 
 
-@pytest.mark.parametrize("bad", ["q", "Q", "10", "enter", "", "-", "AB"])
+@pytest.mark.parametrize("bad", ["q", "Q", "10", "enter", "", "-", "AB", "٣", "²", "１", "ª"])
 def test_menu_item_rejects_invalid_shortcut(bad):
     with pytest.raises(ValueError):
         MenuItem(ordinal=1, title="x", summary="s", shortcut=bad)
@@ -180,6 +180,89 @@ def test_normalize_menu_items_rejects_duplicate_shortcuts():
 def test_normalize_menu_items_rejects_duplicate_ordinals():
     with pytest.raises(ValueError):
         normalize_menu_items([MenuItem(1, "A", "s", "a"), MenuItem(1, "B", "s", "b")])
+
+
+_LEGACY_KEY_GRAMMAR_CASES = [
+    pytest.param(
+        [("1", "One", "s"), ("2", "Two", "s")],
+        ["option:1", "option:2"],
+        ["1", "2"],
+        id="numeric-sequence",
+    ),
+    pytest.param(
+        [("7", "Seven", "s"), ("12", "Twelve", "s")],
+        ["option:7", "option:12"],
+        ["7"],
+        id="numeric-offset-multidigit",
+    ),
+    pytest.param(
+        [("a", "Approve", "s"), ("b", "Backfill", "s")],
+        ["option:a", "option:b"],
+        ["a", "b"],
+        id="nonnumeric",
+    ),
+    pytest.param(
+        [("a", "Approve", "s"), ("1", "Details", "s")],
+        ["option:a", "option:1"],
+        ["a", "1"],
+        id="mixed-position-collision",
+    ),
+    pytest.param(
+        [("x", "Export", "s"), ("7", "Seventh", "s")],
+        ["option:x", "option:7"],
+        ["x", "7"],
+        id="mixed-noncollision",
+    ),
+    pytest.param(
+        [("", "No key", "s"), ("2", "Two", "s")],
+        ["option:", "option:2"],
+        ["2"],
+        id="empty-key",
+    ),
+    pytest.param(
+        [("a", "First", "s"), ("a", "Second", "s")],
+        None,
+        None,
+        id="duplicate-key",
+    ),
+    pytest.param(
+        [("٣", "Arabic three", "s"), ("ª", "Ordinal a", "s")],
+        ["option:٣", "option:ª"],
+        [],
+        id="unicode-digit-letter-like",
+    ),
+]
+
+
+@pytest.mark.parametrize(("selection_name", "selected"), [("first", 0), ("last", 1)])
+@pytest.mark.parametrize(
+    ("options", "expected_row_ids", "expected_shortcuts"), _LEGACY_KEY_GRAMMAR_CASES
+)
+def test_legacy_menu_key_grammar_matrix(
+    options, expected_row_ids, expected_shortcuts, selection_name, selected
+):
+    """The accepted legacy-key space has one identity/shortcut rule.
+
+    Row identity preserves the exact legacy key. Only canonical one-character
+    ASCII lowercase/digit keys become advertised shortcuts. Exact duplicate
+    identities are rejected loudly at both public render/model boundaries.
+    """
+    if expected_row_ids is None:
+        with pytest.raises(ValueError, match="row identities must be unique"):
+            render.model_menu("Legacy", options, selected=selected)
+        with pytest.raises(ValueError, match="row identities must be unique"):
+            render.render_menu("Legacy", options, selected=selected)
+        return
+
+    model = render.model_menu("Legacy", options, selected=selected)
+    rich_text = _text(render.render_menu("Legacy", options, selected=selected))
+    rows = model.regions[0].rows[:-1]
+    assert [row.id for row in rows] == expected_row_ids
+    assert model.selection == expected_row_ids[selected]
+    assert model.actions == ["up", "down", "enter", "q", *expected_shortcuts]
+    for shortcut in expected_shortcuts:
+        assert f"{shortcut}." in rich_text
+    assert selection_name in {"first", "last"}  # name is an explicit generated-matrix axis
 
 
 # --- deterministic alphabet + exact token matrix (2/9/10/16/capacity/+1) -------

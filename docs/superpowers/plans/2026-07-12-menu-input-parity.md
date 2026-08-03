@@ -136,8 +136,8 @@ equivalent key.
   `test_agent_driver.py`. See HANDOFF NOTES.)
 - [x] Update framework docs only if the advertised menu action grammar is documented; record the
   exact token alphabet, overflow and legacy agent alias. (`docs/agent-screen-model.md` — new
-  "Shelf menu action tokens" section; `model.py`'s Row.id docstring updated `option:<key>` →
-  `option:<ordinal>`.)
+  "Shelf menu action tokens" section; `model.py`'s Row.id docstring now documents
+  `option:<identity>` — fresh rows use the ordinal and legacy tuples preserve their exact key.)
 - [x] Update HANDOFF NOTES with RED/GREEN commits, final symbols, compatibility/shape verdict,
   Auto-Bookkeeper real-shape proof, gates and independent QA.
 - [x] Push and verify live head/diff/mergeability/checks; hand to independent Foundry QA.
@@ -159,7 +159,8 @@ equivalent key.
   - This doc/checkbox/HANDOFF-NOTES update — Task 6.
 - **Final symbols:**
   - `clonway_cockpit.render_chrome.MenuItem` (frozen dataclass: `ordinal`, `title`, `summary`,
-    `shortcut`), `MENU_SHORTCUT_ALPHABET` (34 slots: `1`-`9` then `a`-`z` excluding `q`),
+    `shortcut`, additive `legacy_key` identity), `MENU_SHORTCUT_ALPHABET` (34 slots: `1`-`9` then
+    `a`-`z` excluding `q`),
     `assign_menu_shortcuts(n)`, `normalize_menu_items(options)` — all re-exported via
     `clonway_cockpit.render`.
   - `render_menu`/`model_menu` now take `Sequence[MenuItem | tuple[str,str,str]]` (legacy tuples
@@ -173,8 +174,9 @@ equivalent key.
 - **Compatibility/shape verdict:** additive throughout — `SCHEMA_VERSION` unchanged (still
   `"1.0"`), the `test_to_dict_carries_schema_version` shape-pin test untouched and green, every
   existing positional/keyword construction of `NeedsItem`/`CockpitState`/menu tuples still works.
-  Row ids stay `option:<ordinal>` (never the shortcut). Legacy multi-character digit aliases
-  (e.g. `"10"`) still open the right capability but are never advertised.
+  Fresh row ids stay `option:<ordinal>`; legacy tuple row ids preserve exact `option:<key>`
+  identity (never silently rewritten to the internal fallback ordinal). Legacy multi-character
+  digit aliases (e.g. `"10"`) still open the right capability but are never advertised.
 - **Auto-Bookkeeper real-shape proof:** a candidate-source load against Auto-Bookkeeper main
   imported this worktree's `clonway_cockpit`, loaded the production ordered shelf-G catalog
   (`config`, `resident-lifecycle`, `connections`, `doctor`, `rooms`, `direct-debits`,
@@ -226,12 +228,13 @@ code.
 
 ## HANDOFF NOTES
 
-- **Current phase:** QA findings 1–5 addressed; blocked on finding 6's absent consumer declaration
-  implementation.
+- **Prior fixer status:** QA findings 1–5 were addressed; the then-absent consumer declaration was
+  recorded rather than synthesized. The operator's 2026-08-03 requeue accepted candidate-consumer
+  evidence for that cross-repo slice, and the latest QA did not re-raise it.
 - **Decisions:** legacy agent aliases are canonical multi-character ASCII decimal strings with no
   leading zero and an in-range ordinal. All Unicode digit-like, leading-zero, mixed, unknown and
-  out-of-range strings are inert. Positive ASCII-decimal legacy tuple keys supply stable ordinal
-  row/selection identity; duplicate identities fail validation.
+  out-of-range strings are inert. This remains the shell alias grammar; legacy render tuple keys
+  now preserve exact row/selection identity across the complete key space, as recorded below.
 - **Evidence:** compatibility focused RED produced 7 expected failures including the `²²` crash
   and rewritten `option:7`/`option:12` identities; focused GREEN is `16 passed, 34 deselected`.
   Exact route acceptance is now an exhaustive fresh-session matrix:
@@ -252,5 +255,21 @@ code.
   `{home_actions, NeedsItem.actions} × {None, bare string, integer, valid tuple, empty tuple}`
   failed 6/10 cells before the boundary guard; the focused phase now passes
   `23 passed in 0.10s` via `uv run pytest -q tests/test_home_actions.py`.
-- **Known-failing tests:** none in completed phases. Findings 2–4 have not yet been implemented;
-  their RED matrix is the next step.
+- **QA findings 2–4 decision:** exact legacy tuple keys remain the stable agent row identity.
+  Positive ASCII decimals also claim their ordinal; every nonnumeric/empty key receives the lowest
+  free positive internal ordinal after all numeric/direct claims are reserved. Only one-character
+  ASCII lowercase/digit keys other than `q` become shortcuts. Duplicate exact identities fail
+  loudly at both public render/model boundaries.
+- **QA findings 2–4 RED/GREEN:** generated axes are
+  `{numeric sequence, numeric offset/multi-digit, nonnumeric, mixed positional collision, mixed
+  noncollision, empty, duplicate, Unicode-like} × {first selection, last selection}` = 16 cells.
+  All 16 failed before the grammar rewrite; the focused file now passes
+  `70 passed in 0.22s` via `uv run pytest -q tests/test_menu_input_parity.py`.
+- **Current phase / next concrete step:** QA findings 1–4 are GREEN. Run the plan's complete focused
+  list and full repository gates, refresh final evidence, then finish-protocol handoff.
+- **Post-fix plan-focused gate:** `uv run pytest -q tests/test_shell.py
+  tests/test_menu_input_parity.py tests/test_screen_models.py tests/test_screen_models_rest.py
+  tests/test_render_primitives.py tests/test_model.py tests/test_home_actions.py
+  tests/test_agent_driver.py tests/test_contract.py tests/test_serve_stdio.py` →
+  `351 passed in 1.01s`.
+- **Known-failing tests:** none in completed framework phases.
