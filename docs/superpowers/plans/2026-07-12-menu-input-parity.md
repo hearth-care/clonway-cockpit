@@ -265,11 +265,24 @@ code.
   noncollision, empty, duplicate, Unicode-like} × {first selection, last selection}` = 16 cells.
   All 16 failed before the grammar rewrite; the focused file now passes
   `70 passed in 0.22s` via `uv run pytest -q tests/test_menu_input_parity.py`.
-- **Current phase / next concrete step:** QA findings 1–4 are GREEN. Run the plan's complete focused
-  list and full repository gates, refresh final evidence, then finish-protocol handoff.
+- **Current phase / next concrete step:** QA findings 1–4 are GREEN and all local gates pass. Commit
+  this final evidence, verify the exact pushed head with a clean worktree, then run the finish
+  protocol (`ready` → `agent:needs-qa` → one DONE comment).
 - **Post-fix plan-focused gate:** `uv run pytest -q tests/test_shell.py
   tests/test_menu_input_parity.py tests/test_screen_models.py tests/test_screen_models_rest.py
   tests/test_render_primitives.py tests/test_model.py tests/test_home_actions.py
   tests/test_agent_driver.py tests/test_contract.py tests/test_serve_stdio.py` →
   `351 passed in 1.01s`.
+- **Post-fix full gates:** `uv run pytest -q` → `1618 passed in 37.55s`;
+  `uv run ruff check src tests` → `All checks passed!`;
+  `uv run ruff format --check src tests` → `162 files already formatted`;
+  `uv run mypy` → `Success: no issues found in 67 source files`;
+  `uv run pre-commit run --all-files` → all eight hooks `Passed`;
+  `git diff --check origin/main...HEAD` → no output (exit 0).
+- **Rebase/current-main deviation:** the June-authored plan named `origin/main@8694e302`; current
+  code is authoritative. This fixer rebased cleanly onto `origin/main@00b66418` (merged #116 public
+  cockpit seams) before the RED/GREEN work. No semantic conflict or implementation deviation was
+  required; `origin/main` is an ancestor of the post-fix head.
+- **Fix commits:** `fix(model): reject malformed action declarations` and
+  `fix(menu): define complete legacy key grammar`.
 - **Known-failing tests:** none in completed framework phases.
