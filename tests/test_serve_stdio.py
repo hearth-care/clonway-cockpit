@@ -50,6 +50,22 @@ def test_serve_stdio_emits_home_then_quits():
     assert frames[0]["kind"] == "home"
 
 
+def test_serve_stdio_root_backspace_stays_alive_for_snapshot_and_quit():
+    """Root Backspace over the agent wire must stay in-session — not end the
+    process — so a following snapshot/quit still get a real reply rather than an
+    early EOF."""
+    state = CockpitState(tenant_name="Clonway")
+    frames = _drive(_host(state), [{"key": "backspace"}, {"cmd": "snapshot"}, {"cmd": "quit"}])
+    assert frames, "no frames emitted"
+    kinds = [f["kind"] for f in frames]
+    # The initial home draw, plus at least one more Home frame reached via the
+    # no-draw re-emit and/or the snapshot reply — never an early exit with no
+    # reply to snapshot/quit.
+    assert kinds.count("home") >= 2, kinds
+    assert frames[-1]["kind"] == "home"
+    assert all(json.loads(json.dumps(f)) == f for f in frames)  # every frame is valid JSON
+
+
 def test_serve_stdio_drives_into_a_shelf_menu():
     clear_capabilities()
     register_capability(

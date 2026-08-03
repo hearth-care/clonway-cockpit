@@ -14,7 +14,7 @@ any agent script that asserts on it.
 | Screen (`ScreenModel.kind`) | Row ids | key `meta` |
 |---|---|---|
 | `home` | `pill:<i>`, `need:<i>`, `shelf:<LETTER>` | `app_label`, `tenant_name` |
-| `shelf_menu` | `option:<key>`, `back` | `label` |
+| `shelf_menu` | `option:<identity>`, `back` | `label` |
 | `walk.preflight` | `change:<i>`, `precond:<i>` | `ready`, `equivalent_cli`, `remedy` |
 | `walk.result` | (prose region, no rows) | `ok`, `message`, `links` |
 | `card` | (prose region, no rows) | `equivalent_cli` |
@@ -44,6 +44,43 @@ framework `render_*` ships without one.
 `ScreenModel.actions` is a best-effort list of keys/verbs the screen honours.
 `ScreenModel.meta` carries screen-specific facts (e.g. preflight `ready`/`equivalent_cli`,
 result `ok`/`links`).
+
+## Shelf menu action tokens
+
+A `shelf_menu` row's stable identity and its rendered/dispatched direct-action key are two
+different facts. Fresh `MenuItem` rows use `option:<ordinal>`. The accepted legacy
+`(key, title, summary)` API preserves the exact key as `option:<key>` — including nonnumeric and
+empty keys — so existing agent selectors do not move. Duplicate exact identities are rejected
+loudly. Internally, nonnumeric legacy rows receive the lowest free positive ordinal, excluding
+every numeric/direct ordinal claimed anywhere in the same menu; this prevents mixed-key menus from
+manufacturing an ordinal collision. Legacy keys become advertised shortcuts only when they are one
+ASCII lowercase letter or digit other than reserved `q`; all other legacy keys remain identities
+but are not actions.
+
+For fresh ordinal shelves, the one-character shortcut depends on position:
+
+- ordinals 1–9 get shortcuts `"1"`–`"9"` (byte-compatible with every existing shelf);
+- ordinal 10 onward gets deterministic lowercase letters `a, b, c, …` — **excluding `q`**
+  (reserved for Back) — so ordinal 10 is `"a"`, ordinal 16 is `"g"`, and so on;
+- the alphabet has 34 slots total (`1`-`9` + `a`-`z` minus `q`); a row past capacity
+  (ordinal 35+) advertises **no shortcut** (`shortcut: None` — absent from both the row's
+  `shortcut` field and `ScreenModel.actions`) and is reachable only by `up`/`down`/`enter`.
+  This is a fail-safe for an oversized shelf, not the intended fleet UX — no worker shelf
+  should exceed 34 capabilities.
+- a row's `shortcut` field (when present) is a `Field(label="shortcut", ...)` alongside
+  `summary`, distinct from the stable `id`.
+
+Both channels normalize a one-character input to lowercase before dispatch (an uppercase
+send routes the same as lowercase). **Legacy compatibility alias:** a canonical multi-character
+ASCII decimal message with no leading zero and an in-range positive ordinal (e.g.
+`{"key": "10"}`) still opens that capability — this
+is a no-human-equivalent input a raw keypress can never produce in one token, kept ONLY so
+an agent that cached an older framework's advertised `"10"`-style value still works. It is
+never rendered, never appears in `ScreenModel.actions`, and two separate single-character
+presses (`"1"` then `"0"`) can never combine into it — each key dispatches (or doesn't)
+immediately. Leading-zero, Unicode digit-like, mixed, unknown and out-of-range strings are inert.
+An oversized ASCII decimal that Python cannot safely convert is also inert; it cannot crash the
+session.
 
 ## Driving headlessly
 

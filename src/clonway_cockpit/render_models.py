@@ -24,7 +24,7 @@ from clonway_cockpit.model import Row as MRow
 from clonway_cockpit.model import ScreenModel
 from clonway_cockpit.registry import BlastRadius, CapabilitySpec
 from clonway_cockpit.render_chrome import *
-from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES
+from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES, MenuItem, normalize_menu_items
 from clonway_cockpit.render_panels import *
 from clonway_cockpit.render_panels import _DEFAULT_HELP_LINES, _FilterRow
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
@@ -41,13 +41,66 @@ def _selection_id(selection: tuple[str, object] | None) -> str | None:
     return f"{kind}:{ref}"
 
 
+def _normalize_actions(raw: object) -> tuple[str, ...]:
+    """Normalize an untrusted worker action declaration fail-closed.
+
+    Only tuple/list containers are declarations: a bare string must not fan out
+    into character actions, and non-sequences must not crash Home. Tokens are
+    trimmed, printable, whitespace-free key names; commas are rejected because
+    Needs-row actions use a comma-delimited wire field. Valid tokens are
+    de-duplicated in first-seen order.
+    """
+    if not isinstance(raw, (tuple, list)):
+        return ()
+    seen: list[str] = []
+    for a in raw:
+        if not isinstance(a, str):
+            continue
+        token = a.strip()
+        if (
+            not token
+            or not token.isprintable()
+            or "," in token
+            or any(char.isspace() for char in token)
+        ):
+            continue
+        if token not in seen:
+            seen.append(token)
+    return tuple(seen)
+
+
 def _home_actions(state: CockpitState) -> list[str]:
-    """The keys the home loop honours — a deterministic, stable hint list."""
+    """The keys the home loop honours — a deterministic, stable hint list, plus
+    any additive worker-declared ``state.home_actions`` appended ONLY when the
+    framework doesn't already expose that token (base actions always win
+    ordering/precedence)."""
     letters = list(state.shelves) if state.shelves is not None else list(SHELVES)
     acts = ["up", "down", "left", "right", "enter", "/", "?", "r", "q", "backspace"]
     acts += [letter.lower() for letter in letters]
     acts += [str(i + 1) for i in range(min(9, len(state.needs)))]
+    for extra in _normalize_actions(state.home_actions):
+        if extra not in acts:
+            acts.append(extra)
     return acts
+
+
+def _needs_row_fields(n: NeedsItem) -> list[MField]:
+    """The Field list for one Needs row: the existing detail/level/capability_key/
+    focus facts, plus an ``actions`` field ONLY when the worker declared a
+    non-empty (normalized) action set for this row — so a worker with no
+    extension stays byte-compatible (no field added)."""
+    fields = [
+        MField("detail", n.detail),
+        MField("level", n.level, "status"),
+        # ``capability_key`` tells an agent whether ⏎ launches a walk (non-empty)
+        # or just shows a note (empty); ``focus`` is the subset it opens scoped to.
+        MField("capability_key", n.capability_key or "", "id"),
+        MField("focus", n.focus or "", "id"),
+    ]
+    declared = _normalize_actions(n.actions)
+    if declared:
+        fields.append(MField("actions", ",".join(declared)))
+    return fields
 
 
 def model_cockpit_screen(
@@ -87,14 +140,7 @@ def model_cockpit_screen(
         MRow(
             id=f"need:{i}",
             label=n.title,
-            fields=[
-                MField("detail", n.detail),
-                MField("level", n.level, "status"),
-                # ``capability_key`` tells an agent whether ⏎ launches a walk (non-empty)
-                # or just shows a note (empty); ``focus`` is the subset it opens scoped to.
-                MField("capability_key", n.capability_key or "", "id"),
-                MField("focus", n.focus or "", "id"),
-            ],
+            fields=_needs_row_fields(n),
             selected=sel_id == f"need:{i}",
         )
         for i, n in enumerate(state.needs)
@@ -135,35 +181,46 @@ def model_cockpit_screen(
 
 def model_menu(
     title: str,
-    options: list[tuple[str, str, str]],
+    options: Sequence[MenuItem | tuple[str, str, str]],
     *,
     label: str = "browse",
     selected: int | None = None,
 ) -> ScreenModel:
-    """The semantic twin of :func:`render_menu`. ``options`` is ``(key, title, summary)``;
-    a trailing ``back`` row mirrors the rendered Back option. ``selected`` indexes the
-    options, or ``len(options)`` for the Back row (matching the render)."""
+    """The semantic twin of :func:`render_menu`. ``options`` is normalized the SAME
+    way (see :func:`normalize_menu_items`) so the agent's advertised ``actions`` are
+    exactly the shortcuts Rich renders — no `10`/`11`… fake multi-character tokens
+    once a shelf passes nine items. A trailing ``back`` row mirrors the rendered
+    Back option. ``selected`` indexes the normalized items, or ``len(items)`` for
+    the Back row (matching the render). Fresh MenuItems use stable
+    ``option:<ordinal>`` ids; normalized legacy tuples preserve their exact
+    ``option:<key>`` ids. Either identity is independent of the rendered/
+    dispatched shortcut (e.g. fresh ordinal 10 → shortcut ``"a"``)."""
+    items = normalize_menu_items(options)
     rows = [
         MRow(
-            id=f"option:{key}",
-            label=otitle,
-            fields=[MField("summary", summary)],
+            id=f"option:{item.row_identity}",
+            label=item.title,
+            fields=(
+                [MField("summary", item.summary)]
+                + ([MField("shortcut", item.shortcut)] if item.shortcut else [])
+            ),
             selected=selected == i,
         )
-        for i, (key, otitle, summary) in enumerate(options)
+        for i, item in enumerate(items)
     ]
-    rows.append(MRow(id="back", label="Back", selected=selected == len(options)))
+    rows.append(MRow(id="back", label="Back", selected=selected == len(items)))
     sel_id: str | None = None
-    if selected == len(options):
+    if selected == len(items):
         sel_id = "back"
-    elif selected is not None and 0 <= selected < len(options):
-        sel_id = f"option:{options[selected][0]}"
+    elif selected is not None and 0 <= selected < len(items):
+        sel_id = f"option:{items[selected].row_identity}"
+    actions = ["up", "down", "enter", "q"] + [item.shortcut for item in items if item.shortcut]
     return ScreenModel(
         kind="shelf_menu",
         title=title,
         regions=[MRegion("menu", label, rows=rows)],
         selection=sel_id,
-        actions=["up", "down", "enter", "q"] + [key for key, _, _ in options],
+        actions=actions,
         meta={"label": label},
     )
 

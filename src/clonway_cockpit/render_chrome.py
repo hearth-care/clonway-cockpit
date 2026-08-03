@@ -6,6 +6,7 @@ from __future__ import annotations
 import io
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol
 
@@ -203,6 +204,172 @@ def render_pulse(state: CockpitState, *, selected: int | None = None) -> Rendera
 def _marker_cell(text: str, *, selected: bool) -> Text:
     """An amber number/key cell, prefixed with the ❯ cursor when selected."""
     return Text(f"{_CURSOR if selected else ' '} {text}", style=ACCENT)
+
+
+# --- Menu input parity: one normalized item behind Rich/model/dispatch --------
+#
+# A menu row's identity (fresh rows use ``option:<ordinal>``; legacy tuples keep
+# ``option:<key>``) and its rendered/dispatched shortcut are different facts
+# that the old ``(key, title, summary)`` tuple conflated. ``MenuItem`` separates them so
+# render_menu/model_menu/the shell's dispatch map all derive from ONE
+# normalized sequence instead of three independent readings of the tuple.
+
+# 1–9 first (byte-compatible with today's single-digit shelves), then
+# deterministic lowercase letters a–z EXCLUDING 'q' (q is reserved for Back —
+# it must never be a direct-action shortcut). 9 digits + 25 letters = 34 slots;
+# a shelf beyond capacity leaves the remaining rows with shortcut=None — still
+# reachable by arrow/Enter, never a fake multi-character token.
+MENU_SHORTCUT_ALPHABET: tuple[str, ...] = tuple("123456789") + tuple(
+    c for c in "abcdefghijklmnopqrstuvwxyz" if c != "q"
+)
+
+
+def _is_valid_menu_shortcut(value: str) -> bool:
+    """A menu shortcut is exactly one ASCII lowercase-or-digit character, and
+    never the reserved Back key ``q``. Any control/semantic key name
+    (``"enter"``, ``"backspace"``, …) is multi-character and so already fails
+    the length check — no separate name-list is needed."""
+    if len(value) != 1 or value == "q" or not value.isascii():
+        return False
+    return value.isdigit() or (value.isalpha() and value.islower())
+
+
+def parse_menu_ordinal(value: str) -> int | None:
+    """Return a canonical positive ASCII-decimal ordinal, else ``None``.
+
+    This is the shared boundary grammar for legacy tuple identities and agent
+    aliases. Conversion is guarded because Python deliberately rejects extremely
+    long decimal strings; malformed/unbounded input must stay inert, not crash a
+    render or session.
+    """
+    if not value or not value.isascii() or not value.isdecimal() or value.startswith("0"):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class MenuItem:
+    """One normalized shelf/menu row: a stable ordinal row identity, its
+    display title/summary, and the (optional) single-key shortcut that Rich,
+    the ScreenModel and the shell's dispatch map all read from THIS shape —
+    never a re-derivation of the tuple/index. ``shortcut=None`` means the row
+    has no direct-action key (shelf-capacity overflow); it stays reachable by
+    arrow + Enter."""
+
+    ordinal: int
+    title: str
+    summary: str
+    shortcut: str | None = None
+    # Legacy tuple rows historically used their exact ``key`` in ``Row.id``.
+    # Keep that identity separate from the positive internal ordinal so mixed
+    # numeric/non-numeric tuples cannot collide or silently rewrite agent IDs.
+    # Fresh MenuItems leave this None and derive identity from ``ordinal``.
+    legacy_key: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.ordinal <= 0:
+            raise ValueError(f"MenuItem.ordinal must be positive, got {self.ordinal!r}")
+        if self.shortcut is not None and not _is_valid_menu_shortcut(self.shortcut):
+            raise ValueError(
+                f"MenuItem.shortcut is not a valid direct-action key: {self.shortcut!r}"
+            )
+        if self.legacy_key is not None and not isinstance(self.legacy_key, str):
+            raise ValueError(f"MenuItem.legacy_key must be a string, got {self.legacy_key!r}")
+
+    @property
+    def row_identity(self) -> str:
+        """Stable suffix for the semi-public ``option:<identity>`` row id."""
+        return self.legacy_key if self.legacy_key is not None else str(self.ordinal)
+
+
+def assign_menu_shortcuts(n: int) -> list[str | None]:
+    """The deterministic shortcut for each of ``n`` menu positions (0-indexed):
+    ``MENU_SHORTCUT_ALPHABET[i]`` while capacity lasts, else ``None``. This is
+    the single source both a fresh ``MenuItem`` build and a test's expected-
+    token assertion call, so the two can never independently drift."""
+    return [
+        MENU_SHORTCUT_ALPHABET[i] if i < len(MENU_SHORTCUT_ALPHABET) else None for i in range(n)
+    ]
+
+
+def normalize_menu_items(
+    options: Sequence[MenuItem | tuple[str, str, str]],
+) -> list[MenuItem]:
+    """Normalize a menu's options — legacy ``(key, title, summary)`` tuples or
+    already-built ``MenuItem``s — into one ``list[MenuItem]``, validating
+    ordinal/shortcut uniqueness across the WHOLE menu (a single ``MenuItem``
+    can only validate its own shape). ``render_menu``/``model_menu`` call this
+    once at their boundary so Rich rendering and the agent model are always
+    reading the same normalized sequence.
+
+    Every legacy tuple preserves its exact ``key`` as row identity. A positive
+    ASCII-decimal key also supplies the internal ordinal. Every other key gets
+    the lowest positive ordinal not claimed anywhere else in the menu, so mixed
+    key classes cannot manufacture collisions. The key becomes a shortcut only
+    when it is a valid one-character ASCII token; all other keys remain stable
+    identities but are not rendered or advertised as actions. Duplicate exact
+    row identities are rejected loudly.
+    """
+    claimed_ordinals = {opt.ordinal for opt in options if isinstance(opt, MenuItem)}
+    claimed_ordinals.update(
+        ordinal
+        for opt in options
+        if not isinstance(opt, MenuItem) and (ordinal := parse_menu_ordinal(opt[0])) is not None
+    )
+
+    next_fallback = 1
+
+    def take_fallback_ordinal() -> int:
+        nonlocal next_fallback
+        while next_fallback in claimed_ordinals:
+            next_fallback += 1
+        ordinal = next_fallback
+        claimed_ordinals.add(ordinal)
+        next_fallback += 1
+        return ordinal
+
+    items: list[MenuItem] = []
+    for opt in options:
+        if isinstance(opt, MenuItem):
+            items.append(opt)
+            continue
+        key, title, summary = opt
+        shortcut = key if _is_valid_menu_shortcut(key) else None
+        ordinal = parse_menu_ordinal(key)
+        if ordinal is None:
+            ordinal = take_fallback_ordinal()
+        items.append(
+            MenuItem(
+                ordinal=ordinal,
+                title=title,
+                summary=summary,
+                shortcut=shortcut,
+                legacy_key=key,
+            )
+        )
+    _validate_menu_items(items)
+    return items
+
+
+def _validate_menu_items(items: list[MenuItem]) -> None:
+    """Cross-item invariants a single ``MenuItem`` can't check alone: unique
+    ordinals, and shortcuts unique case-insensitively (they're already
+    lowercase by construction, but a directly-built ``MenuItem`` could smuggle
+    a collision in)."""
+    ordinals = [item.ordinal for item in items]
+    if len(ordinals) != len(set(ordinals)):
+        raise ValueError(f"MenuItem ordinals must be unique within one menu: {ordinals!r}")
+    row_identities = [item.row_identity for item in items]
+    if len(row_identities) != len(set(row_identities)):
+        raise ValueError(
+            f"MenuItem row identities must be unique within one menu: {row_identities!r}"
+        )
+    shortcuts = [item.shortcut.lower() for item in items if item.shortcut is not None]
+    if len(shortcuts) != len(set(shortcuts)):
+        raise ValueError(f"MenuItem shortcuts must be unique within one menu: {shortcuts!r}")
 
 
 def render_needs_you(

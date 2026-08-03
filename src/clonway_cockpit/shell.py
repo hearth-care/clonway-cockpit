@@ -511,14 +511,16 @@ def _home(
         if low in ("q", keys.ESC):
             return
         # Backspace at home: pop back if there is somewhere to go. At home with an
-        # empty stack it is a no-op (home IS the root).
+        # empty stack it is a real no-op — nothing changed, so the loop just keeps
+        # reading the next key in THIS invocation rather than ending the session
+        # (home IS the root; there is nowhere to return FROM).
         if key == keys.BACKSPACE:
             frame = nav.pop_back()
-            if frame is not None:
-                # Re-enter home with the snapshotted cursor.
-                _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
-            # Whether we popped or not, return from THIS home invocation — either
-            # we recursed into a restored home, or we're truly at root and a no-op.
+            if frame is None:
+                continue
+            # Re-enter home with the snapshotted cursor, then return from THIS
+            # invocation — we've recursed into the restored home.
+            _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
             return
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
@@ -719,18 +721,28 @@ def _shelf(
     menu_title = title if title is not None else render.SHELVES[letter]
     n = len(specs)  # navigable rows = the specs plus a trailing "Back"
     sel = 0
+    # One normalized item list feeds Rich, the model AND the dispatch map below —
+    # never three independent readings of the same enumeration. Byte-compatible
+    # for n<=9 (shortcuts stay "1".."9"); beyond that, deterministic letters
+    # (excluding reserved 'q') instead of the old fake multi-character "10".."n".
+    shortcuts = render.assign_menu_shortcuts(n)
+    menu_items = [
+        render.MenuItem(ordinal=i + 1, title=s.title, summary=s.summary, shortcut=shortcuts[i])
+        for i, s in enumerate(specs)
+    ]
+    by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
     # Load usage once per shelf render-loop and scale the inline notch against the
     # GLOBAL peak (the busiest tool across ALL shelves), so heights are comparable
     # shelf-to-shelf. Best-effort: an empty/failed load → no notch (today's look).
     usage_map = host.usage.load()
     peak = _usage_peak(usage_map)
     while True:
-        options = [(str(i), s.title, s.summary) for i, s in enumerate(specs, 1)]
         opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
-        screen.update(r.render_menu(menu_title, options, selected=sel, opens=opens, peak=peak))
-        _safe_emit(host, r.model_menu(menu_title, options, selected=sel))
+        screen.update(r.render_menu(menu_title, menu_items, selected=sel, opens=opens, peak=peak))
+        _safe_emit(host, r.model_menu(menu_title, menu_items, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
+        legacy_ordinal = render.parse_menu_ordinal(key) if len(key) > 1 else None
         if low in ("q", keys.ESC):
             return
         # Backspace in shelf menu = go back (pop the stack frame that got us here).
@@ -747,8 +759,19 @@ def _shelf(
                 return
             _open_capability(host, specs[sel].key, screen, read_key, _nav=_nav)
             return
-        elif key.isdigit() and 1 <= int(key) <= n:
-            _open_capability(host, specs[int(key) - 1].key, screen, read_key, _nav=_nav)
+        elif low in by_shortcut:
+            # The exact one-key human/agent shortcut Rich rendered and the model
+            # advertised — normalized to lowercase so an uppercase send still
+            # routes (never a second, differently-cased action).
+            _open_capability(host, specs[by_shortcut[low]].key, screen, read_key, _nav=_nav)
+            return
+        elif legacy_ordinal is not None and legacy_ordinal <= n:
+            # Legacy agent compatibility alias ONLY: a multi-character all-digit
+            # ordinal (e.g. "10") that no human raw keypress can ever produce in
+            # one token. Never advertised (absent from actions/Rich); kept so an
+            # agent that cached/used the old advertised "10"-style value still
+            # opens the right capability.
+            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key, _nav=_nav)
             return
 
 

@@ -38,6 +38,13 @@ class NeedsItem:
     # Signal dedup_key so two concurrent same-title instances get distinct keys.
     due_at: Date | None = None
     source_id: str | None = None
+    # Semantic key tokens (e.g. "enter", "z") a worker's ``handle_extra_key``
+    # honours on THIS row beyond the framework's own vocabulary — additive so an
+    # agent can discover a live worker key (xbook's park/wake 'z') instead of it
+    # being invisible outside the human Rich render. Defaulted to () so every
+    # existing positional/keyword construction is unchanged; normalized only in
+    # the pure model projection (``model_cockpit_screen``), never here.
+    actions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,3 +102,11 @@ class CockpitState:
     # the content. Defaulted to None → no mode-line, today's header byte-identical, so
     # the extracting worker (xbook) is unchanged. An empty tuple is treated like None.
     breadcrumb: tuple[str, ...] | None = None
+    # Additive worker-declared GLOBAL Home action facts — semantic key tokens a
+    # worker's ``handle_extra_key`` honours at Home outside the framework's own
+    # vocabulary (e.g. xbook's park/wake 'z'). ``model_cockpit_screen`` merges
+    # these (normalized, deduped, base-framework-wins-ordering) into the model's
+    # ``actions`` so an agent can discover them; the human Rich render is
+    # unaffected (this is agent-model data only). Defaulted to () so every
+    # existing construction is byte-compatible.
+    home_actions: tuple[str, ...] = ()
