@@ -773,14 +773,20 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   report's three non-blocking findings (post-action probe-builder failure, capability label parity,
   and zero-effect rebuild cost) are deferred by the operator's explicit scope for this pass.
 - Current phase: Task 5 projection-parity correction is complete; exact-head phase gates, rebase,
-  and focused post-rebase regression are green; full gates, final documentation receipts, and
-  finish protocol remain.
-- Next concrete step: run the full clean-worktree gate sequence and subprocess acceptance on the
-  exact rebased documentation head, record the outputs, commit/push the receipts, then execute the
-  finish protocol.
+  focused post-rebase regression, and the full implementation-head gates are green; only the final
+  documentation-head verification and finish protocol remain.
+- Next concrete step: commit/push these gate receipts, repeat the full gates on that exact
+  documentation head, verify a clean synchronized worktree, post the required corrective runbook
+  delta, and execute the PR finish protocol.
 - Known-failing tests: none.
 - QA FAIL round 8 rebase: rebased all 38 PR commits onto current
   `origin/main@48f452e15f80fe417b75001def5ba54704a87665`. One documentation conflict in
   `docs/agent-screen-model.md` was resolved by preserving both main's newer shelf-menu action-token
   contract and this PR's Doctor action/focus contract. The focused 81-cell regression set passed
   after the rebase; `origin/main` is an ancestor of the rebased head.
+- QA FAIL round 8 implementation-head final gates: `uv run pytest -q` -> `2400 passed in 89.03s`;
+  `uv run ruff check .` -> `All checks passed!`; `uv run ruff format --check .` -> `171 files
+  already formatted`; `uv run mypy src` -> `Success: no issues found in 67 source files`; all eight
+  all-file pre-commit hooks passed; canonical generated-worker suite -> `29 passed in 29.78s`;
+  subprocess legacy/opt-in acceptance -> `2 passed, 7 deselected in 11.02s`; `git diff --check`
+  clean.
