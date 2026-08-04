@@ -411,7 +411,7 @@ def _focus_line(
     focus_requested: str,
     focus_matched: str | None,
     focus_state: str | None,
-    focus_row_label: str | None = None,
+    cursor_row_label: str | None = None,
 ) -> Text:
     """The human projection of the focus verdict — the same facts the model reports
     in ``meta.focus_state``/``meta.focus_row``/``meta.focus_matched``, so neither
@@ -420,9 +420,10 @@ def _focus_line(
 
     ``focus_state`` is the RESOLUTION verdict; ``focus_matched`` additionally says
     the cursor is on the resolved row. A resolved focus the operator has navigated
-    away from renders as "matched — cursor on <row>" rather than a bare ✓, because a
-    bare ✓ next to a cursor on somebody else's state-changing remedy is the same lie
-    the model contract forbids.
+    away from renders as "matched — cursor on <row>" rather than a bare ✓. That row
+    is the current selection (the same value that paints ``❯``), not the separately
+    reported row where the focus resolved; otherwise the human frame contradicts
+    both its own cursor and the model's ``selection``.
 
     ``focus_state=None`` is the legacy two-valued call (matched / not): derive the
     verdict from ``focus_matched`` so an older caller renders exactly as before."""
@@ -445,7 +446,7 @@ def _focus_line(
     )
     if resolved and not on_focus:
         line.append(
-            f" — cursor on {focus_row_label}" if focus_row_label else " — cursor moved",
+            f" — cursor on {cursor_row_label}" if cursor_row_label else " — cursor moved",
             style=ACCENT,
         )
     return line
@@ -504,7 +505,7 @@ def render_doctor(
                 focus_requested,
                 focus_matched,
                 focus_state,
-                f"row {focus_row + 1}" if focus_row is not None else None,
+                f"row {selected + 1}" if selected is not None else None,
             )
         )
 

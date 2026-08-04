@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from dataclasses import replace
 
 import pytest
@@ -967,6 +968,28 @@ def _doctor_frame_texts(frames: list) -> list[str]:  # noqa: ANN001
     return texts
 
 
+def _assert_focus_line_agrees_with_frame(text: str, model) -> None:  # noqa: ANN001
+    """Tie every human cursor claim to both cursor projections on one frame."""
+    cursor_lines = _cursored_lines(text)
+    assert len(cursor_lines) <= 1
+    cursor_match = re.search(r"❯\s+(\d+)\.", cursor_lines[0]) if cursor_lines else None
+    cursor_row = int(cursor_match.group(1)) if cursor_match is not None else None
+
+    assert model.selection == (f"fix:{cursor_row - 1}" if cursor_row is not None else None)
+
+    focus_lines = [" ".join(line.split()) for line in text.splitlines() if "focus" in line]
+    cursor_claims = [
+        int(match.group(1))
+        for line in focus_lines
+        if (match := re.search(r"cursor on row (\d+)", line)) is not None
+    ]
+    assert len(cursor_claims) <= 1
+    if cursor_claims:
+        assert cursor_claims == [cursor_row]
+    if cursor_row is None:
+        assert cursor_claims == []
+
+
 @pytest.mark.parametrize(
     "after_shape",
     ["recovered_no_fix", "display_only", "absent", "duplicated", "still_runnable"],
@@ -1064,6 +1087,8 @@ def test_focus_verdict_stays_honest_across_a_rebuild(
 
     doctor_models = [frame for frame in models if frame.kind == "doctor"]
     doctor_texts = _doctor_frame_texts(screen.frames)
+    for frame_text, frame_model in zip(doctor_texts, doctor_models, strict=True):
+        _assert_focus_line_agrees_with_frame(frame_text, frame_model)
     # Entry: the focus is resolved AND the cursor is on it, so all three facts agree.
     assert doctor_models[0].meta["focus_state"] == "matched"
     assert doctor_models[0].meta["focus_matched"] == "p.auth"
@@ -1238,7 +1263,11 @@ def test_doctor_remedy_state_coherence_matrix(
     shell._doctor(host, screen, _keys([*sequence, "q"]), focus="p.auth")
 
     final = [frame for frame in models if frame.kind == "doctor"][-1]
-    final_text = _doctor_frame_texts(screen.frames)[-1]
+    doctor_texts = _doctor_frame_texts(screen.frames)
+    doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    for frame_text, frame_model in zip(doctor_texts, doctor_models, strict=True):
+        _assert_focus_line_agrees_with_frame(frame_text, frame_model)
+    final_text = doctor_texts[-1]
 
     # --- the focus verdict is the RESOLUTION, and it never moves with the cursor
     assert final.meta["focus_requested"] == "p.auth"
@@ -1348,6 +1377,9 @@ def test_moving_the_cursor_off_a_focused_remedy_stops_claiming_a_match(
     shell._doctor(host, screen, _keys([movement, "q"]), focus=focus)
 
     doctor_models = [frame for frame in models if frame.kind == "doctor"]
+    doctor_texts = _doctor_frame_texts(screen.frames)
+    for frame_text, frame_model in zip(doctor_texts, doctor_models, strict=True):
+        _assert_focus_line_agrees_with_frame(frame_text, frame_model)
     resolved_row = f"fix:{titles.index('Repair auth')}"
     entry, moved = doctor_models[0], doctor_models[-1]
     assert entry.meta["focus_state"] == "matched"
@@ -1367,7 +1399,7 @@ def test_moving_the_cursor_off_a_focused_remedy_stops_claiming_a_match(
     # The human projection says the same thing: no bare ✓ next to a cursor that has
     # moved on to somebody else's remedy.
     text = " ".join(_doctor_frame_texts(screen.frames)[-1].split())
-    assert f"⚠ {focus} matched — cursor on row {titles.index('Repair auth') + 1}" in text
+    assert f"⚠ {focus} matched — cursor on row {expected_index + 1}" in text
     assert f"✓ {focus} matched" not in text
     assert any(
         titles[expected_index] in line

@@ -751,3 +751,29 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
 - QA FAIL round 7 known-failing tests: none. No operator-facing command, provisioning, sign-off or
   recurring rhythm changed; the existing runbook deltas already cover the Doctor focus/action and
   exact-once receipt contract, so no additional runbook comment is required.
+- QA FAIL round 8 Task 5 RED: the new frame-level focus invariant failed 21 cells across the
+  existing cursor, rebuild, and state-coherence matrices. Every failure showed the Rich focus line
+  naming `focus_row` while the same frame's `❯` and `ScreenModel.selection` named another row.
+- QA FAIL round 8 Task 5 GREEN: the Rich focus suffix now derives its row from `selected`, the one
+  value that also paints `❯`; `focus_row` remains the separate agent navigation fact. The shared
+  `_assert_focus_line_agrees_with_frame` invariant parses each generated human frame and jointly
+  checks any cursor-row claim, the `❯` row, and `ScreenModel.selection`, including the no-cursor
+  state.
+- QA FAIL round 8 Task 5 recurrence matrix:
+  `tests/test_doctor_capability_action.py::test_doctor_remedy_state_coherence_matrix` crosses focus
+  shape (`matched_runnable`, `present_display_only`, `present_no_fix`, `ambiguous`, `unknown`),
+  cursor action (`none`, `up`, `down`, `digit`), and remedy pairing (`same_object`,
+  `stable_id_clone`, `unpaired_global`) for 60 generated cells. The same frame invariant also runs
+  over all 15 rebuild cells and all 6 focused-cursor movement cells.
+- QA FAIL round 8 Task 5 verification: focused cursor/rebuild/coherence set `81 passed, 137
+  deselected`; complete capability/drive/model/contract/screen-model phase `252 passed in 16.61s`;
+  Ruff passed; Ruff format reported 2 files already formatted; mypy reported no issues in
+  `render_panels.py`; `git diff --check` clean. Known-failing tests: none in this completed phase.
+- QA FAIL round 8 operator steer: this targeted pass fixes the visible cursor-label blocker. The
+  report's three non-blocking findings (post-action probe-builder failure, capability label parity,
+  and zero-effect rebuild cost) are deferred by the operator's explicit scope for this pass.
+- Current phase: Task 5 projection-parity correction is complete; exact-head phase gates, rebase,
+  full gates, documentation receipts, and finish protocol remain.
+- Next concrete step: run the complete Task 5 phase gates, commit and push the passing increment,
+  then rebase onto current `origin/main` and run the full clean-worktree gate sequence.
+- Known-failing tests: none.

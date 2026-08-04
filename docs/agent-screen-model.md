@@ -138,7 +138,9 @@ contradict each other:
 probe as "not found" is false in both projections. Conversely, **only `focus_matched` licenses
 ⏎**: a resolved focus the cursor has navigated away from still reports `focus_state="matched"`,
 but ⏎ would run the row under the cursor, not your target. The Rich line says the same thing —
-`✓ <id> matched` only while the cursor is on it, otherwise `⚠ <id> matched — cursor on row N`.
+`✓ <id> matched` only while the cursor is on it, otherwise `⚠ <id> matched — cursor on row N`,
+where `N` is the current `selection`/`❯` row. The focus target remains available separately as
+`focus_row`; the cursor label never substitutes that target row for the operator's actual cursor.
 
 Selection visibility is derived from the current resolution on **every** frame, including after
 a remedy rebuilds the report. `present` deliberately pre-selects nothing so ⏎ cannot run an

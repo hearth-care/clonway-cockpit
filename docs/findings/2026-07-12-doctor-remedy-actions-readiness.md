@@ -96,7 +96,8 @@ operators must review a refreshed selection when the target disappears or identi
 A follow-up delta records the corrected focus reading: a focused Doctor screen shows `✓ … matched`
 only while the cursor is on the focused remedy (otherwise `⚠ … matched — cursor on row N`), and a
 remedy that leaves its own probe present-but-not-actionable clears the cursor, so the operator
-presses one reveal key before ⏎ acts.
+presses one reveal key before ⏎ acts. `N` is the row carrying the current `❯` cursor; the distinct
+focused target remains available as `focus_row` rather than being mislabelled as the cursor.
 
 ## Implemented public contract
 
