@@ -21,7 +21,7 @@ any agent script that asserts on it.
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |
 | `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix`) |
-| `doctor` | `probe:<i>`, `fix:<n>` (runnable), `fix:display:<i>` | `warnings`, `errors`, `ok` |
+| `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched`, `focus_state`, `focus_row` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |
 | `walk.review` | per-walk line-item rows (e.g. `window:<date>`/`bill:<id>`/`settle:<i>`) | **`equivalent_cli`** (the apply command — canonical on every review), plus totals/counts + a full per-item detail list in `meta` |
@@ -81,6 +81,96 @@ presses (`"1"` then `"0"`) can never combine into it — each key dispatches (or
 immediately. Leading-zero, Unicode digit-like, mixed, unknown and out-of-range strings are inert.
 An oversized ASCII decimal that Python cannot safely convert is also inert; it cannot crash the
 session.
+
+## Doctor remedy actions
+
+Doctor probe and remedy rows carry stable worker-supplied identity in additive fields. A probe row
+includes `probe_id`, `evidence_revision`, `level`, and its `fix_id` cross-reference. A remedy row
+includes `remedy_id`, `probe_id`, `action_kind`, `capability_key`, `focus`, `confirm`, and `cmd`.
+The row's `cmd` is display/reference copy only; the framework never executes it.
+
+Workers should use stable, namespaced IDs (for example `source.feed.health` and
+`source.feed.review`) and change `evidence_revision` whenever the evidence represented by a probe
+changes. Legacy empty IDs remain accepted, but a remedy receipt cannot correlate them and reports
+closure as `unknown`.
+
+The probe's `fix_id` names the row rendering that probe's own `Fix`, and it comes from the **same
+pairing decision** the shell dispatches and receipts from — so what an agent reads as "this probe
+owns that remedy" is exactly what ⏎ will act on. Object identity may help the shared pairing choose
+a candidate, but the model publishes a link only when that final pairing attributes the remedy row
+to the probe. This keeps links aligned for workers whose `doctor_fixes_for` normalizes fixes while
+preserving stable IDs, repeated legacy fix instances, and fixes whose explicit owner differs from
+the probe carrying the direct object. A remedy whose owner is missing or ambiguous carries **no**
+`fix_id` rather than a guessed one — the same fail-closed rule dispatch and receipts use.
+
+The three action kinds are:
+
+- `display_only`: shown but not selectable; the operator uses the equivalent CLI or documentation;
+- `callback`: invokes the worker callback for a human, preserving its optional confirmation, but is
+  skipped in agent mode because the callback is opaque to capability effect policy; and
+- `open_capability`: routes through the existing registered-capability chokepoint with optional
+  `focus`. It is available to humans and agents. Nested writes still reach the capability's normal
+  `walk.gate`; agent mode remains dry-run/default-declined.
+
+A Home need may target `capability_key="doctor"` with a probe or remedy ID as `focus`. Doctor
+resolves the identity against everything it renders — the full probe snapshot and the full fix
+list, including display-only fixes — matching a probe first, then a remedy. The Rich `focus` line
+and the model meta are two projections of one decision, published as three facts that can never
+contradict each other:
+
+- **`focus_state`** — the four-valued **resolution** verdict. It answers "did the identity
+  resolve, and is it actionable?" and is *independent of where the cursor is*.
+- **`focus_row`** — the row id the focus resolved to, or `null`. Non-null exactly when
+  `focus_state` is `matched`, so a driver whose cursor has moved knows where to move back to.
+- **`focus_matched`** — strictly "the **selected** row IS the one you asked for": the requested
+  ID when `focus_state` is `matched` *and* `selection == focus_row`, otherwise `null`.
+
+| `focus_state` | Meaning | `focus_row` | `selection` on entry |
+|---|---|---|---|
+| `matched` | Resolved to exactly one runnable remedy | that remedy's row | that remedy |
+| `present` | Resolved to exactly one rendered target that has **no runnable remedy** (a display-only fix, or a probe carrying none) | `null` | `null` — **no row is pre-selected** |
+| `ambiguous` | Two or more probes, or two or more remedies, claim the ID | `null` | the visible first row (fail-closed fallback, *not* authorized by the focus) |
+| `unknown` | Nothing Doctor renders claims the ID | `null` | the visible first row |
+
+**A driving agent must branch on `focus_state`, not on `focus_matched` alone**: `present` means
+"your target is on screen, it just has no remedy to run", which is a different decision from
+`unknown`. An identity Doctor is currently rendering is never `unknown` — reporting a visible
+probe as "not found" is false in both projections. Conversely, **only `focus_matched` licenses
+⏎**: a resolved focus the cursor has navigated away from still reports `focus_state="matched"`,
+but ⏎ would run the row under the cursor, not your target. The Rich line says the same thing —
+`✓ <id> matched` only while the cursor is on it, otherwise `⚠ <id> matched — cursor on row N`,
+where `N` is the current `selection`/`❯` row. The focus target remains available separately as
+`focus_row`; the cursor label never substitutes that target row for the operator's actual cursor.
+
+Selection visibility is derived from the current resolution on **every** frame, including after
+a remedy rebuilds the report. `present` deliberately pre-selects nothing so ⏎ cannot run an
+unrelated state-changing remedy that happens to sit at row 1; the first ↑/↓/⏎ reveals the
+fallback cursor without running it, and a numbered key is an explicit choice that still runs
+directly. An explicit choice is authoritative only under the snapshot it was made in — a rebuild
+is a new snapshot, so a remedy that leaves its own probe present-but-not-actionable re-hides the
+cursor rather than silently arming a neighbour. An empty `focus` (`""`) is treated as no focus at
+all, not as a focus on the empty ID that legacy probes carry.
+
+`focus_state`/`focus_row` are additive — absent focus reports `null`, and the protocol
+`schema_version` is unchanged.
+
+After any selected action, Doctor re-probes the same stable `probe_id` and constructs one
+`DoctorRemedyReceipt`. `resolved` means the probe is absent from a successful rebuild;
+`still_present` means level and revision are unchanged; `changed` means either differs; and
+`unknown` covers legacy identity or an unavailable comparison. Opening a capability is only
+`action_result="opened"`—it is never itself proof of resolution. A capability `ShellOut`
+intentionally ends the current session, so Doctor cannot re-probe; it delivers exactly one
+`action_result="opened"`, `closure="unknown"` receipt before preserving the human shell-out or
+agent shell-out-note boundary.
+
+Workers opt into typed report failures with `Host.doctor_classify_report_failure(exception)` and
+receive receipts through `Host.doctor_on_receipt(receipt)`. The classifier owns exception typing,
+safe wording, and redaction. Receipt delivery is best effort; workers own persistence, timestamps,
+and observability. Framework receipts contain bounded framework status rather than raw exception
+text. A classifier-produced failure renders as a normal `doctor` model, not `unstructured`;
+legacy hosts without the callback retain their existing fallback. The generated-worker scaffold
+keeps its classifier example unwired so a report-builder exception still reaches the documented
+setup hint; wire the example only after replacing it with the worker's typed/redacted taxonomy.
 
 ## Driving headlessly
 
@@ -193,10 +283,11 @@ This guarantee covers the framework's own walk path. It does **not** cover:
   `Host()` defaults `agent_mode=False`, dropping dry-run. **A worker adding `--agent` MUST
   preserve `agent_mode` on any host it constructs**, or re-entering `_open_capability`
   through that host can post for real.
-- `activate_pill` (pulse sync / bank re-auth) and Doctor `fix.run()` — **now gated**: in
-  `agent_mode` the shell skips them and emits a `note{"…skipped…"}` frame instead, so an
-  autonomously-driving agent triggers no sync / browser / local side effect. (The live
-  human cockpit, `agent_mode=False`, is unchanged.)
+- `activate_pill` (pulse sync / bank re-auth) and Doctor callback remedies — **now gated**: in
+  `agent_mode` the shell skips them and emits a `note{"…skipped…"}` frame instead. Doctor
+  capability remedies may navigate because they reuse `_open_capability`; any nested write still
+  reaches this same dry-run/guarded-apply gate. (The live human cockpit, `agent_mode=False`, is
+  unchanged.)
 
 For an authoritative audit of applied gates, `serve_stdio(..., on_apply=cb)` invokes `cb`
 with the gate proposal the moment an apply is authorized (before the post) — a worker binds

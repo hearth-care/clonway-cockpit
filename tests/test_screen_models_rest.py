@@ -157,7 +157,16 @@ def test_doctor_model_parity_and_selection():
     assert not display_only.enabled
     assert m.selection == "fix:0"
     assert _cursored_line_has(txt, "Remove stale lock")
-    assert m.meta == {"app_label": "xbook", "warnings": 1, "errors": 0, "ok": False}
+    assert m.meta == {
+        "app_label": "xbook",
+        "warnings": 1,
+        "errors": 0,
+        "ok": False,
+        "focus_requested": None,
+        "focus_matched": None,
+        "focus_state": None,
+        "focus_row": None,
+    }
     assert m.actions[:4] == ["up", "down", "enter", "q"]
 
 

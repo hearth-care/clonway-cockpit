@@ -18,6 +18,15 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
+from clonway_cockpit.doctor import (
+    DoctorActionKind,
+    DoctorFocusState,
+    Fix,
+    Probe,
+    action_kind,
+    pair_remedies,
+    probe_fix_links,
+)
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -28,9 +37,6 @@ from clonway_cockpit.render_chrome import _PANEL_WIDTH, SHELVES, MenuItem, norma
 from clonway_cockpit.render_panels import *
 from clonway_cockpit.render_panels import _DEFAULT_HELP_LINES, _FilterRow
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
-
-if TYPE_CHECKING:
-    from clonway_cockpit.doctor import Fix, Probe
 
 
 def _selection_id(selection: tuple[str, object] | None) -> str | None:
@@ -385,6 +391,19 @@ def model_doctor_confirm(fix) -> ScreenModel:  # noqa: ANN001 — mirrors render
     )
 
 
+def _focus_state_value(
+    focus_requested: str | None,
+    focus_matched: str | None,
+    focus_state: str | None,
+) -> str | None:
+    """The wire value of the focus verdict — ``None`` iff no focus was requested."""
+    if focus_requested is None:
+        return None
+    if focus_state is not None:
+        return str(DoctorFocusState(focus_state))
+    return str(DoctorFocusState.MATCHED if focus_matched is not None else DoctorFocusState.UNKNOWN)
+
+
 def model_doctor(
     probes: list[Probe],
     fixes: list[Fix],
@@ -393,52 +412,83 @@ def model_doctor(
     usage: dict | None = None,
     specs: list[CapabilitySpec] | None = None,
     app_label: str = "xbook",
+    focus_requested: str | None = None,
+    focus_matched: str | None = None,
+    focus_state: str | None = None,
+    focus_row: str | None = None,
 ) -> ScreenModel:
     """The semantic twin of :func:`render_doctor`. ``selected`` indexes the RUNNABLE
     fixes (those with a ``run``), matching the render. The read-only "what you reach
     for" usage block is telemetry display, not navigable structure, so it is not
-    semanticised here (its presence is flagged in ``meta``)."""
-    # Build the fixes first so we can give each probe a ``fix_id`` cross-reference —
-    # the ``Probe.fix`` relationship the render shows by adjacency but the flat lists
-    # would otherwise drop. Match by object identity (fixes_for returns the probes'
-    # own Fix objects); a worker that rebuilds them simply gets no link (graceful).
+    semanticised here (its presence is flagged in ``meta``).
+
+    The focus verdict is reported as three facts that never contradict each other:
+
+    - ``focus_state`` — the four-valued RESOLUTION verdict (``matched``/``present``/
+      ``ambiguous``/``unknown``). It answers "did the identity resolve, and is it
+      actionable?" and is independent of where the cursor happens to be.
+    - ``focus_row`` — the row id the focus resolved to, or ``None``. Non-``None``
+      exactly when ``focus_state`` is ``matched``, so an agent whose cursor has moved
+      knows where to move back to.
+    - ``focus_matched`` — strictly "the selected row IS the one your focus asked
+      for", so it is non-``None`` exactly when ``focus_state`` is ``matched`` AND
+      ``selection == focus_row``. Moving the cursor off the focused remedy clears it;
+      a frame may never claim a match for a row the operator is not on."""
+    # Both the row ids and the probe -> remedy cross-reference come from the ONE
+    # shared pairing the shell dispatches and attributes receipts from. A second,
+    # model-local relation (this used to key on ``id(fix)``) silently dropped the
+    # link for a worker that normalizes its fixes while preserving stable IDs, and
+    # could in principle disagree with the remedy Doctor actually runs.
+    rows = pair_remedies(probes, fixes)
     fix_rows: list[MRow] = []
-    fix_id_by_obj: dict[int, str] = {}
-    run_i = 0
-    for i, f in enumerate(fixes):
-        if f.run is not None:
-            row_id = f"fix:{run_i}"
+    for row in rows:
+        f = row.fix
+        common_fields = [
+            MField("cmd", f.cmd),
+            MField("remedy_id", f.remedy_id),
+            MField("probe_id", f.probe_id),
+            MField("action_kind", row.kind.value),
+            MField("capability_key", f.capability_key or ""),
+            MField("focus", f.focus or ""),
+            MField("confirm", str(f.confirm).lower()),
+        ]
+        if row.runnable:
             fix_rows.append(
                 MRow(
-                    id=row_id,
+                    id=row.row_id,
                     label=f.title,
-                    fields=[MField("cmd", f.cmd)],
-                    selected=selected == run_i,
+                    fields=common_fields,
+                    selected=selected == row.run_index,
                     enabled=True,
                 )
             )
-            run_i += 1
         else:
-            row_id = f"fix:display:{i}"
             fix_rows.append(
                 MRow(
-                    id=row_id,
+                    id=row.row_id,
                     label=f.title,
-                    fields=[MField("cmd", f.cmd), MField("note", f.note)],
+                    fields=[*common_fields, MField("note", f.note)],
                     enabled=False,
                 )
             )
-        fix_id_by_obj[id(f)] = row_id
+    run_i = sum(1 for row in rows if row.runnable)
+    links = probe_fix_links(probes, rows)
 
-    def _probe_fields(p: Probe) -> list[MField]:
-        fields = [MField("level", p.level, "status"), MField("detail", p.detail)]
-        link = fix_id_by_obj.get(id(p.fix)) if p.fix is not None else None
+    def _probe_fields(index: int, p: Probe) -> list[MField]:
+        fields = [
+            MField("level", p.level, "status"),
+            MField("detail", p.detail),
+            MField("probe_id", p.probe_id),
+            MField("evidence_revision", p.evidence_revision),
+        ]
+        link = links.get(index)
         if link is not None:
             fields.append(MField("fix_id", link, "id"))
         return fields
 
     probe_rows = [
-        MRow(id=f"probe:{i}", label=p.name, fields=_probe_fields(p)) for i, p in enumerate(probes)
+        MRow(id=f"probe:{i}", label=p.name, fields=_probe_fields(i, p))
+        for i, p in enumerate(probes)
     ]
     warns = sum(1 for p in probes if p.level == "warn")
     errs = sum(1 for p in probes if p.level == "error")
@@ -454,6 +504,15 @@ def model_doctor(
         "warnings": warns,
         "errors": errs,
         "ok": warns == 0 and errs == 0,
+        "focus_requested": focus_requested,
+        "focus_matched": focus_matched,
+        # Additive: absent focus → no verdict. A legacy two-valued caller that
+        # passes only focus_matched still gets a coherent state.
+        "focus_state": _focus_state_value(focus_requested, focus_matched, focus_state),
+        # Where the focus resolved, so "matched but the cursor moved" is navigable
+        # rather than merely reported. A legacy two-valued caller passes no
+        # focus_row: "matched" then means the row it is already sitting on.
+        "focus_row": focus_row if focus_row is not None else (sel_id if focus_matched else None),
     }
     if usage:
         meta["usage_present"] = True

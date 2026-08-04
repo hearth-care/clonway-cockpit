@@ -20,5 +20,6 @@ htmlcov/
 coverage.xml
 # AI-tool scratch dirs / worktrees
 .claude/
+.claude/worktrees/
 .claire/
 .superpowers/

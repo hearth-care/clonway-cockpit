@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 
 from clonway_cockpit.audit_log import AuditEvent
+from clonway_cockpit.doctor import DoctorActionKind, DoctorFocusState, Fix, Probe, action_kind
 from clonway_cockpit.model import Field as MField
 from clonway_cockpit.model import Region as MRegion
 from clonway_cockpit.model import Row as MRow
@@ -39,9 +40,6 @@ from clonway_cockpit.render_chrome import (
     screen_header,
 )
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
-
-if TYPE_CHECKING:
-    from clonway_cockpit.doctor import Fix, Probe
 
 
 def render_menu(
@@ -401,6 +399,59 @@ def render_help(
     return page(Group(screen_header("help", "Keys", "any key to return"), Text(""), body))
 
 
+_FOCUS_VERDICTS = {
+    DoctorFocusState.MATCHED: ("✓ ", "green", "{identity} matched"),
+    DoctorFocusState.PRESENT: ("⚠ ", ACCENT, "{identity} present — no runnable remedy"),
+    DoctorFocusState.AMBIGUOUS: ("⚠ ", ACCENT, "{identity} ambiguous — review selection"),
+    DoctorFocusState.UNKNOWN: ("⚠ ", ACCENT, "{identity} not found — review selection"),
+}
+
+
+def _focus_line(
+    focus_requested: str,
+    focus_matched: str | None,
+    focus_state: str | None,
+    cursor_row_label: str | None = None,
+) -> Text:
+    """The human projection of the focus verdict — the same facts the model reports
+    in ``meta.focus_state``/``meta.focus_row``/``meta.focus_matched``, so neither
+    projection can claim a target is absent while the other shows it on screen, nor
+    claim a match for a row the cursor has left.
+
+    ``focus_state`` is the RESOLUTION verdict; ``focus_matched`` additionally says
+    the cursor is on the resolved row. A resolved focus the operator has navigated
+    away from renders as "matched — cursor on <row>" rather than a bare ✓. That row
+    is the current selection (the same value that paints ``❯``), not the separately
+    reported row where the focus resolved; otherwise the human frame contradicts
+    both its own cursor and the model's ``selection``.
+
+    ``focus_state=None`` is the legacy two-valued call (matched / not): derive the
+    verdict from ``focus_matched`` so an older caller renders exactly as before."""
+    state = focus_state or (
+        DoctorFocusState.MATCHED if focus_matched is not None else DoctorFocusState.UNKNOWN
+    )
+    glyph, glyph_style, template = _FOCUS_VERDICTS.get(
+        DoctorFocusState(state), _FOCUS_VERDICTS[DoctorFocusState.UNKNOWN]
+    )
+    resolved = state == DoctorFocusState.MATCHED
+    on_focus = resolved and focus_matched is not None
+    line = Text("focus     ", style="bold")
+    if on_focus:
+        line.append(glyph, style=glyph_style)
+    else:
+        line.append("⚠ ", style=ACCENT)
+    line.append(
+        template.format(identity=focus_matched if on_focus else focus_requested),
+        style=DIM if on_focus else ACCENT,
+    )
+    if resolved and not on_focus:
+        line.append(
+            f" — cursor on {cursor_row_label}" if cursor_row_label else " — cursor moved",
+            style=ACCENT,
+        )
+    return line
+
+
 def render_doctor(
     probes: list[Probe],
     fixes: list[Fix],
@@ -409,6 +460,10 @@ def render_doctor(
     usage: dict | None = None,
     specs: list[CapabilitySpec] | None = None,
     app_label: str = "xbook",
+    focus_requested: str | None = None,
+    focus_matched: str | None = None,
+    focus_state: str | None = None,
+    focus_row: int | None = None,
 ) -> RenderableType:
     """The Doctor screen — the same probe table + verdict as the static view, but
     the fixes become a navigable list. ``selected`` indexes the RUNNABLE fixes
@@ -444,6 +499,16 @@ def render_doctor(
 
     parts: list[RenderableType] = [head, Rule(style=DIM), probe_body, Rule(style=DIM), vline]
 
+    if focus_requested is not None:
+        parts.append(
+            _focus_line(
+                focus_requested,
+                focus_matched,
+                focus_state,
+                f"row {selected + 1}" if selected is not None else None,
+            )
+        )
+
     if fixes:
         parts.append(Text(""))
         ftable = Table(show_header=False, box=None, padding=(0, 2))
@@ -452,12 +517,14 @@ def render_doctor(
         ftable.add_column(overflow="fold")  # chip / tag
         run_i = 0
         for f in fixes:
-            if f.run is not None:
+            kind = action_kind(f)
+            if kind is not DoctorActionKind.DISPLAY_ONLY:
                 is_sel = selected == run_i
                 run_i += 1
+                title = f"Open {f.title}" if kind is DoctorActionKind.OPEN_CAPABILITY else f.title
                 ftable.add_row(
                     _marker_cell(f"{run_i}.", selected=is_sel),
-                    Text(f.title, style="bold" if is_sel else ""),
+                    Text(title, style="bold" if is_sel else ""),
                     chip(f.cmd),
                 )
             else:
@@ -478,7 +545,7 @@ def render_doctor(
         # Show the full move/run footer only when at least one fix is runnable.
         # Display-only fixes (run=None) make ↑↓ and ⏎ no-ops, so advertising them
         # misleads the operator — fall back to the back-only footer in that case.
-        if any(f.run is not None for f in fixes):
+        if any(action_kind(f) is not DoctorActionKind.DISPLAY_ONLY for f in fixes):
             parts.append(_doctor_footer())
         else:
             parts.append(_doctor_back_only_footer())

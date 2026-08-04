@@ -276,11 +276,21 @@ def test_session_extra_key_nested_open_keeps_observer_and_agent_dry_run() -> Non
 
 
 def test_session_callbacks_are_appended_to_preserve_host_positional_order() -> None:
+    """Every optional hook is APPENDED, never inserted.
+
+    That is what keeps a pinned worker's positional ``Host(...)`` construction
+    bound to the same fields. The session callbacks were appended first; the
+    Doctor callbacks were appended after them, so the invariant is the ORDER of
+    the tail, not that any one pair is last forever."""
     names = [item.name for item in fields(shell.Host)]
-    assert names[-2:] == [
+    assert names[-4:] == [
         "activate_pill_with_session",
         "handle_extra_key_with_session",
+        "doctor_classify_report_failure",
+        "doctor_on_receipt",
     ]
+    # Nothing was inserted ahead of the last field that pre-dated either pair.
+    assert names.index("activate_pill_with_session") == names.index("audit_worker") + 1
 
 
 def test_emit_model_is_best_effort_and_emits_once() -> None:

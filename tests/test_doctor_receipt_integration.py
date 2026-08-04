@@ -1,0 +1,873 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pytest
+from rich.console import Console
+
+from clonway_cockpit import keys, render, shell, shellout
+from clonway_cockpit.doctor import (
+    DoctorActionResult,
+    DoctorClosure,
+    DoctorRemedyReceipt,
+    Fix,
+    Probe,
+    fixes_for,
+)
+from clonway_cockpit.registry import (
+    CapabilitySpec,
+    WizardContext,
+    clear_capabilities,
+    register_capability,
+)
+from clonway_cockpit.state import CockpitState
+
+
+class _Screen:
+    def update(self, frame) -> None:  # noqa: ANN001
+        pass
+
+
+class _Usage:
+    def record(self, key: str, action: str = "open") -> None:
+        pass
+
+    def load(self) -> dict:
+        return {}
+
+
+def _keys(sequence: list[str]):
+    remaining = list(sequence)
+    return lambda: remaining.pop(0) if remaining else "q"
+
+
+def _ctx(screen, read_key, *, focus=None) -> WizardContext:  # noqa: ANN001
+    return WizardContext(
+        state={},
+        client=None,
+        console=Console(),
+        input_fn=lambda prompt, default: "",
+        confirm_fn=lambda prompt: False,
+        present=screen.update,
+        read_key=read_key,
+        focus=focus,
+    )
+
+
+def _probe(
+    fix: Fix | None,
+    *,
+    revision: str = "rev-1",
+    probe_id: str = "probe.health",
+    level: str = "error",
+) -> Probe:
+    return Probe("Health", level, "Safe detail", fix, probe_id, revision)
+
+
+def _host(
+    build_probes,
+    receipts: list[DoctorRemedyReceipt],
+    *,
+    build_report=lambda: object(),
+    agent_mode: bool = False,
+) -> shell.Host:
+    return shell.Host(
+        capture_state=lambda: CockpitState(tenant_name="Clonway"),
+        build_walk_ctx=_ctx,
+        activate_pill=lambda *args: None,
+        doctor_build_report=build_report,
+        doctor_build_probes=build_probes,
+        doctor_fixes_for=fixes_for,
+        doctor_unconfigured_renderable=lambda: render.render_note("Doctor", "Unavailable"),
+        usage=_Usage(),
+        on_open=lambda: None,
+        agent_mode=agent_mode,
+        doctor_on_receipt=receipts.append,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _registry_guard():
+    clear_capabilities()
+    yield
+    clear_capabilities()
+
+
+def test_callback_receipt_reports_resolved_once() -> None:
+    receipts = []
+    resolved = False
+
+    def run() -> str:
+        nonlocal resolved
+        resolved = True
+        return "done"
+
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=run,
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+    host = _host(lambda report: [] if resolved else [_probe(fix)], receipts)
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].action_result is DoctorActionResult.RAN
+    assert receipts[0].closure is DoctorClosure.RESOLVED
+
+
+@pytest.mark.parametrize(
+    ("after_revision", "after_level", "closure"),
+    [
+        ("rev-1", "error", DoctorClosure.STILL_PRESENT),
+        ("rev-2", "error", DoctorClosure.CHANGED),
+        ("rev-1", "warn", DoctorClosure.CHANGED),
+    ],
+)
+def test_capability_receipt_compares_after_nested_return(
+    after_revision: str,
+    after_level: str,
+    closure: DoctorClosure,
+) -> None:
+    receipts = []
+    opened = False
+    order = []
+
+    def handler(ctx: WizardContext) -> None:
+        nonlocal opened
+        order.append("capability")
+        opened = True
+
+    register_capability(
+        CapabilitySpec("review", "C", "Review", "Review", "worker review", run=handler)
+    )
+    fix = Fix(
+        "Review",
+        "worker review",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+        capability_key="review",
+        focus="health",
+    )
+
+    def probes(report) -> list[Probe]:  # noqa: ANN001
+        if opened:
+            order.append("rebuild")
+            return [_probe(fix, revision=after_revision, level=after_level)]
+        return [_probe(fix)]
+
+    shell._doctor(_host(probes, receipts), _Screen(), _keys([keys.ENTER, "q"]))
+
+    assert order == ["capability", "rebuild"]
+    assert len(receipts) == 1
+    assert receipts[0].action_result is DoctorActionResult.OPENED
+    assert receipts[0].closure is closure
+
+
+def test_capability_receipt_reports_resolved_only_after_reprobe() -> None:
+    receipts = []
+    resolved = False
+
+    def handler(ctx: WizardContext) -> None:
+        nonlocal resolved
+        resolved = True
+
+    register_capability(
+        CapabilitySpec("review", "C", "Review", "Review", "worker review", run=handler)
+    )
+    fix = Fix(
+        "Review",
+        "worker review",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+        capability_key="review",
+    )
+    host = _host(lambda report: [] if resolved else [_probe(fix)], receipts)
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].action_result is DoctorActionResult.OPENED
+    assert receipts[0].closure is DoctorClosure.RESOLVED
+
+
+@pytest.mark.parametrize(
+    ("terminal", "expected_result", "expected_closure"),
+    [
+        ("callback_success", DoctorActionResult.RAN, DoctorClosure.STILL_PRESENT),
+        ("callback_failure", DoctorActionResult.FAILED, DoctorClosure.STILL_PRESENT),
+        ("decline", DoctorActionResult.DECLINED, DoctorClosure.STILL_PRESENT),
+        ("agent_skip", DoctorActionResult.SKIPPED_AGENT_MODE, DoctorClosure.STILL_PRESENT),
+        ("capability_return", DoctorActionResult.OPENED, DoctorClosure.STILL_PRESENT),
+        ("capability_exception", DoctorActionResult.OPENED, DoctorClosure.STILL_PRESENT),
+        ("capability_missing", DoctorActionResult.FAILED, DoctorClosure.UNKNOWN),
+        ("capability_shellout", DoctorActionResult.OPENED, DoctorClosure.UNKNOWN),
+        ("rebuild_failure", DoctorActionResult.RAN, DoctorClosure.UNKNOWN),
+        ("receipt_sink_failure", DoctorActionResult.RAN, DoctorClosure.STILL_PRESENT),
+    ],
+)
+def test_doctor_terminal_outcome_receipt_cardinality_matrix(
+    terminal: str,
+    expected_result: DoctorActionResult,
+    expected_closure: DoctorClosure,
+) -> None:
+    """Every terminal action exit reaches the worker receipt callback exactly once."""
+    delivered: list[DoctorRemedyReceipt] = []
+    builds = 0
+
+    def callback() -> str:
+        if terminal == "callback_failure":
+            raise RuntimeError("worker-secret")
+        return "done"
+
+    if terminal.startswith("capability_"):
+
+        def capability(ctx: WizardContext) -> None:
+            if terminal == "capability_exception":
+                raise RuntimeError("capability-secret")
+            if terminal == "capability_shellout":
+                raise shellout.ShellOut(
+                    "reauth",
+                    argv=("worker", "auth", "login"),
+                    label="Re-authenticate",
+                )
+
+        if terminal != "capability_missing":
+            register_capability(
+                CapabilitySpec(
+                    "review",
+                    "C",
+                    "Review",
+                    "Review",
+                    "worker review",
+                    run=capability,
+                )
+            )
+        fix = Fix(
+            "Review",
+            "worker review",
+            remedy_id="remedy.health",
+            probe_id="probe.health",
+            capability_key="review",
+            focus="health",
+        )
+    else:
+        fix = Fix(
+            "Repair",
+            "worker repair",
+            run=callback,
+            confirm=terminal == "decline",
+            remedy_id="remedy.health",
+            probe_id="probe.health",
+        )
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if terminal == "rebuild_failure" and builds == 2:
+            raise RuntimeError("rebuild-secret")
+        return object()
+
+    host = _host(
+        lambda report: [_probe(fix)],
+        delivered,
+        build_report=build_report,
+        agent_mode=terminal == "agent_skip",
+    )
+    if terminal == "receipt_sink_failure":
+
+        def failing_sink(receipt: DoctorRemedyReceipt) -> None:
+            delivered.append(receipt)
+            raise RuntimeError("sink-secret")
+
+        host = replace(host, doctor_on_receipt=failing_sink)
+
+    keys_in = [keys.ENTER]
+    if terminal == "decline":
+        keys_in.extend(["n", "q"])
+    elif terminal in {
+        "callback_success",
+        "callback_failure",
+        "capability_exception",
+        "capability_missing",
+        "rebuild_failure",
+        "receipt_sink_failure",
+    }:
+        keys_in.extend(["dismiss", "q"])
+    elif terminal != "capability_shellout":
+        keys_in.append("q")
+
+    if terminal == "capability_shellout":
+        with pytest.raises(shellout.ShellOut) as raised:
+            shell._doctor(host, _Screen(), _keys(keys_in))
+        assert raised.value.key == "reauth"
+        assert tuple(raised.value.argv) == ("worker", "auth", "login")
+    else:
+        shell._doctor(host, _Screen(), _keys(keys_in))
+
+    assert builds == (1 if terminal in {"capability_missing", "capability_shellout"} else 2)
+    assert len(delivered) == 1
+    assert delivered[0].action_result is expected_result
+    assert delivered[0].closure is expected_closure
+    assert delivered[0].remedy_id == "remedy.health"
+    assert delivered[0].probe_id == "probe.health"
+
+
+@pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+@pytest.mark.parametrize(
+    "after_identity",
+    [
+        "unique",
+        "absent",
+        "duplicate_id",
+        "duplicate_id_reversed",
+    ],
+)
+@pytest.mark.parametrize(
+    "pairing_case",
+    [
+        "same_object",
+        "equal_clone",
+        "stable_id_clone",
+        "shared_equal_values",
+        "unpaired",
+        "reordered_subset",
+        "ambiguous_duplicate_id",
+    ],
+)
+def test_doctor_remedy_pairing_state_matrix(
+    pairing_case: str,
+    after_identity: str,
+    display_layout: str,
+) -> None:
+    """Before attribution and after comparison share fail-closed identity rules."""
+    receipts: list[DoctorRemedyReceipt] = []
+    models = []
+    calls: list[str] = []
+
+    def run() -> str:
+        calls.append("target")
+        return "done"
+
+    target = Fix(
+        "Target",
+        "worker target",
+        run=run,
+        remedy_id="remedy.target",
+        probe_id="probe.target",
+    )
+    target_probe = Probe(
+        "Target",
+        "error",
+        "Safe detail",
+        target,
+        "probe.target",
+        "rev-target",
+    )
+    expected_probe_id = "probe.target"
+    expected_revision = "rev-target"
+    expected_closure = DoctorClosure.STILL_PRESENT
+
+    if pairing_case == "same_object":
+        probes = [target_probe]
+        fixes = [target]
+        target_index = 0
+    elif pairing_case == "equal_clone":
+        probes = [target_probe]
+        fixes = [replace(target)]
+        target_index = 0
+    elif pairing_case == "stable_id_clone":
+        probes = [target_probe]
+        fixes = [replace(target, note="worker-normalized display copy")]
+        target_index = 0
+    elif pairing_case == "shared_equal_values":
+        legacy = Fix("Target", "worker target", run=run)
+        probes = [
+            Probe("First", "warn", "first", legacy, "probe.first", "rev-first"),
+            Probe(
+                "Target",
+                "error",
+                "target",
+                replace(legacy),
+                "probe.target",
+                "rev-target",
+            ),
+        ]
+        fixes = [replace(legacy), replace(legacy)]
+        target_index = 1
+    elif pairing_case == "unpaired":
+        probes = [Probe("Other", "warn", "other", None, "probe.other", "rev-other")]
+        fixes = [target]
+        target_index = 0
+        expected_probe_id = ""
+        expected_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+    elif pairing_case == "reordered_subset":
+        before = Fix(
+            "Before",
+            "worker before",
+            run=lambda: "before",
+            remedy_id="remedy.before",
+            probe_id="probe.before",
+        )
+        after = Fix(
+            "After",
+            "worker after",
+            run=lambda: "after",
+            remedy_id="remedy.after",
+            probe_id="probe.after",
+        )
+        probes = [
+            Probe("Before", "warn", "before", before, "probe.before", "rev-before"),
+            target_probe,
+            Probe("After", "warn", "after", after, "probe.after", "rev-after"),
+        ]
+        fixes = [after, target]
+        target_index = 1
+    else:
+        duplicate = Probe(
+            "Duplicate",
+            "warn",
+            "duplicate",
+            replace(target, note="duplicate"),
+            "probe.target",
+            "rev-duplicate",
+        )
+        probes = [target_probe, duplicate]
+        fixes = [target]
+        target_index = 0
+        expected_probe_id = ""
+        expected_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+
+    if display_layout == "interleaved":
+        display = Fix("Display only", "worker explain", note="Read the runbook")
+        fixes = [display, *fixes, display]
+
+    if after_identity == "unique":
+        after_probes = [target_probe]
+    elif after_identity == "absent":
+        after_probes = [Probe("Other", "warn", "other", None, "probe.other", "rev-other")]
+    else:
+        changed = replace(
+            target_probe,
+            name="Target changed",
+            level="warn",
+            evidence_revision="rev-changed",
+        )
+        after_probes = [target_probe, changed]
+        if after_identity == "duplicate_id_reversed":
+            after_probes.reverse()
+
+    host = replace(
+        _host(lambda report: after_probes if calls else probes, receipts),
+        doctor_fixes_for=lambda current_probes: fixes,
+        on_screen=models.append,
+    )
+
+    shell._doctor(
+        host,
+        _Screen(),
+        _keys([str(target_index + 1), "dismiss", "q"]),
+    )
+
+    first_doctor = next(model for model in models if model.kind == "doctor")
+    rows = next(region.rows for region in first_doctor.regions if region.role == "fixes")
+    target_row = next(row for row in rows if row.id == f"fix:{target_index}")
+    fields = {field.label: field.value for field in target_row.fields}
+    assert target_row.enabled is True
+    assert (
+        fields["remedy_id"]
+        == fixes[(target_index + 1) if display_layout == "interleaved" else target_index].remedy_id
+    )
+    assert calls == ["target"]
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == expected_probe_id
+    assert receipts[0].before_revision == expected_revision
+    if not expected_probe_id:
+        expected_closure = DoctorClosure.UNKNOWN
+    elif after_identity == "absent":
+        expected_closure = DoctorClosure.RESOLVED
+    elif after_identity.startswith("duplicate"):
+        expected_closure = DoctorClosure.UNKNOWN
+    assert receipts[0].closure is expected_closure
+    if after_identity.startswith("duplicate"):
+        assert receipts[0].after_level is None
+        assert receipts[0].after_revision is None
+
+
+@pytest.mark.parametrize("probe_cardinality", ["missing", "unique", "duplicate"])
+@pytest.mark.parametrize("remedy_count", [1, 2, 3])
+@pytest.mark.parametrize("selected_position", ["first", "middle", "last"])
+@pytest.mark.parametrize("remedy_order", ["natural", "reversed"])
+@pytest.mark.parametrize("display_layout", ["absent", "interleaved"])
+@pytest.mark.parametrize("after_identity", ["changed", "same", "absent", "duplicate_id"])
+def test_doctor_remedy_cardinality_pairing_matrix(
+    probe_cardinality: str,
+    remedy_count: int,
+    selected_position: str,
+    remedy_order: str,
+    display_layout: str,
+    after_identity: str,
+) -> None:
+    """Explicit probe identity is 1:N from probe to remedies.
+
+    Every remedy declaring one uniquely resolvable probe ID receives the same
+    before/after attribution, independent of remedy order or display-only rows.
+    Missing and duplicate probe identities fail closed for every remedy and
+    never borrow an unrelated probe through legacy object/value matching.
+
+    Remedy cardinality is crossed with the AFTER-side identity shape: which
+    remedy of a 1:N probe ran must not change how the rebuilt probe is
+    re-identified, so every closure verdict has to hold for every remedy count,
+    order and row.
+    """
+    receipts: list[DoctorRemedyReceipt] = []
+    models = []
+    calls: list[str] = []
+
+    def remedy(index: int) -> Fix:
+        remedy_id = f"remedy.shared.{index}"
+
+        def run() -> str:
+            calls.append(remedy_id)
+            return "done"
+
+        return Fix(
+            f"Shared remedy {index}",
+            f"worker remedy-{index}",
+            run=run,
+            remedy_id=remedy_id,
+            probe_id="probe.shared",
+        )
+
+    remedies = [remedy(index) for index in range(remedy_count)]
+    shared_probe = Probe(
+        "Shared",
+        "error",
+        "Safe detail",
+        remedies[0],
+        "probe.shared",
+        "rev-before",
+    )
+    if probe_cardinality == "unique":
+        before_probes = [shared_probe]
+        expected_probe_id = "probe.shared"
+        expected_before_revision = "rev-before"
+        expected_closure = DoctorClosure.CHANGED
+    elif probe_cardinality == "duplicate":
+        duplicate = replace(
+            shared_probe,
+            name="Shared duplicate",
+            fix=remedies[-1],
+            evidence_revision="rev-duplicate",
+        )
+        before_probes = [shared_probe, duplicate]
+        expected_probe_id = ""
+        expected_before_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+    else:
+        # The unrelated probe deliberately carries the first explicit remedy:
+        # its different probe_id must prevent legacy object/equality fallback
+        # from overriding the remedy's declared (but unresolved) identity.
+        unrelated = Probe(
+            "Unrelated",
+            "warn",
+            "Safe detail",
+            remedies[0],
+            "probe.unrelated",
+            "rev-unrelated",
+        )
+        before_probes = [unrelated]
+        expected_probe_id = ""
+        expected_before_revision = ""
+        expected_closure = DoctorClosure.UNKNOWN
+
+    # The after side is an independent axis: which of a 1:N probe's remedies ran
+    # must not change how the rebuilt probe is re-identified.
+    def reshape(probe: Probe) -> list[Probe]:
+        if probe.probe_id != "probe.shared":
+            return [probe]
+        if after_identity == "same":
+            return [probe]
+        if after_identity == "absent":
+            return []
+        if after_identity == "changed":
+            return [replace(probe, level="warn", evidence_revision="rev-after")]
+        return [probe, replace(probe, name="Shared twin", evidence_revision="rev-twin")]
+
+    after_probes = [reshaped for probe in before_probes for reshaped in reshape(probe)]
+    if expected_probe_id:
+        expected_closure = {
+            "changed": DoctorClosure.CHANGED,
+            "same": DoctorClosure.STILL_PRESENT,
+            "absent": DoctorClosure.RESOLVED,
+            "duplicate_id": DoctorClosure.UNKNOWN,
+        }[after_identity]
+
+    ordered = remedies if remedy_order == "natural" else list(reversed(remedies))
+    positions = {
+        "first": 0,
+        "middle": len(ordered) // 2,
+        "last": len(ordered) - 1,
+    }
+    target_index = positions[selected_position]
+    target = ordered[target_index]
+    fixes: list[Fix] = list(ordered)
+    if display_layout == "interleaved":
+        display = Fix("Display only", "worker explain", note="Read the runbook")
+        fixes = [display]
+        for fix in ordered:
+            fixes.extend([fix, display])
+
+    host = replace(
+        _host(lambda report: after_probes if calls else before_probes, receipts),
+        doctor_fixes_for=lambda current_probes: fixes,
+        on_screen=models.append,
+    )
+
+    shell._doctor(
+        host,
+        _Screen(),
+        _keys([str(target_index + 1), "dismiss", "q"]),
+    )
+
+    first_doctor = next(model for model in models if model.kind == "doctor")
+    rows = next(region.rows for region in first_doctor.regions if region.role == "fixes")
+    target_row = next(row for row in rows if row.id == f"fix:{target_index}")
+    fields = {field.label: field.value for field in target_row.fields}
+    assert fields["remedy_id"] == target.remedy_id
+    assert fields["probe_id"] == "probe.shared"
+    assert calls == [target.remedy_id]
+    assert len(receipts) == 1
+    assert receipts[0].remedy_id == target.remedy_id
+    assert receipts[0].probe_id == expected_probe_id
+    assert receipts[0].before_revision == expected_before_revision
+    assert receipts[0].closure is expected_closure
+    if expected_closure in (DoctorClosure.UNKNOWN, DoctorClosure.RESOLVED):
+        # No comparable after probe → the after fields stay empty rather than
+        # borrowing one of the twins (or the departed probe's stale values).
+        assert receipts[0].after_level is None
+        assert receipts[0].after_revision is None
+    elif after_identity == "same":
+        assert receipts[0].after_revision == "rev-before"
+    else:
+        assert receipts[0].after_revision == "rev-after"
+
+
+@pytest.mark.parametrize(
+    ("agent_mode", "raises", "keys_in", "result"),
+    [
+        (False, False, [keys.ENTER, "n", "q"], DoctorActionResult.DECLINED),
+        (True, False, [keys.ENTER, "q"], DoctorActionResult.SKIPPED_AGENT_MODE),
+        (False, True, [keys.ENTER, "dismiss", "q"], DoctorActionResult.FAILED),
+    ],
+)
+def test_callback_non_success_results_emit_one_still_present_receipt(
+    agent_mode: bool,
+    raises: bool,
+    keys_in: list[str],
+    result: DoctorActionResult,
+) -> None:
+    receipts = []
+    calls = []
+
+    def run() -> str:
+        calls.append(True)
+        if raises:
+            raise RuntimeError("worker-secret")
+        return "done"
+
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=run,
+        confirm=result is DoctorActionResult.DECLINED,
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+    builds = 0
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        return object()
+
+    host = _host(
+        lambda report: [_probe(fix)], receipts, build_report=build_report, agent_mode=agent_mode
+    )
+
+    shell._doctor(host, _Screen(), _keys(keys_in))
+
+    # Plan Step 4.1: rebuild happens exactly once for an ATTEMPTED action — decline,
+    # agent-mode skip and a failed callback are all attempts (the operator/agent
+    # engaged the remedy), so each still rebuilds once to refresh the probe facts,
+    # on top of the one build Doctor always does on entry (contrast with the
+    # capability_missing branch below, which never attempted anything and stays
+    # at the entry build alone).
+    assert builds == 2
+    assert len(receipts) == 1
+    assert receipts[0].action_result is result
+    assert receipts[0].closure is DoctorClosure.STILL_PRESENT
+    assert calls == ([True] if raises else [])
+    assert "worker-secret" not in receipts[0].safe_message
+
+
+def test_missing_capability_receipt_is_failed_unknown_without_rebuild() -> None:
+    receipts = []
+    builds = 0
+    fix = Fix(
+        "Missing",
+        "worker missing",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+        capability_key="missing",
+    )
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        return object()
+
+    host = _host(lambda report: [_probe(fix)], receipts, build_report=build_report)
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    assert builds == 1
+    assert len(receipts) == 1
+    assert receipts[0].action_result is DoctorActionResult.FAILED
+    assert receipts[0].closure is DoctorClosure.UNKNOWN
+
+
+def test_rebuild_failure_classification_makes_closure_unknown() -> None:
+    receipts = []
+    builds = 0
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=lambda: "done",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if builds == 2:
+            raise RuntimeError("rebuild-secret")
+        return object()
+
+    host = replace(
+        _host(lambda report: [_probe(fix)], receipts, build_report=build_report),
+        doctor_classify_report_failure=lambda exc: Probe(
+            "Rebuild",
+            "error",
+            "Safe rebuild failure",
+            None,
+            "probe.rebuild",
+            "rev-2",
+        ),
+    )
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].closure is DoctorClosure.UNKNOWN
+
+
+def test_rebuild_classifier_failure_makes_closure_unknown() -> None:
+    receipts = []
+    builds = 0
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=lambda: "done",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if builds == 2:
+            raise RuntimeError("rebuild-secret")
+        return object()
+
+    def classifier(exc: Exception) -> Probe:
+        raise LookupError("classifier-secret")
+
+    host = replace(
+        _host(lambda report: [_probe(fix)], receipts, build_report=build_report),
+        doctor_classify_report_failure=classifier,
+    )
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].closure is DoctorClosure.UNKNOWN
+    assert "secret" not in receipts[0].safe_message
+
+
+def test_repeat_attempts_use_each_new_before_revision() -> None:
+    receipts = []
+    revision = 1
+
+    def run() -> str:
+        nonlocal revision
+        revision += 1
+        return "done"
+
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=run,
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+    host = _host(lambda report: [_probe(fix, revision=f"rev-{revision}")], receipts)
+
+    shell._doctor(
+        host,
+        _Screen(),
+        _keys([keys.ENTER, "dismiss", keys.ENTER, "dismiss", "q"]),
+    )
+
+    assert [(r.before_revision, r.after_revision) for r in receipts] == [
+        ("rev-1", "rev-2"),
+        ("rev-2", "rev-3"),
+    ]
+    assert all(receipt.closure is DoctorClosure.CHANGED for receipt in receipts)
+
+
+def test_receipt_callback_failure_does_not_change_doctor_outcome(caplog) -> None:
+    delivered = []
+    fix = Fix(
+        "Repair",
+        "worker repair",
+        run=lambda: "done",
+        remedy_id="remedy.health",
+        probe_id="probe.health",
+    )
+
+    def fail_delivery(receipt: DoctorRemedyReceipt) -> None:
+        delivered.append(receipt)
+        raise RuntimeError("observability-secret")
+
+    host = replace(
+        _host(lambda report: [_probe(fix)], []),
+        doctor_on_receipt=fail_delivery,
+    )
+
+    with caplog.at_level("WARNING", logger="clonway_cockpit.shell"):
+        shell._doctor(host, _Screen(), _keys([keys.ENTER, "dismiss", "q"]))
+
+    # A broken receipt sink must not go silently unobserved (nit: zero signal on a
+    # permanently-broken sink) — but the log carries only IDs/result/closure and the
+    # exception CLASS, never the raw exception text (which may hold worker detail).
+    assert len(caplog.records) == 1
+    message = caplog.records[0].getMessage()
+    assert "remedy.health" in message
+    assert "probe.health" in message
+    assert "RuntimeError" in message
+    assert "observability-secret" not in message
+
+    assert len(delivered) == 1

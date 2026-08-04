@@ -24,7 +24,7 @@ import sys
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.audit_log import make_audit_sink
-from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.doctor import DoctorRemedyReceipt, Fix, Probe, fixes_for
 from clonway_cockpit.prompts import default_confirm_fn, make_clean_input_fn
 from clonway_cockpit.registry import (
     BlastRadius,
@@ -187,6 +187,29 @@ def doctor_unconfigured_renderable() -> RenderableType:
     )
 
 
+def doctor_classify_report_failure(exc: Exception) -> Probe:
+    """Opt-in example for turning a report-build exception into modeled copy.
+
+    Do not wire this callback until the worker has replaced it with a typed,
+    redacted failure taxonomy and stable remedy. The exception-class revision is
+    scaffold-only: repeated failures of the same class compare as still present.
+    """
+    exception_class = type(exc).__name__
+    return Probe(
+        name="Doctor report",
+        level="error",
+        detail=f"Status report unavailable ({exception_class}).",
+        fix=None,
+        probe_id="scaffold.report",
+        evidence_revision=exception_class,
+    )
+
+
+def doctor_on_receipt(_receipt: DoctorRemedyReceipt) -> None:
+    """Best-effort observation hook. TODO({{ worker_id }}): persist or emit the
+    receipt through the worker's existing content-safe observability channel."""
+
+
 def _on_open() -> None:
     """Fired once per cockpit open: register capabilities + best-effort Signal
     emit (flag-guarded, default off). Kept off the per-redraw path."""
@@ -209,6 +232,10 @@ def _host(*, agent_mode: bool = False) -> shell.Host:
         doctor_build_probes=doctor_build_probes,
         doctor_fixes_for=fixes_for,
         doctor_unconfigured_renderable=doctor_unconfigured_renderable,
+        # Opt in after replacing the scaffold example with a worker-owned,
+        # typed/redacted failure taxonomy:
+        # doctor_classify_report_failure=doctor_classify_report_failure,
+        doctor_on_receipt=doctor_on_receipt,
         usage=usage,
         on_open=_on_open,
         app_label=_APP_LABEL,

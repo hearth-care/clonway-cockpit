@@ -24,11 +24,12 @@ stdlib — never a worker package."""
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 from rich.console import RenderableType
 
@@ -36,9 +37,22 @@ from clonway_cockpit import keys, render, shellout, walk
 from clonway_cockpit import registry as _registry
 from clonway_cockpit import render as r
 from clonway_cockpit.audit_log import AuditEvent, AuditSink
+from clonway_cockpit.doctor import (
+    DoctorActionKind,
+    DoctorActionResult,
+    DoctorFocusState,
+    DoctorRemedyReceipt,
+    Fix,
+    Probe,
+    action_kind,
+    build_remedy_receipt,
+    pair_remedies,
+)
 from clonway_cockpit.model import Region, ScreenModel
 from clonway_cockpit.registry import CapabilitySpec, WizardContext
 from clonway_cockpit.state import CockpitState
+
+_log = logging.getLogger(__name__)
 
 # How long the cockpit sleeps between progress frames — ~8 redraws/second, fast
 # enough that the spinner reads as motion, slow enough not to thrash the screen.
@@ -246,6 +260,11 @@ class Host:
         ]
         | None
     ) = None
+
+    # Optional Doctor extensions. The worker owns failure classification/redaction
+    # and receipt persistence; absent callbacks preserve legacy behavior.
+    doctor_classify_report_failure: Callable[[Exception], Probe] | None = None
+    doctor_on_receipt: Callable[[DoctorRemedyReceipt], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -810,7 +829,7 @@ def _open_capability(
     host.usage.record(key, "open")
     _safe_audit_launch(host, spec, focus=focus)
     if key == "doctor":
-        _doctor(host, screen, read_key)
+        _doctor(host, screen, read_key, focus=focus, _nav=_nav)
         return
     if spec.run is not None:
         ctx = host.build_walk_ctx(screen, read_key, focus=focus)
@@ -847,10 +866,10 @@ def _open_capability(
             # taking the whole cockpit down. Surface the crash as a clean result
             # frame and return to the home loop instead. Emit the matching model so an
             # agent driving the walk sees the failure too (not just the human screen).
-            # Some exceptions stringify to "" (e.g. click.Abort on an EOF'd prompt) — note an
-            # exception OBJECT is always truthy, so test str(e), not e — fall back to the type name
-            # so the crash frame is never a dangling "… hit an error — " with nothing after it.
-            crash_msg = f"{spec.title} hit an error — {str(e) or type(e).__name__}"
+            # Exception text is worker/provider-owned and may contain credentials,
+            # customer data, payloads or paths. Framework-owned Rich and agent
+            # frames therefore expose only a bounded class name.
+            crash_msg = f"{spec.title} hit an error ({type(e).__name__})."
             _safe_emit(host, r.model_walk_result(spec.title, ok=False, message=crash_msg))
             _show(screen, r.render_walk_result(spec.title, ok=False, message=crash_msg), read_key)
         return
@@ -859,7 +878,219 @@ def _open_capability(
     _show(screen, r.render_capability_card(spec), read_key)
 
 
-def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
+@dataclass(frozen=True)
+class DoctorBuild:
+    report: object | None
+    failure_probe: Probe | None
+
+
+def _internal_doctor_failure(exc: Exception) -> Probe:
+    return Probe(
+        "Doctor report",
+        "error",
+        f"Failure classification failed ({type(exc).__name__}).",
+        None,
+        "doctor.classifier_failure",
+        "",
+    )
+
+
+def _build_doctor(host: Host) -> DoctorBuild:
+    try:
+        return DoctorBuild(host.doctor_build_report(), None)
+    except Exception as exc:
+        if host.doctor_classify_report_failure is None:
+            raise
+        try:
+            probe = host.doctor_classify_report_failure(exc)
+            if not isinstance(probe, Probe):
+                raise TypeError("classifier must return Probe")
+        except Exception as classifier_exc:
+            probe = _internal_doctor_failure(classifier_exc)
+        return DoctorBuild(None, probe)
+
+
+def _doctor_probes(host: Host, build: DoctorBuild) -> list[Probe]:
+    if build.failure_probe is not None:
+        return [build.failure_probe]
+    return host.doctor_build_probes(build.report)
+
+
+def _unique_match[T](candidates: list[T], predicate: Callable[[T], bool]) -> T | None:
+    """Return the sole matching candidate; fail closed on zero or many matches."""
+    matches = [candidate for candidate in candidates if predicate(candidate)]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _runnable_remedies(probes: list[Probe], fixes: list[Fix]) -> list[tuple[Probe | None, Fix]]:
+    """The dispatch list: every non-display-only row of the ONE shared pairing, in
+    the exact order/count ``render_doctor``/``model_doctor`` number rows in, so the
+    shell's dispatch list can never diverge from what's on screen.
+
+    The pairing rules themselves live in :func:`doctor.pair_remedies`, which both
+    projections read too — see its docstring for the explicit-ID and legacy-identity
+    resolution order."""
+    return [(row.probe, row.fix) for row in pair_remedies(probes, fixes) if row.runnable]
+
+
+class _FocusDecision(NamedTuple):
+    """One focus RESOLUTION, shared by both projections.
+
+    ``row`` is the runnable row the focus resolved to, or ``None`` when it resolved
+    to nothing runnable — either there is no such row (``PRESENT``) or the ordinary
+    documented first-row fallback applies (``AMBIGUOUS``/``UNKNOWN``, where the
+    caller shows row 1 but nobody may read that cursor as authorized by the focus).
+
+    Resolution says nothing about where the cursor currently IS: the operator (or a
+    driving agent) may navigate away from a perfectly resolved focus. That second,
+    separate fact is :meth:`matched_identity`, which is what both projections
+    publish as ``focus_matched`` — "the selected row is the one you asked for"."""
+
+    row: int | None
+    identity: str | None
+    state: DoctorFocusState | None
+
+    @property
+    def fallback_selection(self) -> bool:
+        """True when the caller should show the visible first-row fallback."""
+        return self.state in (DoctorFocusState.AMBIGUOUS, DoctorFocusState.UNKNOWN)
+
+    def matched_identity(self, selected: int | None) -> str | None:
+        """The requested identity iff ``selected`` is the row the focus resolved to.
+
+        A frame that reported a match while the cursor sat on an unrelated
+        state-changing remedy told a driving agent that ⏎ would run its target when
+        ⏎ would run somebody else's — the same confused-deputy shape the write gate
+        exists to prevent, one layer up."""
+        if self.state is not DoctorFocusState.MATCHED or self.row is None:
+            return None
+        return self.identity if selected == self.row else None
+
+
+def _focused_remedy(
+    probes: list[Probe],
+    runnable: list[tuple[Probe | None, Fix]],
+    fixes: list[Fix],
+    focus: str | None,
+) -> _FocusDecision:
+    """Resolve a requested focus against EVERYTHING Doctor renders, and say which
+    of the four states it landed in.
+
+    The identity search spans the full probe snapshot AND the full fix list —
+    including display-only fixes, which are rendered (as ``fix:display:<i>``) and
+    are therefore addressable even though they are not runnable. Searching only
+    the *runnable* list is what made a rendered-but-not-actionable target report
+    as "not found" (QA round 5): resolution and actionability are separate
+    questions and the verdict has to answer both.
+
+    Ambiguity always fails closed. A focus claimed by two or more probes, or by
+    two or more remedies, never selects one of them."""
+    if not focus:  # "" is a worker-supplied non-identity, not a focus on the empty ID
+        return _FocusDecision(0, None, None)
+    probe_matches = [probe for probe in probes if probe.probe_id == focus]
+    fix_probe_matches = [fix for fix in fixes if fix.probe_id == focus]
+    remedy_matches = [fix for fix in fixes if fix.remedy_id == focus]
+
+    def first_runnable(predicate: Callable[[Probe | None, Fix], bool]) -> int | None:
+        return next(
+            (index for index, (probe, fix) in enumerate(runnable) if predicate(probe, fix)),
+            None,
+        )
+
+    # Probe identity first (a Home need names the probe it wants seen), then
+    # remedy identity — the documented precedence.
+    if probe_matches or fix_probe_matches:
+        if len(probe_matches) > 1:
+            return _FocusDecision(None, None, DoctorFocusState.AMBIGUOUS)
+        target = probe_matches[0] if probe_matches else None
+        index = first_runnable(
+            lambda probe, fix: (target is not None and probe is target) or fix.probe_id == focus
+        )
+        if index is not None:
+            return _FocusDecision(index, focus, DoctorFocusState.MATCHED)
+    if remedy_matches:
+        if len(remedy_matches) > 1:
+            return _FocusDecision(None, None, DoctorFocusState.AMBIGUOUS)
+        index = first_runnable(lambda _probe, fix: fix.remedy_id == focus)
+        if index is not None:
+            return _FocusDecision(index, focus, DoctorFocusState.MATCHED)
+    if probe_matches or fix_probe_matches or remedy_matches:
+        # Rendered, uniquely resolved, but nothing runnable carries it.
+        return _FocusDecision(None, None, DoctorFocusState.PRESENT)
+    return _FocusDecision(None, None, DoctorFocusState.UNKNOWN)
+
+
+def _preserved_remedy_index(
+    runnable: list[tuple[Probe | None, Fix]],
+    selected: tuple[Probe | None, Fix],
+) -> int | None:
+    """Resolve a selected remedy after a Doctor rebuild without trusting its old index.
+
+    Explicit stable identities win. Legacy object/value matching remains available,
+    but only when it resolves uniquely; ambiguous identities fail closed and leave
+    the caller to select a visible fallback row instead of authorizing an arbitrary
+    twin.
+    """
+    selected_probe, selected_fix = selected
+
+    def unique_index(predicate: Callable[[Probe | None, Fix], bool]) -> int | None:
+        match = _unique_match(
+            list(enumerate(runnable)),
+            lambda indexed: predicate(*indexed[1]),
+        )
+        return match[0] if match is not None else None
+
+    if selected_fix.remedy_id:
+        index = unique_index(lambda _probe, fix: fix.remedy_id == selected_fix.remedy_id)
+        if index is not None:
+            return index
+    selected_probe_id = (
+        selected_probe.probe_id
+        if selected_probe is not None and selected_probe.probe_id
+        else selected_fix.probe_id
+    )
+    if selected_probe_id:
+        index = unique_index(
+            lambda probe, fix: (
+                (probe is not None and probe.probe_id == selected_probe_id)
+                or fix.probe_id == selected_probe_id
+            )
+        )
+        if index is not None:
+            return index
+    index = unique_index(lambda probe, fix: probe is selected_probe and fix is selected_fix)
+    if index is not None:
+        return index
+    return unique_index(lambda probe, fix: probe == selected_probe and fix == selected_fix)
+
+
+def _deliver_doctor_receipt(host: Host, receipt: DoctorRemedyReceipt) -> None:
+    if host.doctor_on_receipt is None:
+        return
+    try:
+        host.doctor_on_receipt(receipt)
+    except Exception as exc:  # noqa: BLE001 — isolate a broken receipt sink from Doctor
+        # Only receipt IDs/result/closure and the exception CLASS — never worker
+        # probe detail, which may carry sensitive text (see safe_message's contract).
+        _log.warning(
+            "doctor receipt callback failed: remedy_id=%r probe_id=%r "
+            "action_result=%s closure=%s (%s)",
+            receipt.remedy_id,
+            receipt.probe_id,
+            receipt.action_result.value,
+            receipt.closure.value,
+            type(exc).__name__,
+        )
+
+
+def _doctor(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    focus: str | None = None,
+    _nav: _NavStack | None = None,
+) -> None:
     """The interactive Doctor — the only capability with a custom view (it doesn't
     fit the walk model). The probe table + verdict render as before, but the named
     fixes are a navigable list: ↑↓ moves over the RUNNABLE fixes, ⏎ runs the
@@ -870,13 +1101,31 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
 
     Every runnable fix is READ-ONLY w.r.t. the worker's books and NO-LOGIN (the
     sync fixes reuse the existing token; the lock fix only unlinks a local file)."""
+    # A worker's NeedsItem.focus is an unvalidated str | None, so "" reaches here.
+    # An empty identity is "no focus", not a focus on the empty probe ID that every
+    # legacy probe carries — normalise once, at the entry, so no resolver has to.
+    focus = focus or None
     sel = 0
+    focus_pending = True
+    # A focus that resolves to something rendered but NOT actionable leaves no row
+    # pre-selected: parking the cursor on an unrelated state-changing remedy puts
+    # the wrong fix one ⏎ away. The first ↑/↓/⏎ reveals the fallback cursor without
+    # running anything; a digit key is an explicit choice and still runs directly.
+    #
+    # Visibility is DERIVED from the current focus decision on every frame (below),
+    # so it cannot go stale when a remedy rebuilds the focus target into a
+    # non-actionable shape. ``explicit_selection`` is the one override: an operator
+    # who has chosen a row under THIS snapshot keeps their cursor. A rebuild starts a
+    # new snapshot and clears that provenance, so the derived verdict governs again.
+    explicit_selection = False
+    selection_anchor: tuple[Probe | None, Fix] | None = None
+    cached_probes: list[Probe] | None = None
     # Build the (heavy) status report ONCE on entry, then rebuild only after a fix
     # runs (or an explicit refresh) — never on a cursor move. Arrows over the fixes
     # just re-highlight from the cached report, the same per-keypress-work fix as
     # the home loop.
     try:
-        report = host.doctor_build_report()
+        build = _build_doctor(host)
     except Exception:  # noqa: BLE001 — unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
         _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))
@@ -884,15 +1133,53 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
         return
     dirty = True
     while True:
-        probes = host.doctor_build_probes(report)
+        if cached_probes is None:
+            probes = _doctor_probes(host, build)
+        else:
+            probes = cached_probes
+            cached_probes = None
         fixes = host.doctor_fixes_for(probes)
-        runnable = [f for f in fixes if f.run is not None]
+        runnable_remedies = _runnable_remedies(probes, fixes)
+        runnable = [fix for _, fix in runnable_remedies]
+        # The focus verdict is recomputed against the CURRENT probe/remedy lists
+        # every frame — a stale match after the focused probe/remedy rebuilds away
+        # would tell an agent driving by this field that `selection` still names
+        # its focus when it has silently retargeted (finding: focus survives a
+        # rebuild it shouldn't). Only the initial cursor jump is gated by
+        # focus_pending — subsequent arrow moves must not be overridden back onto
+        # the focus target.
+        decision = _focused_remedy(probes, runnable_remedies, fixes, focus)
+        focus_state = decision.state
+        selection_visible = False
         if runnable:
-            sel %= len(runnable)
+            if focus_pending:
+                sel = decision.row if decision.row is not None else 0
+                focus_pending = False
+            elif selection_anchor is not None:
+                preserved = _preserved_remedy_index(runnable_remedies, selection_anchor)
+                # Fail closed on a stale numeric index: `sel % len` lands on
+                # whichever remedy now occupies that slot, which is not a defined
+                # row. Row 1 is the documented visible fallback.
+                sel = preserved if preserved is not None else 0
+                selection_anchor = None
+            else:
+                sel %= len(runnable)
+            # PRESENT resolves to a rendered target with no runnable remedy: show
+            # the list, but authorize nothing. Derived here (not only on entry) so a
+            # remedy that rebuilds its own probe into a non-actionable shape cannot
+            # leave a live cursor sitting on an unrelated state-changing remedy.
+            selection_visible = (
+                explicit_selection or decision.row is not None or decision.fallback_selection
+            )
         # Render only when something changed AND no more input is queued — coalesces
         # held-arrow repeat into one repaint (pending() is False off a raw session).
         if dirty and not keys.pending():
-            sel_arg = sel if runnable else None
+            sel_arg = sel if (runnable and selection_visible) else None
+            # "Did it resolve" (focus_state/focus_row) and "is the cursor on it"
+            # (focus_matched) are two facts with one derivation, so no frame can
+            # claim a match for a row the operator is not on.
+            focus_matched = decision.matched_identity(sel_arg)
+            focus_row = decision.row if focus is not None else None
             usage_arg = host.usage.load()  # best-effort; {} on any failure
             specs_arg = host.get_capabilities()
             screen.update(
@@ -903,6 +1190,10 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     usage=usage_arg,
                     specs=specs_arg,
                     app_label=host.app_label,
+                    focus_requested=focus,
+                    focus_matched=focus_matched,
+                    focus_state=focus_state,
+                    focus_row=focus_row,
                 )
             )
             _safe_emit(
@@ -914,6 +1205,10 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
                     usage=usage_arg,
                     specs=specs_arg,
                     app_label=host.app_label,
+                    focus_requested=focus,
+                    focus_matched=focus_matched,
+                    focus_state=focus_state,
+                    focus_row=f"fix:{focus_row}" if focus_row is not None else None,
                 ),
             )
             dirty = False
@@ -923,40 +1218,129 @@ def _doctor(host: Host, screen: Screen, read_key: Callable[[], str]) -> None:
             return
         if not runnable:
             # Nothing to run — any non-quit key just refreshes the probes.
-            report = _rebuild_doctor_report(host, screen, read_key)
-            if report is None:
+            rebuilt = _rebuild_doctor_report(host, screen, read_key)
+            if rebuilt is None:
                 return
+            build = rebuilt
+            explicit_selection = False  # a rebuild is a new snapshot
+            dirty = True
+            continue
+        if not selection_visible and key in (keys.UP, keys.DOWN, keys.ENTER):
+            # No row is pre-selected (a PRESENT focus). The first move/run keypress
+            # reveals the fallback cursor and does NOT run it — otherwise a single ⏎
+            # on a screen with no visible ❯ would run an unrelated remedy.
+            explicit_selection = True
             dirty = True
             continue
         if key == keys.UP:
             sel = (sel - 1) % len(runnable)
+            explicit_selection = True
             dirty = True
             continue
         if key == keys.DOWN:
             sel = (sel + 1) % len(runnable)
+            explicit_selection = True
             dirty = True
             continue
         if key.isdigit() and 1 <= int(key) <= len(runnable):
-            _run_doctor_fix(host, runnable[int(key) - 1], screen, read_key)
-        elif key == keys.ENTER:
-            _run_doctor_fix(host, runnable[sel], screen, read_key)
-        else:
+            # An explicit numbered choice is unambiguous — it needs no reveal step.
+            explicit_selection = True
+            sel = int(key) - 1
+        elif key != keys.ENTER:
             continue  # inert key — no repaint
+        selected_probe, selected_fix = runnable_remedies[sel]
+        try:
+            action_result = _run_doctor_fix(
+                host,
+                selected_fix,
+                screen,
+                read_key,
+                _nav=_nav,
+            )
+        except shellout.ShellOut:
+            # A capability shell-out is an attempted open that intentionally ends
+            # this Doctor session. There can be no same-session re-probe, but the
+            # worker must still observe the attempt exactly once before the
+            # existing control-flow exception reaches the human/agent boundary.
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=DoctorActionResult.OPENED,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
+            raise
+        capability_missing = (
+            action_kind(selected_fix) is DoctorActionKind.OPEN_CAPABILITY
+            and action_result is DoctorActionResult.FAILED
+            and (
+                selected_fix.capability_key is None
+                or host.get_capability(selected_fix.capability_key) is None
+            )
+        )
+        if capability_missing:
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=action_result,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
+            dirty = True
+            continue
         # A fix ran → rebuild the report so the probes reflect the change.
-        report = _rebuild_doctor_report(host, screen, read_key)
-        if report is None:
+        rebuilt = _rebuild_doctor_report(host, screen, read_key)
+        if rebuilt is None:
+            receipt = build_remedy_receipt(
+                fix=selected_fix,
+                before=selected_probe,
+                after=None,
+                action_result=action_result,
+                rebuild_available=False,
+            )
+            _deliver_doctor_receipt(host, receipt)
             return
+        after_probes = _doctor_probes(host, rebuilt)
+        if selected_probe is not None and selected_probe.probe_id:
+            selected_probe_id = selected_probe.probe_id
+            after_matches = [probe for probe in after_probes if probe.probe_id == selected_probe_id]
+        else:
+            after_matches = []
+        after_probe = _unique_match(after_matches, lambda _probe: True)
+        after_identity_ambiguous = len(after_matches) > 1
+        comparison_available = not after_identity_ambiguous and not (
+            rebuilt.failure_probe is not None and after_probe is None
+        )
+        receipt = build_remedy_receipt(
+            fix=selected_fix,
+            before=selected_probe,
+            after=after_probe,
+            action_result=action_result,
+            rebuild_available=comparison_available,
+        )
+        _deliver_doctor_receipt(host, receipt)
+        build = rebuilt
+        cached_probes = after_probes
+        selection_anchor = (selected_probe, selected_fix)
+        # A rebuild is a NEW snapshot: whatever the operator explicitly chose was
+        # chosen under the old one. The focus verdict is recomputed against the new
+        # probes/remedies and governs visibility again, so a remedy that turns its
+        # own probe into a non-actionable shape re-hides the cursor instead of
+        # leaving an unrelated state-changing remedy one ⏎ away.
+        explicit_selection = False
         dirty = True
 
 
 def _rebuild_doctor_report(
     host: Host, screen: Screen, read_key: Callable[[], str]
-) -> object | None:
+) -> DoctorBuild | None:
     """Re-run the worker's status report after a Doctor fix (or a refresh). Returns
     the fresh report, or ``None`` after showing the unconfigured hint — in which case
     the caller returns out of the Doctor loop (it degraded mid-session)."""
     try:
-        return host.doctor_build_report()
+        return _build_doctor(host)
     except Exception:  # noqa: BLE001 — became unconfigured/offline → setup hint, don't crash
         unconfigured = host.doctor_unconfigured_renderable()
         _safe_emit(host, r.model_unstructured(unconfigured, title="Doctor"))
@@ -964,7 +1348,26 @@ def _rebuild_doctor_report(
         return None
 
 
-def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]) -> None:
+def _doctor_action_result(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    ok: bool,
+    message: str,
+) -> None:
+    _safe_emit(host, r.model_walk_result("Doctor", ok=ok, message=message))
+    _show(screen, r.render_walk_result("Doctor", ok=ok, message=message), read_key)
+
+
+def _run_doctor_fix(
+    host: Host,
+    fix,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    _nav: _NavStack | None = None,
+) -> DoctorActionResult:
     """Run one runnable Doctor fix, gating a state-changing one behind a single
     confirm key. The confirm grammar matches the walk gate (M-2 / N-5): ENTER or
     ``y``/``Y`` confirms; anything else fails closed (the fix does NOT run). The
@@ -974,14 +1377,35 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
     In agent mode the fix is NOT run — a Doctor fix (sync pull / lock removal / browser
     re-auth) is a side effect an autonomously-driving agent shouldn't trigger; a note is
     emitted instead. The live human cockpit (agent_mode=False) is unchanged."""
+    kind = action_kind(fix)
+    if kind is DoctorActionKind.OPEN_CAPABILITY:
+        capability_key = fix.capability_key
+        if capability_key is None or host.get_capability(capability_key) is None:
+            _doctor_action_result(
+                host,
+                screen,
+                read_key,
+                ok=False,
+                message="Doctor capability is unavailable.",
+            )
+            return DoctorActionResult.FAILED
+        _open_capability(
+            host,
+            capability_key,
+            screen,
+            read_key,
+            focus=fix.focus,
+            _nav=_nav,
+        )
+        return DoctorActionResult.OPENED
     if host.agent_mode:
         _safe_emit(host, r.model_note("Fix skipped", f"{fix.title} is disabled in agent mode"))
-        return
+        return DoctorActionResult.SKIPPED_AGENT_MODE
     if fix.confirm:
         _safe_emit(host, r.model_doctor_confirm(fix))
         screen.update(r.render_doctor_confirm(fix))
         if read_key() not in (keys.ENTER, "y", "Y"):
-            return  # cancelled — the fix did NOT run
+            return DoctorActionResult.DECLINED
     host.usage.record("doctor:fix", "open")  # a Doctor fix was actually run
     try:
         # A "Sync now" fix is a blocking pull — run it under the animated progress
@@ -995,10 +1419,11 @@ def _run_doctor_fix(host: Host, fix, screen: Screen, read_key: Callable[[], str]
             msg = fix.run()
         ok = True
     except Exception as e:  # noqa: BLE001 — surface any failure as a clean result
-        msg, ok = str(e), False
-    _safe_emit(host, r.model_walk_result("Doctor", ok=ok, message=msg))
-    screen.update(r.render_walk_result("Doctor", ok=ok, message=msg))
-    read_key()
+        # Worker callback exceptions may contain customer/provider details. The
+        # framework model and Rich result expose only a bounded class name.
+        msg, ok = f"Doctor remedy failed ({type(e).__name__}).", False
+    _doctor_action_result(host, screen, read_key, ok=ok, message=msg)
+    return DoctorActionResult.RAN if ok else DoctorActionResult.FAILED
 
 
 def _show(screen: Screen, renderable: RenderableType, read_key: Callable[[], str]) -> None:

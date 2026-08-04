@@ -16,7 +16,7 @@ from rich.console import Console
 
 from clonway_cockpit import keys, render, shell, usage
 from clonway_cockpit.audit_log import AuditEvent
-from clonway_cockpit.doctor import Fix, Probe, fixes_for
+from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, fixes_for
 from clonway_cockpit.registry import (
     CapabilitySpec,
     WizardContext,
@@ -939,6 +939,254 @@ def test_multi_spec_shelf_still_shows_the_menu(usage_to_tmp):
 # --- the doctor loop ----------------------------------------------------------
 
 
+def _row_fields(model, region: str, row: int) -> dict[str, str]:
+    selected_region = next(item for item in model.regions if item.role == region)
+    return {field.label: field.value for field in selected_region.rows[row].fields}
+
+
+def test_doctor_classifies_report_failure_as_a_structured_probe(usage_to_tmp):
+    failure = RuntimeError("worker-owned sensitive detail")
+    classified: list[Exception] = []
+    models = []
+    fix = Fix(
+        "Review source",
+        "worker review",
+        remedy_id="remedy.source.review",
+        probe_id="probe.source",
+        capability_key="review",
+        focus="source",
+    )
+    probe = Probe("Source", "error", "Safe worker copy", fix, "probe.source", "rev-1")
+    host = _FakeHost().as_host()
+
+    def raise_failure() -> object:
+        raise failure
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_failure,
+        doctor_classify_report_failure=lambda exc: classified.append(exc) or probe,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    assert classified == [failure]
+    assert [model.kind for model in models] == ["doctor"]
+    model = models[0]
+    assert _row_fields(model, "probes", 0) == {
+        "level": "error",
+        "detail": "Safe worker copy",
+        "probe_id": "probe.source",
+        "evidence_revision": "rev-1",
+        "fix_id": "fix:0",
+    }
+    assert _row_fields(model, "fixes", 0) == {
+        "cmd": "worker review",
+        "remedy_id": "remedy.source.review",
+        "probe_id": "probe.source",
+        "action_kind": DoctorActionKind.OPEN_CAPABILITY.value,
+        "capability_key": "review",
+        "focus": "source",
+        "confirm": "false",
+    }
+
+
+@pytest.mark.parametrize("classifier_result", [None, "not-a-probe"])
+def test_doctor_classifier_invalid_result_is_a_safe_modeled_failure(
+    usage_to_tmp, classifier_result
+):
+    models = []
+    host = _FakeHost().as_host()
+
+    def raise_failure() -> object:
+        raise RuntimeError("must-not-leak")
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_failure,
+        doctor_classify_report_failure=lambda exc: classifier_result,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    assert [model.kind for model in models] == ["doctor"]
+    assert models[0].selection is None
+    fields = _row_fields(models[0], "probes", 0)
+    assert fields["level"] == "error"
+    assert "must-not-leak" not in fields["detail"]
+
+
+def test_doctor_classifier_exception_is_a_safe_modeled_failure(usage_to_tmp):
+    models = []
+    host = _FakeHost().as_host()
+
+    def raise_report_failure() -> object:
+        raise RuntimeError("report-secret")
+
+    def raise_classifier_failure(exc: Exception) -> Probe:
+        raise LookupError("classifier-secret")
+
+    host = shell.replace(
+        host,
+        doctor_build_report=raise_report_failure,
+        doctor_classify_report_failure=raise_classifier_failure,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys(["q"]))
+
+    detail = _row_fields(models[0], "probes", 0)["detail"]
+    assert "LookupError" in detail
+    assert "report-secret" not in detail
+    assert "classifier-secret" not in detail
+
+
+def test_doctor_rebuild_uses_the_same_failure_classifier(usage_to_tmp):
+    builds = 0
+    rebuild_failure = RuntimeError("rebuild-secret")
+    classified = []
+    models = []
+    initial_probe = Probe(
+        "Initial",
+        "warn",
+        "stale",
+        Fix("Refresh", "worker refresh", run=lambda: "refreshed"),
+        "probe.initial",
+        "rev-1",
+    )
+    classified_probe = Probe(
+        "Refresh source",
+        "error",
+        "Safe rebuild copy",
+        None,
+        "probe.rebuild",
+        "rev-2",
+    )
+    host = _FakeHost(probes=[initial_probe]).as_host()
+
+    def build_report() -> object:
+        nonlocal builds
+        builds += 1
+        if builds == 2:
+            raise rebuild_failure
+        return object()
+
+    host = shell.replace(
+        host,
+        doctor_build_report=build_report,
+        doctor_classify_report_failure=lambda exc: classified.append(exc) or classified_probe,
+        on_screen=models.append,
+    )
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, keys.ENTER, "q"]))
+
+    assert classified == [rebuild_failure]
+    assert [model.kind for model in models].count("doctor") == 2
+    assert _row_fields(models[-1], "probes", 0)["probe_id"] == "probe.rebuild"
+
+
+def test_doctor_focus_selects_probe_then_remedy_through_capability_open(usage_to_tmp):
+    models = []
+    probes = [
+        Probe(
+            "First",
+            "warn",
+            "first",
+            Fix(
+                "Open first",
+                "worker first",
+                remedy_id="remedy.first",
+                probe_id="probe.first",
+                capability_key="first",
+            ),
+            "probe.first",
+            "rev-1",
+        ),
+        Probe(
+            "Second",
+            "error",
+            "second",
+            Fix(
+                "Open second",
+                "worker second",
+                remedy_id="remedy.second",
+                probe_id="probe.second",
+                capability_key="second",
+            ),
+            "probe.second",
+            "rev-1",
+        ),
+    ]
+    register_capability(
+        CapabilitySpec(
+            key="doctor",
+            shelf="G",
+            title="Doctor",
+            summary="Health",
+            equivalent_cli="worker doctor",
+        )
+    )
+    host = shell.replace(_FakeHost(probes=probes).as_host(), on_screen=models.append)
+
+    shell._open_capability(host, "doctor", _Screen(), _keys(["q"]), focus="probe.second")
+    assert models[-1].selection == "fix:1"
+    assert models[-1].meta["focus_requested"] == "probe.second"
+    assert models[-1].meta["focus_matched"] == "probe.second"
+
+    models.clear()
+    shell._open_capability(host, "doctor", _Screen(), _keys(["q"]), focus="remedy.second")
+    assert models[-1].selection == "fix:1"
+    assert models[-1].meta["focus_matched"] == "remedy.second"
+
+
+def test_home_need_threads_focus_into_doctor_selection(usage_to_tmp):
+    models = []
+    probe = Probe(
+        "Focused",
+        "error",
+        "focused",
+        Fix(
+            "Open focused",
+            "worker focused",
+            remedy_id="remedy.focused",
+            probe_id="probe.focused",
+            capability_key="focused",
+        ),
+        "probe.focused",
+        "rev-1",
+    )
+    register_capability(
+        CapabilitySpec(
+            key="doctor",
+            shelf="G",
+            title="Doctor",
+            summary="Health",
+            equivalent_cli="worker doctor",
+        )
+    )
+    state = CockpitState(
+        tenant_name="Clonway",
+        needs=(
+            NeedsItem(
+                "Focused failure",
+                "review",
+                "error",
+                capability_key="doctor",
+                focus="probe.focused",
+            ),
+        ),
+    )
+    host = shell.replace(
+        _FakeHost(state=state, probes=[probe]).as_host(),
+        on_screen=models.append,
+    )
+
+    shell.run_cockpit(host, read_key=_keys([keys.ENTER, "q", "q"]), screen=_Screen())
+
+    doctor_model = next(model for model in models if model.kind == "doctor")
+    assert doctor_model.selection == "fix:0"
+    assert doctor_model.meta["focus_requested"] == "probe.focused"
+    assert doctor_model.meta["focus_matched"] == "probe.focused"
+
+
 def test_doctor_runs_the_selected_runnable_fix_on_enter(usage_to_tmp):
     ran = []
     probes = [
@@ -995,6 +1243,107 @@ def test_doctor_display_only_fix_is_not_runnable(usage_to_tmp):
     joined = "\n".join(_text(f) for f in scr.frames)
     assert "Re-authenticate Xero" in joined
     assert "run in a terminal" in joined
+
+
+def test_doctor_unpaired_remedy_runs_its_own_rendered_row(usage_to_tmp):
+    """Finding 1/3: a probe-independent remedy returned by doctor_fixes_for keeps
+    its rendered row number and stays runnable. Before the fix, pressing the
+    number key of the unpaired first row ran the SECOND (paired) remedy instead —
+    _runnable_remedies dropped the unpaired fix from the dispatch list while
+    render_doctor/model_doctor still numbered it as row 1."""
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    lock_fix = Fix(
+        "Remove stale lock",
+        "cw unlock",
+        run=lambda: ran.append("REMOVE-LOCK") or "ok",
+        remedy_id="remedy.lock",
+        probe_id="probe.lock",
+    )
+    probe = Probe("Lock held", "error", "detail", lock_fix, "probe.lock", "rev-1")
+    host = shell.replace(
+        _FakeHost(probes=[probe]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix, lock_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys(["1", "q"]))
+    assert ran == ["GLOBAL"]
+
+
+def test_doctor_paired_remedy_after_an_unpaired_one_still_dispatches_correctly(usage_to_tmp):
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    lock_fix = Fix(
+        "Remove stale lock",
+        "cw unlock",
+        run=lambda: ran.append("REMOVE-LOCK") or "ok",
+        remedy_id="remedy.lock",
+        probe_id="probe.lock",
+    )
+    probe = Probe("Lock held", "error", "detail", lock_fix, "probe.lock", "rev-1")
+    host = shell.replace(
+        _FakeHost(probes=[probe]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix, lock_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys(["2", "q"]))
+    assert ran == ["REMOVE-LOCK"]
+
+
+def test_doctor_unpaired_remedy_is_also_selectable_via_enter(usage_to_tmp):
+    ran = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: ran.append("GLOBAL") or "ok")
+    host = shell.replace(
+        _FakeHost(probes=[]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix],
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]))
+    assert ran == ["GLOBAL"]
+
+
+def test_doctor_unpaired_remedy_receipt_has_unknown_closure_not_a_dropped_row(usage_to_tmp):
+    receipts = []
+    global_fix = Fix("Global resync", "cw resync", run=lambda: "ok")
+    host = shell.replace(
+        _FakeHost(probes=[]).as_host(),
+        doctor_fixes_for=lambda probes: [global_fix],
+        doctor_on_receipt=receipts.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys([keys.ENTER, "q"]))
+
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == ""
+    assert receipts[0].closure.value == "unknown"
+
+
+def test_doctor_duplicate_equal_fix_across_two_probes_attributes_receipt_to_the_selected_one(
+    usage_to_tmp,
+):
+    """Finding 4: when a worker's doctor_fixes_for rebuilds Fix objects each frame
+    (breaking Python identity) and two probes carry equal Fix values, the receipt
+    for the row the operator actually selected must name THAT probe — not whichever
+    equal probe happens to come first, which is what the old `==` fallback did."""
+    from dataclasses import replace as dc_replace
+
+    ran = []
+    sync = Fix("Sync now", "cw sync", run=lambda: ran.append("sync") or "ok")
+    probe_a = Probe("Ledger stale", "warn", "da", sync, "probe.ledger", "rev-A")
+    probe_b = Probe("Payouts stale", "error", "db", dc_replace(sync), "probe.payouts", "rev-B")
+    receipts = []
+    host = shell.replace(
+        _FakeHost(probes=[probe_a, probe_b]).as_host(),
+        doctor_fixes_for=lambda probes: [dc_replace(p.fix) for p in probes if p.fix],
+        doctor_on_receipt=receipts.append,
+    )
+
+    shell._doctor(host, _Screen(), _keys(["2", "q"]))
+
+    assert ran == ["sync"]
+    assert len(receipts) == 1
+    assert receipts[0].probe_id == "probe.payouts"
+    assert receipts[0].before_revision == "rev-B"
 
 
 def test_doctor_lock_fix_confirms_then_removes(usage_to_tmp):
@@ -1092,6 +1441,63 @@ def test_doctor_degrades_when_unconfigured(usage_to_tmp):
 
 
 # --- the animated-progress helper ---------------------------------------------
+
+
+def test_runnable_remedies_pairs_every_non_display_only_fix_across_the_pairing_matrix():
+    """Finding 1/3/4 defect class, closed at the root (`_runnable_remedies`) rather
+    than per-cell: it must never drop a non-display-only fix, and must attribute the
+    correct probe (or None) whether the pairing is recoverable by identity, by
+    equality fallback (identity broken by a worker that rebuilds its Fix objects),
+    by consume-on-match when two probes share equal Fix values (ambiguous without
+    consuming), or not at all (a probe-independent remedy) — interleaved with
+    display-only fixes that must be skipped and must not disturb ordering."""
+    from dataclasses import replace as dc_replace
+
+    identity_fix = Fix("Identity", "cw identity", run=lambda: "ok")
+    identity_probe = Probe("Identity probe", "warn", "d", identity_fix, "probe.identity", "rev-1")
+
+    equal_fix = Fix("Equality", "cw equality", run=lambda: "ok")
+    equality_probe = Probe("Equality probe", "warn", "d", equal_fix, "probe.equality", "rev-1")
+    equality_fix_rebuilt = dc_replace(equal_fix)  # same value, different identity
+
+    shared_fix = Fix("Shared", "cw shared", run=lambda: "ok")
+    shared_probe_a = Probe("Shared A", "warn", "da", shared_fix, "probe.shared-a", "rev-A")
+    shared_probe_b = Probe(
+        "Shared B", "error", "db", dc_replace(shared_fix), "probe.shared-b", "rev-B"
+    )
+
+    unpaired_fix = Fix("Unpaired", "cw unpaired", run=lambda: "ok")
+    display_fix = Fix("Display", "cw display")  # no run => display-only, must be skipped
+
+    probes = [identity_probe, equality_probe, shared_probe_a, shared_probe_b]
+    fixes = [
+        display_fix,
+        unpaired_fix,
+        identity_fix,
+        display_fix,
+        equality_fix_rebuilt,
+        dc_replace(shared_fix),  # equal-value #1 -> the first still-available equal probe
+        dc_replace(shared_fix),  # equal-value #2 -> must NOT re-match the same probe
+        display_fix,
+    ]
+
+    remedies = shell._runnable_remedies(probes, fixes)
+
+    assert [fix for _, fix in remedies] == [
+        unpaired_fix,
+        identity_fix,
+        equality_fix_rebuilt,
+        fixes[5],
+        fixes[6],
+    ]
+    got_probe_ids = [probe.probe_id if probe is not None else None for probe, _ in remedies]
+    assert got_probe_ids == [
+        None,  # unpaired: no probe carries this fix, but it is NOT dropped
+        "probe.identity",  # matched by object identity
+        "probe.equality",  # matched by equality fallback (identity broken)
+        "probe.shared-a",  # first equal-value probe consumed
+        "probe.shared-b",  # second equal-value probe — not re-matched to shared-a
+    ]
 
 
 def test_run_with_progress_returns_worker_result():
@@ -1754,7 +2160,8 @@ def test_open_capability_guards_a_crashing_walk(usage_to_tmp):
     shell.open_capability(host, "crashy", screen, _keys([]))  # must NOT raise
     txt = "\n".join(_text(f) for f in screen.frames)
     assert "Crashy walk" in txt
-    assert "kaboom-from-walk" in txt
+    assert "RuntimeError" in txt
+    assert "kaboom-from-walk" not in txt
 
 
 def test_open_capability_reraises_shellout(usage_to_tmp):
