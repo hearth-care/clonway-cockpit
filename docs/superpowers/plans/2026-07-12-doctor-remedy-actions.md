@@ -773,7 +773,14 @@ Completion is the public-path agent/human drive and receipt proof, not merely ne
   report's three non-blocking findings (post-action probe-builder failure, capability label parity,
   and zero-effect rebuild cost) are deferred by the operator's explicit scope for this pass.
 - Current phase: Task 5 projection-parity correction is complete; exact-head phase gates, rebase,
-  full gates, documentation receipts, and finish protocol remain.
-- Next concrete step: run the complete Task 5 phase gates, commit and push the passing increment,
-  then rebase onto current `origin/main` and run the full clean-worktree gate sequence.
+  and focused post-rebase regression are green; full gates, final documentation receipts, and
+  finish protocol remain.
+- Next concrete step: run the full clean-worktree gate sequence and subprocess acceptance on the
+  exact rebased documentation head, record the outputs, commit/push the receipts, then execute the
+  finish protocol.
 - Known-failing tests: none.
+- QA FAIL round 8 rebase: rebased all 38 PR commits onto current
+  `origin/main@48f452e15f80fe417b75001def5ba54704a87665`. One documentation conflict in
+  `docs/agent-screen-model.md` was resolved by preserving both main's newer shelf-menu action-token
+  contract and this PR's Doctor action/focus contract. The focused 81-cell regression set passed
+  after the rebase; `origin/main` is an ancestor of the rebased head.
