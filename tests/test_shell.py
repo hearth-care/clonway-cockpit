@@ -2208,3 +2208,245 @@ def test_home_emits_worker_model_regions(usage_to_tmp):
     home = captured[0]
     assert home.kind == "home"
     assert [reg.role for reg in home.regions] == ["pulse", "needs", "toolkit", "worker.example"]
+
+
+# --- nested-view entry frame is consumed exactly once, on every exit route ----
+#
+# Regression coverage for the bug an xbook consumer acceptance suite (auto-
+# bookkeeper#1014) surfaced: nested views did not consume the ``NavFrame`` that
+# ``_home`` pushes before diving into them, on 9 of 11 reachable entry/exit
+# combinations. The next root Backspace then popped that stale frame and
+# recursed into ``_home`` — an unrequested ``capture_state()`` plus one stack
+# level per cycle. Root cause: ``_activate`` never threaded ``_nav`` into
+# ``_shelf`` (so ANY dive entered via Enter/digit — not the direct letter
+# hotkey — could never pop), and even where ``_nav`` WAS threaded, only the
+# Backspace branch inside ``_shelf``/``_filter`` popped it; q, Esc, the Back
+# row and a successful capability open-and-return all just ``return``ed
+# without popping. The fix centralises frame consumption in ``_home`` itself:
+# it pops the frame it just pushed unconditionally, right after the nested
+# call returns — a structural "exactly once" invariant that no longer depends
+# on every nested exit branch remembering to do it.
+#
+# Each test below drives PAST the exit (Backspace/q/Esc/back-row-Enter/a
+# completed capability run) with a subsequent root Backspace, and proves it is
+# a genuine no-op: no extra ``capture_state()`` call and no extra rendered
+# frame (the tell-tale sign of the old bug — a stale-frame Backspace recursed
+# into a fresh ``_home`` invocation, which unconditionally captures state and
+# paints a first frame before it can discover there's nothing to do).
+
+
+def _register_two_spec_shelf(letter="A"):
+    _register_reference(key=f"{letter}-cap-1", shelf=letter, title="First cap", summary="one")
+    _register_reference(key=f"{letter}-cap-2", shelf=letter, title="Second cap", summary="two")
+
+
+def test_shelf_via_hotkey_then_q_leaves_root_backspace_a_real_noop(usage_to_tmp):
+    """Direct letter-hotkey entry (``_nav`` WAS threaded in the old code), exit via
+    'q' (the old code never popped on 'q'). Root Backspace afterward must be a
+    real no-op, and a following Down+Enter must still reach a different shelf."""
+    _register_two_spec_shelf("A")
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()  # no pills/needs -> boot lands on shelf A (index 0)
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys(["a", "q", keys.BACKSPACE, keys.DOWN, keys.ENTER, "q"]),
+        screen=scr,
+    )
+    assert ran == [True], "Down/Enter after the stale-frame Backspace never reached shelf B's walk"
+    # boot capture + the recapture after shelf A's menu-dive returns + the
+    # recapture after shelf B's walk runs. NOT a fourth for a phantom recursive
+    # _home re-entry off the stale frame.
+    assert fh.capture_calls == 3, (
+        f"expected 3 capture_state calls, got {fh.capture_calls} — root Backspace likely "
+        "recursed into a stale NavFrame"
+    )
+
+
+def test_shelf_via_arrow_enter_then_esc_leaves_root_backspace_a_real_noop(usage_to_tmp):
+    """Home arrow+Enter entry — routed through ``_activate``, which never threaded
+    ``_nav`` at all in the old code — exit via Esc. Root Backspace afterward must
+    be a real no-op."""
+    _register_two_spec_shelf("A")
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()  # boot cursor already sits on shelf A (index 0)
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys([keys.ENTER, keys.ESC, keys.BACKSPACE, keys.DOWN, keys.ENTER, "q"]),
+        screen=scr,
+    )
+    assert ran == [True], "Down/Enter after the stale-frame Backspace never reached shelf B's walk"
+    assert fh.capture_calls == 3, (
+        f"expected 3 capture_state calls, got {fh.capture_calls} — root Backspace likely "
+        "recursed into a stale NavFrame"
+    )
+
+
+def test_shelf_via_arrow_enter_then_back_row_enter_leaves_root_backspace_a_real_noop(
+    usage_to_tmp,
+):
+    """Home arrow+Enter entry, exit via the shelf menu's own Back row + Enter (the
+    old code never popped on this route either)."""
+    _register_two_spec_shelf("A")
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()
+    host = fh.as_host()
+    scr = _Screen()
+    # Inside the 2-spec shelf A menu (rows: cap-1, cap-2, Back), two Downs land on
+    # the Back row; Enter there returns to home without opening either capability.
+    shell.run_cockpit(
+        host,
+        read_key=_keys(
+            [
+                keys.ENTER,
+                keys.DOWN,
+                keys.DOWN,
+                keys.ENTER,
+                keys.BACKSPACE,
+                keys.DOWN,
+                keys.ENTER,
+                "q",
+            ]
+        ),
+        screen=scr,
+    )
+    assert ran == [True], "Down/Enter after the stale-frame Backspace never reached shelf B's walk"
+    # boot capture + the recapture after shelf A's Back-row dive returns + the
+    # recapture after shelf B's walk runs. NOT a fourth for a phantom recursive
+    # _home re-entry off the stale frame.
+    assert fh.capture_calls == 3, (
+        f"expected 3 capture_state calls, got {fh.capture_calls} — root Backspace likely "
+        "recursed into a stale NavFrame"
+    )
+
+
+def test_shelf_via_arrow_enter_then_successful_open_leaves_root_backspace_a_real_noop(
+    usage_to_tmp,
+):
+    """Home arrow+Enter entry into a SINGLE-spec shelf, which opens its one
+    capability directly and returns on a successful run — the old code never
+    popped on this route either, since a single-spec shelf never even shows the
+    menu that owned the (incomplete) pop logic."""
+    ran_a: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-a",
+            shelf="A",
+            title="Cap A",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran_a.append(True),
+        )
+    )
+    ran_b: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran_b.append(True),
+        )
+    )
+    fh = _FakeHost()
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys([keys.ENTER, keys.BACKSPACE, keys.DOWN, keys.ENTER, "q"]),
+        screen=scr,
+    )
+    assert ran_a == [True]
+    assert ran_b == [True], (
+        "Down/Enter after the stale-frame Backspace never reached shelf B's walk"
+    )
+    # boot capture + recapture after cap-a's walk + recapture after cap-b's walk —
+    # not a fourth for a phantom recursive _home re-entry.
+    assert fh.capture_calls == 3, (
+        f"expected 3 capture_state calls, got {fh.capture_calls} — root Backspace likely "
+        "recursed into a stale NavFrame"
+    )
+
+
+def test_filter_match_enter_leaves_root_backspace_a_real_noop(usage_to_tmp):
+    """Filter entry, exit via a successful match-Enter open (the old code's filter
+    pop only fired on empty-term Backspace, never on a matched open). The matched
+    capability has a real ``run=`` handler (not a reference-only card) so its open
+    returns immediately instead of consuming an extra key to dismiss a card —
+    keeping the scripted Backspace unambiguously the root-level probe."""
+    ran_findable: list = []
+    register_capability(
+        CapabilitySpec(
+            key="findable",
+            shelf="A",
+            title="Findable capability",
+            summary="x",
+            equivalent_cli="x",
+            run=lambda ctx: ran_findable.append(True),
+        )
+    )
+    ran: list = []
+    register_capability(
+        CapabilitySpec(
+            key="cap-b",
+            shelf="B",
+            title="Cap B",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
+    fh = _FakeHost()
+    host = fh.as_host()
+    scr = _Screen()
+    shell.run_cockpit(
+        host,
+        read_key=_keys(
+            ["/", "F", "i", "n", "d", keys.ENTER, keys.BACKSPACE, keys.DOWN, keys.ENTER, "q"]
+        ),
+        screen=scr,
+    )
+    assert ran_findable == [True]
+    assert ran == [True], "Down/Enter after the stale-frame Backspace never reached shelf B's walk"
+    # boot capture + _filter's OWN entry capture (it snapshots state independently
+    # of _home's cached copy) + the recapture after the filter dive returns + the
+    # recapture after shelf B's walk runs. NOT a fifth for a phantom recursive
+    # _home re-entry off the stale frame.
+    assert fh.capture_calls == 4, (
+        f"expected 4 capture_state calls, got {fh.capture_calls} — root Backspace likely "
+        "recursed into a stale NavFrame"
+    )

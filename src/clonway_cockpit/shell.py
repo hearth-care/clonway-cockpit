@@ -470,10 +470,18 @@ def _home(
 ) -> None:
     """The cockpit home loop.
 
-    ``_nav`` is the shared back/forward stack for this alt-screen session.
-    ``_restore_sel`` lets a pop-back restore the cursor to where the operator
-    was before they drilled forward. Both are framework-internal; callers
-    outside this module (``run_cockpit``) always get a fresh stack."""
+    ``_nav`` is the shared back/forward stack for this alt-screen session. Only
+    ``_home`` itself pushes and pops it: every dive into a nested view (a
+    capability, the filter, or a shelf) pushes one frame immediately before the
+    call and pops it immediately after the call returns, regardless of which
+    key inside that nested view ended it. This makes "the entry frame is
+    consumed exactly once" a structural fact of the call/return, rather than a
+    discipline every nested view's Backspace/q/Esc/Back-row/successful-open
+    branch has to separately remember — the previous distributed version of
+    that discipline is what left nine of eleven return routes leaking a stale
+    frame. ``_restore_sel`` lets a pop-back restore the cursor to where the
+    operator was before they drilled forward. Both are framework-internal;
+    callers outside this module (``run_cockpit``) always get a fresh stack."""
     nav = _nav if _nav is not None else _NavStack()
     sel: int | None = _restore_sel  # restored from NavFrame on back-pop; else first paint
 
@@ -574,9 +582,14 @@ def _home(
             continue
         # Actions below can change state — they all re-capture + repaint afterwards.
         if key == keys.ENTER:
-            # Snapshot the current home cursor before drilling forward.
+            # Snapshot the current home cursor before drilling forward. Whatever
+            # key ends the nested view (Backspace, q, Esc, Back-row Enter, a
+            # completed capability run) it returns control here exactly once —
+            # so the entry frame is popped unconditionally right after, instead
+            # of relying on each nested view to remember to pop it itself.
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
             _activate(host, selection, state, screen, read_key)
+            nav.pop_back()
         elif low == "r":
             pass  # explicit refresh — fall through to the re-capture below
         elif low == "?":
@@ -585,10 +598,12 @@ def _home(
         elif low == "/":
             # Snapshot cursor before opening the filter (back returns here).
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
-            _filter(host, screen, read_key, _nav=nav)
+            _filter(host, screen, read_key)
+            nav.pop_back()
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
             _activate(host, ("need", int(key) - 1), state, screen, read_key)
+            nav.pop_back()
         elif isinstance(selection[1], int) and _ack_snooze_cb(host, selection, low) is not None:
             # Context-sensitive ack/snooze: ONLY when a needs-you item is selected
             # AND the host wired the matching callback. This branch sits BEFORE the
@@ -606,8 +621,8 @@ def _home(
                 screen,
                 read_key,
                 title=_shelf_label(state, low.upper()),
-                _nav=nav,
             )
+            nav.pop_back()
         else:
             # Any other key: inert — the highlight is the guide. No state change,
             # so neither re-capture nor repaint (the screen already shows the truth).
@@ -722,7 +737,6 @@ def _shelf(
     read_key: Callable[[], str],
     *,
     title: str | None = None,
-    _nav: _NavStack | None = None,
 ) -> None:
     specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
@@ -732,7 +746,7 @@ def _shelf(
     # every worker-shelf is single-spec, so this removes a detour on every drill;
     # xbook's multi-spec shelves still get the menu (the branch below).
     if len(specs) == 1:
-        _open_capability(host, specs[0].key, screen, read_key, _nav=_nav)
+        _open_capability(host, specs[0].key, screen, read_key)
         return
     # The menu title names the worker (fleet roster) or xbook's shelf taxonomy.
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
@@ -764,10 +778,10 @@ def _shelf(
         legacy_ordinal = render.parse_menu_ordinal(key) if len(key) > 1 else None
         if low in ("q", keys.ESC):
             return
-        # Backspace in shelf menu = go back (pop the stack frame that got us here).
+        # Backspace in shelf menu = go back. The caller (``_home``) pushed the
+        # entry frame and pops it unconditionally once this function returns —
+        # this branch (like every other exit below) only needs to return.
         if key == keys.BACKSPACE:
-            if _nav is not None:
-                _nav.pop_back()
             return
         if key == keys.UP:
             sel = (sel - 1) % (n + 1)
@@ -776,13 +790,13 @@ def _shelf(
         elif key == keys.ENTER:
             if sel == n:  # the Back row
                 return
-            _open_capability(host, specs[sel].key, screen, read_key, _nav=_nav)
+            _open_capability(host, specs[sel].key, screen, read_key)
             return
         elif low in by_shortcut:
             # The exact one-key human/agent shortcut Rich rendered and the model
             # advertised — normalized to lowercase so an uppercase send still
             # routes (never a second, differently-cased action).
-            _open_capability(host, specs[by_shortcut[low]].key, screen, read_key, _nav=_nav)
+            _open_capability(host, specs[by_shortcut[low]].key, screen, read_key)
             return
         elif legacy_ordinal is not None and legacy_ordinal <= n:
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
@@ -790,7 +804,7 @@ def _shelf(
             # one token. Never advertised (absent from actions/Rich); kept so an
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
-            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key, _nav=_nav)
+            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key)
             return
 
 
@@ -818,7 +832,6 @@ def _open_capability(
     read_key: Callable[[], str],
     *,
     focus: str | None = None,
-    _nav: _NavStack | None = None,
 ) -> None:
     spec = host.get_capability(key)
     if spec is None:
@@ -829,7 +842,7 @@ def _open_capability(
     host.usage.record(key, "open")
     _safe_audit_launch(host, spec, focus=focus)
     if key == "doctor":
-        _doctor(host, screen, read_key, focus=focus, _nav=_nav)
+        _doctor(host, screen, read_key, focus=focus)
         return
     if spec.run is not None:
         ctx = host.build_walk_ctx(screen, read_key, focus=focus)
@@ -1089,7 +1102,6 @@ def _doctor(
     read_key: Callable[[], str],
     *,
     focus: str | None = None,
-    _nav: _NavStack | None = None,
 ) -> None:
     """The interactive Doctor — the only capability with a custom view (it doesn't
     fit the walk model). The probe table + verdict render as before, but the named
@@ -1255,7 +1267,6 @@ def _doctor(
                 selected_fix,
                 screen,
                 read_key,
-                _nav=_nav,
             )
         except shellout.ShellOut:
             # A capability shell-out is an attempted open that intentionally ends
@@ -1365,8 +1376,6 @@ def _run_doctor_fix(
     fix,
     screen: Screen,
     read_key: Callable[[], str],
-    *,
-    _nav: _NavStack | None = None,
 ) -> DoctorActionResult:
     """Run one runnable Doctor fix, gating a state-changing one behind a single
     confirm key. The confirm grammar matches the walk gate (M-2 / N-5): ENTER or
@@ -1395,7 +1404,6 @@ def _run_doctor_fix(
             screen,
             read_key,
             focus=fix.focus,
-            _nav=_nav,
         )
         return DoctorActionResult.OPENED
     if host.agent_mode:
@@ -1505,16 +1513,16 @@ def _filter(
     host: Host,
     screen: Screen,
     read_key: Callable[[], str],
-    *,
-    _nav: _NavStack | None = None,
 ) -> None:
     """Type-to-filter the things on screen — capabilities AND needs-you items — by
     name; ↑↓ moves, Enter drills, Esc always cancels. ``q`` also cancels when the
     term is empty (consistency with every other screen); once a term is typed, ``q``
     is a normal search char so a term containing 'q' stays searchable.
 
-    Backspace deletes a char when ``term != ""``. Backspace on an empty term pops
-    the back stack (matching the F2 precedent: empty-term q quits back home)."""
+    Backspace deletes a char when ``term != ""``. Backspace on an empty term goes
+    back to home (matching the F2 precedent: empty-term q quits back home) — the
+    caller (``_home``) pushed the entry frame and pops it unconditionally once
+    this function returns, so this branch only needs to return."""
     state = host.capture_state()
     term, sel = "", 0
     while True:
@@ -1558,9 +1566,7 @@ def _filter(
                 # Delete the last char — normal text-editing Backspace.
                 term, sel = term[:-1], 0
             else:
-                # Empty term + Backspace = pop back (same pattern as q-on-empty).
-                if _nav is not None:
-                    _nav.pop_back()
+                # Empty term + Backspace = go back (same pattern as q-on-empty).
                 return
         elif len(key) == 1 and key.isprintable():
             term, sel = term + key, 0
