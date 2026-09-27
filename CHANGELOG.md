@@ -42,7 +42,8 @@ Record them here and bump the release tag before merging.
   that raises leaves the previous Home up, marked "couldn't refresh — press r to retry".
   `before_action` runs before any key that may act, so a worker can finish deferred
   start-up work first. Returning to Home refreshes in the background too, so typed keys
-  are no longer discarded on that path. Agent mode ignores all of this and only ever
+  are no longer discarded on that path; a worker key handled by `handle_extra_key` still
+  re-captures on the main thread so the row it acted on moves at once. Agent mode ignores all of this and only ever
   emits live `home` models. `CockpitState.freshness_note` carries the age line and
   appears in the Home model's `meta`.
 

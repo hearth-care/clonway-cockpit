@@ -319,3 +319,27 @@ def test_freshness_note_renders_under_the_header_and_in_the_model():
         "freshness_note"
         not in render.model_cockpit_screen(replace(state, freshness_note=None), []).meta
     )
+
+
+def test_a_worker_key_still_recaptures_before_home_is_shown_again():
+    """A worker key (xbook's park) re-captures on the main thread as before, after
+    letting any background capture finish, so the acted-on row moves at once."""
+    calls: list[int] = []
+
+    def capture() -> CockpitState:
+        calls.append(1)
+        return replace(LIVE, tenant_name=f"Live {len(calls)}")
+
+    scripted = ["z", "q"]
+    screen = _Screen()
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: SAVED,
+        handle_extra_key=lambda state, sel, key, scr, rk: key == "z",
+    )
+    shell.run_cockpit(host, read_key=lambda: scripted.pop(0), screen=screen)
+
+    texts = screen.texts()
+    assert "Live 2" in texts[-1] and "refreshing" not in texts[-1]
+    assert not any("Live 2" in t and "refreshing" in t for t in texts)
+    assert len(calls) == 2

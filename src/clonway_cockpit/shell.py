@@ -618,10 +618,13 @@ def _home(
             if host.handle_extra_key_with_session is not None
             else host.handle_extra_key(state, selection, key, screen, read_key)
         ):
-            if instant:
-                refresh, refresh_failed = _request_refresh(host, refresh), False
-            else:
-                state, items, sel = _recapture(host, sel)
+            if refresh is not None:
+                # A worker key re-captures on this thread, as it always has, so the
+                # row it acted on moves at once. Let the background capture finish
+                # first (one capture at a time) and drop it: the one below is newer.
+                refresh.wait()
+                refresh, refresh_failed = None, False
+            state, items, sel = _recapture(host, sel)
             dirty = True
             continue
         # Cursor moves: update the highlight only — no re-capture. Each is a cheap
