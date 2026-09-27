@@ -509,14 +509,7 @@ def _home(
             extra_models = (
                 host.extra_model_regions(state) if host.extra_model_regions is not None else None
             )
-            screen.update(
-                r.render_cockpit_screen(
-                    state,
-                    caps,
-                    selection=items[sel],
-                    extra_regions=extra,
-                )
-            )
+            _paint_home(screen, state, caps, items[sel], extra)
             _safe_emit(
                 host,
                 r.model_cockpit_screen(
@@ -629,8 +622,27 @@ def _home(
             continue
         # An action ran (or 'r'): re-capture so the redraw reflects any change
         # (acked item drops, a walk that touched state, fresh numbers after 'r').
+        # Coming back from another screen, show the Home being returned to at once:
+        # the re-capture can take seconds, and a screen that does not change looks
+        # frozen, so people press q again and it quits the moment Home appears. The
+        # interim frame is for the terminal only; agents wait for the fresh one.
+        if low != "r":
+            _paint_home(
+                screen, state, host.get_capabilities(), items[sel], host.extra_regions(state)
+            )
         state, items, sel = _recapture(host, sel)
+        keys.discard_pending()
         dirty = True
+
+
+def _paint_home(
+    screen: Screen,
+    state: CockpitState,
+    caps: list,
+    selection: tuple[str, object],
+    extra: list,
+) -> None:
+    screen.update(r.render_cockpit_screen(state, caps, selection=selection, extra_regions=extra))
 
 
 def _recapture(host: Host, sel: int) -> tuple[CockpitState, list[tuple[str, object]], int]:

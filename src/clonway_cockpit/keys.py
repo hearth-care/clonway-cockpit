@@ -14,6 +14,7 @@ toggle, so direct callers and the test harness are unchanged."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 import select
 import signal
@@ -184,6 +185,21 @@ def pending(timeout: float = 0.0) -> bool:
         return False
     ready, _, _ = select.select([fd], [], [], timeout)
     return bool(ready)
+
+
+def discard_pending() -> None:
+    """Drop keypresses typed while the cockpit was busy.
+
+    Re-capturing Home can take seconds on a real tenant. Keys pressed during that
+    wait were meant for a screen that looked frozen (usually a repeated ``q``); read
+    later they would act on the fresh Home instead, and a stray ``q`` there quits.
+    A no-op outside a held raw session (tests, pipes, agent stdio).
+    """
+    fd = _session_fd()
+    if fd is None:
+        return
+    with contextlib.suppress(termios.error, OSError):
+        termios.tcflush(fd, termios.TCIFLUSH)
 
 
 def _read_token(fd: int) -> str:

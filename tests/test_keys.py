@@ -298,3 +298,28 @@ def test_lone_esc_from_pipe_is_esc():
 
 def test_escape_constants_are_exported():
     assert (keys.PGUP, keys.PGDN, keys.HOME, keys.END) == ("pgup", "pgdn", "home", "end")
+
+
+def test_discard_pending_drops_typeahead_in_a_held_session(monkeypatch):
+    """Keys typed while Home re-captures are dropped, so a repeated q cannot quit
+    the fresh Home the moment it appears."""
+    import os
+    import pty
+    import tty
+
+    master, slave = pty.openpty()
+    try:
+        tty.setraw(slave)  # the cockpit holds its terminal in raw mode
+        monkeypatch.setattr(keys, "_held_fd", slave)
+        os.write(master, b"qqq")
+        assert keys.pending(0.2)
+        keys.discard_pending()
+        assert not keys.pending(0.05)
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_discard_pending_is_a_no_op_without_a_session(monkeypatch):
+    monkeypatch.setattr(keys, "_held_fd", None)
+    keys.discard_pending()
