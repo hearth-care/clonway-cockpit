@@ -1206,6 +1206,34 @@ def test_doctor_runs_the_selected_runnable_fix_on_enter(usage_to_tmp):
     assert "Synced" in joined
 
 
+def _only_keys(seq):
+    """A scripted reader that fails loudly once the script is used up, so a key
+    the loop ignores cannot pass by falling through to ``_keys``'s endless 'q'."""
+    buf = list(seq)
+
+    def _next():
+        if not buf:
+            raise AssertionError("the loop asked for another key instead of returning")
+        return buf.pop(0)
+
+    return _next
+
+
+@pytest.mark.parametrize(
+    "probes",
+    [
+        [Probe("b", "warn", "x", Fix("Sync now", "cli", run=lambda: "ok"))],
+        [Probe("auth", "ok", "ok", None)],  # nothing runnable: any other key re-probes
+    ],
+    ids=["with-remedies", "nothing-runnable"],
+)
+def test_doctor_backspace_goes_back_like_q_and_esc(usage_to_tmp, probes):
+    # Backspace means "back" on shelf menus and every xbook report screen; Doctor
+    # is framework-owned, so it must honour it too rather than ignore or re-probe.
+    host = _FakeHost(probes=probes).as_host()
+    shell.run_doctor(host, _Screen(), _only_keys([keys.BACKSPACE]))
+
+
 def test_doctor_does_not_rebuild_report_on_cursor_moves(usage_to_tmp):
     """Doctor arrows move over the fixes without rebuilding the (heavy) status
     report — build once on entry, rebuild only after a fix actually runs. Same

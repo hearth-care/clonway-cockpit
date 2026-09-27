@@ -36,6 +36,8 @@ Record them here and bump the release tag before merging.
 - `keys.read_key` reads whole escape sequences. PageUp (`ESC [ 5 ~`) and similar keys were
   read as Esc, which screens treat as "back", and left a stray `~` keypress behind. Unmapped
   sequences (F-keys, Shift-arrows) are now skipped entirely.
+- The Doctor screen treats Backspace as "back", like `q` and Esc and like the shelf menus.
+  It previously ignored Backspace, or re-ran the checks when no fix was offered.
 
 ## [0.3.0] - 2026-07-02
 
