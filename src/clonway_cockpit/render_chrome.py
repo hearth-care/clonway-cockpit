@@ -152,9 +152,14 @@ def render_header(state: CockpitState) -> RenderableType:
     # shell-out boundary; the framework just renders the supplied trail. No crumb
     # (None or empty) → the bare identity Text, byte-identical to today, so the
     # extracting worker (xbook) is unchanged.
-    if not state.breadcrumb:
-        return t
-    return Group(t, _breadcrumb_line(state.breadcrumb))
+    lines: list[RenderableType] = [t]
+    if state.breadcrumb:
+        lines.append(_breadcrumb_line(state.breadcrumb))
+    # A Home that is not live yet (saved earlier, or refreshing) says so in amber
+    # under the identity row, so old numbers are never mistaken for current ones.
+    if state.freshness_note:
+        lines.append(Text(state.freshness_note, style=ACCENT))
+    return t if len(lines) == 1 else Group(*lines)
 
 
 def _pill_text(p: Pill, *, selected: bool = False) -> Text:

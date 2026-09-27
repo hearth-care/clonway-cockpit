@@ -30,6 +30,21 @@ Record them here and bump the release tag before merging.
   a terminal resize repaints immediately. Workers opt in with
   `Viewport.attach(screen, console, read_key)`; the worker template does so.
 - `clonway_cockpit.keys.PGUP`, `PGDN`, `HOME` and `END`.
+- Instant Home, opt-in through four `Host` fields appended after the Doctor hooks.
+  `provisional_state` returns a Home to paint at once (normally one the worker saved
+  earlier); the shell marks it "refreshing…" under the header, runs the live capture on
+  one background thread and swaps the live Home in without waiting for a key, while
+  cursor keys and actions keep working on the Home on screen. When it returns None, a
+  framed loading page ticks off `startup_stages` as the capture reports them through the
+  `walk.StageReporter` passed to `capture_state_background`. That callback does the slow
+  work off the main thread and returns a function the loop runs on the main thread to
+  finish; context variables the capture sets are carried back to the loop. A capture
+  that raises leaves the previous Home up, marked "couldn't refresh — press r to retry".
+  `before_action` runs before any key that may act, so a worker can finish deferred
+  start-up work first. Returning to Home refreshes in the background too, so typed keys
+  are no longer discarded on that path. Agent mode ignores all of this and only ever
+  emits live `home` models. `CockpitState.freshness_note` carries the age line and
+  appears in the Home model's `meta`.
 
 ### Fixed
 

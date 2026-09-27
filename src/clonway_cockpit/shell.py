@@ -24,7 +24,9 @@ stdlib — never a worker package."""
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -266,6 +268,29 @@ class Host:
     doctor_classify_report_failure: Callable[[Exception], Probe] | None = None
     doctor_on_receipt: Callable[[DoctorRemedyReceipt], None] | None = None
 
+    # Instant Home (opt-in). With ``provisional_state`` set, and never in agent mode,
+    # Home opens at once on what it returns (normally the Home the worker saved after
+    # its last successful capture), marked with its age and "refreshing…", while the
+    # live capture runs on a background thread. The live Home replaces it as soon as
+    # it is ready, without waiting for a key. Returning None (nothing usable saved)
+    # shows a loading page instead, ticking off ``startup_stages`` as the capture
+    # reports them. Agent mode keeps the synchronous capture, so an agent only ever
+    # receives live ``home`` models. Unset, Home behaves exactly as before.
+    provisional_state: Callable[[], CockpitState | None] | None = None
+    # The background half of a Home capture: runs on the worker thread with the
+    # loading page's StageReporter and returns a callable that the Home loop runs on
+    # the main thread to finish the capture, which is where a worker touches its own
+    # UI state. Unset, ``capture_state`` itself runs on the worker thread.
+    capture_state_background: Callable[[walk.StageReporter], Callable[[], CockpitState]] | None = (
+        None
+    )
+    # (key, label) rows for the loading page, in the order the capture reaches them.
+    startup_stages: tuple[tuple[str, str], ...] = ()
+    # Runs on the main thread before Home passes a key to anything that may act (every
+    # key except cursor moves, q, Esc, Backspace and r). A worker that moved start-up
+    # work off the critical path, such as loading secrets, waits for it here.
+    before_action: Callable[[], None] | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class ShellSession:
@@ -485,12 +510,32 @@ def _home(
     nav = _nav if _nav is not None else _NavStack()
     sel: int | None = _restore_sel  # restored from NavFrame on back-pop; else first paint
 
-    # Capture state ONCE on entry, not once per keypress. A cursor move (arrow)
-    # only changes the highlight, so it re-renders from this cached snapshot and
-    # never re-runs the heavy capture_state(); only an action that can CHANGE state
-    # (a drill that returns, ack/snooze, an explicit 'r' refresh) re-captures. This
-    # is the fix for the per-keypress latency — arrowing is now a cheap repaint.
-    state = host.capture_state()
+    # Instant Home keeps every capture off the main thread: Home opens on the
+    # provisional state (or the loading page when there is none) and the live
+    # capture swaps in when it finishes. ``refresh`` is the capture in flight;
+    # ``refresh_failed`` records that the last one raised, so the shown Home stays
+    # marked until a retry succeeds.
+    instant = _instant_home(host) and _nav is None
+    refresh: _Refresh | None = None
+    refresh_failed = False
+    if instant:
+        provisional = _provisional_state(host)
+        if provisional is None:
+            loaded = _load_home(host, screen, read_key)
+            if loaded is None:
+                return  # q on the loading page
+            state = loaded
+        else:
+            state = provisional
+            refresh = _Refresh(host)
+    else:
+        # Capture state ONCE on entry, not once per keypress. A cursor move (arrow)
+        # only changes the highlight, so it re-renders from this cached snapshot and
+        # never re-runs the heavy capture_state(); only an action that can CHANGE
+        # state (a drill that returns, ack/snooze, an explicit 'r' refresh)
+        # re-captures. This is the fix for the per-keypress latency — arrowing is
+        # now a cheap repaint.
+        state = host.capture_state()
     items = selectables(state, host)
     # First paint (or restored): land the cursor on the first actionable row
     # (needs-you, else a pill, else the first shelf) so the ❯ shows from frame one.
@@ -498,29 +543,44 @@ def _home(
     sel = default_sel(items) if sel is None else sel % len(items)
     dirty = True  # a frame is pending whenever the cursor moved or state changed
     while True:
+        if refresh is not None and refresh.done():
+            state, refresh, refresh_failed = _settle_refresh(host, refresh, state)
+            items = selectables(state, host)
+            sel %= len(items)
+            dirty = True
         # Render only when something changed AND no more input is queued. A held
         # arrow's key-repeat leaves bytes pending (keys.pending()), so the loop
         # applies each move but defers the repaint until the burst drains —
         # coalescing N moves into ONE frame. pending() is False off a held raw
         # session, so tests / non-interactive paths repaint on every change.
         if dirty and not keys.pending():
+            shown = _with_freshness(state, refreshing=refresh is not None, failed=refresh_failed)
             caps = host.get_capabilities()
             extra = host.extra_regions(state)
             extra_models = (
-                host.extra_model_regions(state) if host.extra_model_regions is not None else None
+                host.extra_model_regions(state)
+                if host.extra_model_regions is not None and shown is state
+                else None
             )
-            _paint_home(screen, state, caps, items[sel], extra)
-            _safe_emit(
-                host,
-                r.model_cockpit_screen(
-                    state,
-                    caps,
-                    selection=items[sel],
-                    extra_regions=extra,
-                    extra_model_regions=extra_models,
-                ),
-            )
+            _paint_home(screen, shown, caps, items[sel], extra)
+            # Only a live Home reaches the observer: an agent must never act on a
+            # saved or superseded one, so marked frames are for the terminal only.
+            if shown is state:
+                _safe_emit(
+                    host,
+                    r.model_cockpit_screen(
+                        state,
+                        caps,
+                        selection=items[sel],
+                        extra_regions=extra,
+                        extra_model_regions=extra_models,
+                    ),
+                )
             dirty = False
+        # With a capture in flight, wait for whichever comes first: a key (handled
+        # against the Home on screen) or the live Home (swapped in at the loop top).
+        if refresh is not None and not _key_before_refresh(refresh):
+            continue
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         selection = items[sel]
@@ -542,6 +602,8 @@ def _home(
             # invocation — we've recursed into the restored home.
             _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
             return
+        if host.before_action is not None and key not in _CURSOR_KEYS and low != "r":
+            _run_before_action(host)
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
         # BEFORE the default dispatch fires. ``screen`` + ``read_key`` are
@@ -556,7 +618,10 @@ def _home(
             if host.handle_extra_key_with_session is not None
             else host.handle_extra_key(state, selection, key, screen, read_key)
         ):
-            state, items, sel = _recapture(host, sel)
+            if instant:
+                refresh, refresh_failed = _request_refresh(host, refresh), False
+            else:
+                state, items, sel = _recapture(host, sel)
             dirty = True
             continue
         # Cursor moves: update the highlight only — no re-capture. Each is a cheap
@@ -591,6 +656,8 @@ def _home(
         elif low == "/":
             # Snapshot cursor before opening the filter (back returns here).
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
+            if refresh is not None:
+                refresh.wait()  # the filter captures on this thread: one capture at a time
             _filter(host, screen, read_key)
             nav.pop_back()
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
@@ -619,6 +686,14 @@ def _home(
         else:
             # Any other key: inert — the highlight is the guide. No state change,
             # so neither re-capture nor repaint (the screen already shows the truth).
+            continue
+        if instant:
+            # Home is repainted at once, marked "refreshing…", from the state it
+            # left, and stays usable while the capture runs. Keys typed now act on
+            # the Home on screen, so unlike the blocking re-capture below there is
+            # no frozen wait whose typeahead needs discarding.
+            refresh, refresh_failed = _request_refresh(host, refresh, supersede=low != "r"), False
+            dirty = True
             continue
         # An action ran (or 'r'): re-capture so the redraw reflects any change
         # (acked item drops, a walk that touched state, fresh numbers after 'r').
@@ -653,6 +728,191 @@ def _recapture(host: Host, sel: int) -> tuple[CockpitState, list[tuple[str, obje
     state = host.capture_state()
     items = selectables(state, host)
     return state, items, sel % len(items)
+
+
+# --- Instant Home ------------------------------------------------------------------
+
+# How long Home waits for a key before checking again whether the live capture is done.
+_REFRESH_POLL = 0.04
+_CURSOR_KEYS = frozenset({keys.UP, keys.DOWN, keys.LEFT, keys.RIGHT})
+_REFRESHING = "refreshing…"
+_REFRESH_FAILED = "couldn't refresh — press r to retry"
+_UNSET = object()
+
+
+def _instant_home(host: Host) -> bool:
+    return host.provisional_state is not None and not host.agent_mode
+
+
+def _provisional_state(host: Host) -> CockpitState | None:
+    """The host's provisional Home, or None when it has none or failed to read it."""
+    assert host.provisional_state is not None
+    try:
+        return host.provisional_state()
+    except Exception:  # noqa: BLE001 — an unreadable saved Home means "load it live"
+        _log.exception("provisional Home unavailable; loading live")
+        return None
+
+
+def _run_before_action(host: Host) -> None:
+    assert host.before_action is not None
+    try:
+        host.before_action()
+    except Exception:  # noqa: BLE001 — the action itself reports what it cannot do
+        _log.exception("before_action failed")
+
+
+class _BackgroundCapture:
+    """The heavy half of one Home capture, run off the main thread.
+
+    It runs inside a copy of the loop's context, so context variables read as they
+    would inline, and ``restore_context`` (main thread) carries back any the capture
+    set. The worker's own state therefore changes exactly as if the capture had run on
+    the main thread, only later."""
+
+    def __init__(self, host: Host) -> None:
+        self._run = host.capture_state_background or _capture_then_hand_over(host.capture_state)
+        self._context = contextvars.copy_context()
+        self._before = dict(self._context.items())
+
+    def run(self, reporter: walk.StageReporter) -> Callable[[], CockpitState]:
+        return self._context.run(self._run, reporter)
+
+    def restore_context(self) -> None:
+        for var, value in self._context.items():
+            if self._before.get(var, _UNSET) is not value:
+                var.set(value)
+
+
+def _capture_then_hand_over(
+    capture: Callable[[], CockpitState],
+) -> Callable[[walk.StageReporter], Callable[[], CockpitState]]:
+    def run(_reporter: walk.StageReporter) -> Callable[[], CockpitState]:
+        state = capture()
+        return lambda: state
+
+    return run
+
+
+class _Refresh:
+    """One live Home capture on a background thread. Nothing here paints; the Home
+    loop polls ``done`` and calls ``adopt`` on the main thread. ``superseded`` means
+    something acted after the capture began, so another capture follows it."""
+
+    def __init__(self, host: Host) -> None:
+        self.superseded = False
+        self._capture = _BackgroundCapture(host)
+        self._done = threading.Event()
+        self._finish: Callable[[], CockpitState] | None = None
+        self._error: BaseException | None = None
+        threading.Thread(target=self._work, name="cockpit-home-refresh", daemon=True).start()
+
+    def _work(self) -> None:
+        try:
+            self._finish = self._capture.run(walk.StageReporter([]))
+        except BaseException as exc:  # noqa: BLE001 — re-raised on the main thread by adopt()
+            self._error = exc
+        finally:
+            self._done.set()
+
+    def done(self) -> bool:
+        return self._done.is_set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._done.wait(timeout)
+
+    def adopt(self) -> CockpitState:
+        """Finish the capture on the main thread; raises what the capture raised."""
+        self._done.wait()
+        self._capture.restore_context()
+        if self._error is not None:
+            raise self._error
+        assert self._finish is not None
+        return self._finish()
+
+
+def _request_refresh(host: Host, refresh: _Refresh | None, *, supersede: bool = True) -> _Refresh:
+    """Start a live capture, or, with one already running, have another follow it."""
+    if refresh is None:
+        return _Refresh(host)
+    if supersede:
+        refresh.superseded = True
+    return refresh
+
+
+def _settle_refresh(
+    host: Host, refresh: _Refresh, state: CockpitState
+) -> tuple[CockpitState, _Refresh | None, bool]:
+    """Swap in a finished capture. Returns the Home to show, the capture now in
+    flight (a follow-up when this one was superseded) and whether this one failed.
+    A failed capture leaves the previous Home in place, marked, rather than crash."""
+    failed = False
+    try:
+        state = refresh.adopt()
+    except Exception:  # noqa: BLE001 — Home stays up, marked "couldn't refresh"
+        _log.exception("Home refresh failed")
+        failed = True
+    if refresh.superseded:
+        return state, _Refresh(host), False
+    return state, None, failed
+
+
+def _with_freshness(state: CockpitState, *, refreshing: bool, failed: bool) -> CockpitState:
+    """``state`` as shown: its own age note plus whether a refresh is running or
+    failed. Returns ``state`` itself only when it is live and nothing is pending."""
+    suffix = _REFRESHING if refreshing else _REFRESH_FAILED if failed else None
+    if suffix is None:
+        return state
+    note = f"{state.freshness_note} · {suffix}" if state.freshness_note else suffix
+    return replace(state, freshness_note=note)
+
+
+def _key_before_refresh(refresh: _Refresh) -> bool:
+    """Block until a key is waiting (True) or the capture has finished (False)."""
+    while not refresh.done():
+        if keys.pending(_REFRESH_POLL):
+            return True
+        refresh.wait(_REFRESH_POLL / 4)
+    return False
+
+
+def _load_home(host: Host, screen: Screen, read_key: Callable[[], str]) -> CockpitState | None:
+    """The loading page for a Home with nothing provisional to show: the start-up
+    checklist ticks as the capture reports each stage. Returns the live Home, or None
+    when the operator quits. A failed capture offers a retry instead of crashing."""
+    while True:
+        capture = _BackgroundCapture(host)
+        try:
+            finish = walk.animate_staged(
+                screen.update,
+                f"Opening {host.app_label}",
+                capture.run,
+                stages=list(host.startup_stages),
+                cancellable=True,
+                emit=lambda model: _safe_emit(host, model),
+            )
+        except walk.Cancelled:
+            return None
+        except Exception as exc:  # noqa: BLE001 — offer a retry, never crash the cockpit
+            _log.exception("Home could not load")
+            failure: Exception = exc
+        else:
+            capture.restore_context()
+            try:
+                return finish()
+            except Exception as exc:  # noqa: BLE001 — as above
+                _log.exception("Home could not load")
+                failure = exc
+        title = "Home couldn't load"
+        detail = (
+            f"Reading Home failed ({type(failure).__name__}). "
+            "Press q to quit, or any other key to try again."
+        )
+        _safe_emit(host, r.model_note(title, detail))
+        screen.update(r.render_note(title, detail))
+        key = read_key()
+        if (key.lower() if len(key) == 1 else key) in ("q", keys.ESC):
+            return None
 
 
 def _ack_snooze_cb(
