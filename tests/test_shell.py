@@ -2478,3 +2478,41 @@ def test_filter_match_enter_leaves_root_backspace_a_real_noop(usage_to_tmp):
         f"expected 4 capture_state calls, got {fh.capture_calls} — root Backspace likely "
         "recursed into a stale NavFrame"
     )
+
+
+def test_returning_from_a_view_shows_home_before_the_slow_recapture(usage_to_tmp, monkeypatch):
+    """Coming back from another screen used to leave that screen up until Home had
+    re-captured (seconds on a real tenant), so it looked frozen and a repeated q then
+    quit on arrival. Home is repainted from the state it left before re-capturing,
+    and keys typed during the re-capture are dropped."""
+    fh = _FakeHost(state=CockpitState(tenant_name="Clonway", pills=_PILLS))
+    events: list[str] = []
+    discarded: list[bool] = []
+    monkeypatch.setattr(shell.keys, "discard_pending", lambda: discarded.append(True))
+    real_capture = fh._capture
+
+    def capture():
+        events.append("capture")
+        return real_capture()
+
+    fh._capture = capture
+
+    class _OrderedScreen(_Screen):
+        def update(self, renderable):
+            super().update(renderable)
+            events.append("paint")
+
+    # ? opens help, any key leaves it, q quits Home.
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["?", "x", "q"]), screen=_OrderedScreen())
+
+    returned = events.index("capture", 1)  # the re-capture after help closes
+    assert events[returned - 1] == "paint"  # Home was shown before it
+    assert discarded  # typeahead from the wait was dropped
+
+
+def test_explicit_refresh_does_not_paint_an_interim_home(usage_to_tmp):
+    """r already shows Home; only the refreshed frame is painted after it."""
+    fh = _FakeHost()
+    scr = _Screen()
+    shell.run_cockpit(fh.as_host(), read_key=_keys(["r", "q"]), screen=scr)
+    assert len(scr.frames) == 2  # first paint + the refreshed paint
