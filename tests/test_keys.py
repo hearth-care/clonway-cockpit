@@ -214,3 +214,87 @@ def test_raw_mode_keeps_output_post_processing_on(monkeypatch):
     finally:
         os.close(master)
         os.close(slave)
+
+
+# --- full escape sequences, read from a real pipe -----------------------------
+
+
+def _pipe_with(data: bytes) -> int:
+    """A pipe whose read end already holds ``data`` — the whole of one burst a
+    terminal writes for a keypress. Returns the read fd; the write end is closed."""
+    import os
+
+    r, w = os.pipe()
+    os.write(w, data)
+    os.close(w)
+    return r
+
+
+def _drain(fd: int) -> bytes:
+    import os
+
+    left = os.read(fd, 64)
+    os.close(fd)
+    return left
+
+
+@pytest.mark.parametrize(
+    "burst,expected",
+    [
+        (b"\x1b[A", keys.UP),
+        (b"\x1b[B", keys.DOWN),
+        (b"\x1b[C", keys.RIGHT),
+        (b"\x1b[D", keys.LEFT),
+        (b"\x1bOA", keys.UP),
+        (b"\x1bOB", keys.DOWN),
+        (b"\x1bOC", keys.RIGHT),
+        (b"\x1bOD", keys.LEFT),
+        (b"\x1b[5~", keys.PGUP),
+        (b"\x1b[6~", keys.PGDN),
+        (b"\x1b[H", keys.HOME),
+        (b"\x1b[1~", keys.HOME),
+        (b"\x1b[7~", keys.HOME),
+        (b"\x1bOH", keys.HOME),
+        (b"\x1b[F", keys.END),
+        (b"\x1b[4~", keys.END),
+        (b"\x1b[8~", keys.END),
+        (b"\x1bOF", keys.END),
+    ],
+)
+def test_escape_sequences_map_and_leave_nothing_behind(burst, expected):
+    # The sentinel byte after the sequence must be the next thing read: before the
+    # fix PageUp came back as Esc (= "back") with its '~' left over as a keypress.
+    fd = _pipe_with(burst + b"z")
+    assert keys._next_key(fd) == expected
+    assert _drain(fd) == b"z"
+
+
+@pytest.mark.parametrize(
+    "burst",
+    [
+        b"\x1b[15~",  # F5
+        b"\x1b[1;2A",  # Shift-Up
+        b"\x1bOP",  # F1
+        b"\x1b[3~",  # Delete
+    ],
+)
+def test_unknown_sequence_is_skipped_whole_not_read_as_esc(burst):
+    fd = _pipe_with(burst + b"q")
+    assert keys._next_key(fd) == "q"
+    assert _drain(fd) == b""
+
+
+def test_lone_esc_from_pipe_is_esc():
+    import os
+
+    r, w = os.pipe()
+    os.write(w, b"\x1b")
+    try:
+        assert keys._next_key(r) == keys.ESC
+    finally:
+        os.close(w)
+        os.close(r)
+
+
+def test_escape_constants_are_exported():
+    assert (keys.PGUP, keys.PGDN, keys.HOME, keys.END) == ("pgup", "pgdn", "home", "end")
