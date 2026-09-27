@@ -24,6 +24,20 @@ Record them here and bump the release tag before merging.
 - Scoped telemetry observation through `clonway_cockpit.obs.EventBufferScope`,
   `event_buffer`, and the test-only `isolated_event_buffers` seam without exposing private
   `ContextVar` state.
+- `clonway_cockpit.viewport.Viewport`: pages taller than the terminal keep their header and
+  key help pinned and scroll their middle with PgUp/PgDn (Home/End on an overflowing page),
+  with a one-line note of how much is above and below; the selected `❯` row stays in view;
+  a terminal resize repaints immediately. Workers opt in with
+  `Viewport.attach(screen, console, read_key)`; the worker template does so.
+- `clonway_cockpit.keys.PGUP`, `PGDN`, `HOME` and `END`.
+
+### Fixed
+
+- `keys.read_key` reads whole escape sequences. PageUp (`ESC [ 5 ~`) and similar keys were
+  read as Esc, which screens treat as "back", and left a stray `~` keypress behind. Unmapped
+  sequences (F-keys, Shift-arrows) are now skipped entirely.
+- The Doctor screen treats Backspace as "back", like `q` and Esc and like the shelf menus.
+  It previously ignored Backspace, or re-ran the checks when no fix was offered.
 
 ## [0.3.0] - 2026-07-02
 

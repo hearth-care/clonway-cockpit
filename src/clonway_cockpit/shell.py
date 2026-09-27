@@ -1226,7 +1226,8 @@ def _doctor(
             dirty = False
         key = read_key()
         low = key.lower() if len(key) == 1 else key
-        if low in ("q", keys.ESC):
+        # Backspace is "back" here as on the shelf menus; Doctor has no text entry.
+        if low in ("q", keys.ESC, keys.BACKSPACE):
             return
         if not runnable:
             # Nothing to run — any non-quit key just refreshes the probes.

@@ -33,6 +33,7 @@ from clonway_cockpit.registry import (
     register_capability,
 )
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
+from clonway_cockpit.viewport import Viewport
 from clonway_cockpit.walk import Step, StepResult, make_walk_handler
 from rich.console import Console, RenderableType
 
@@ -261,8 +262,10 @@ def run_cockpit(*, read_key=keys.read_key, screen=None) -> None:
         return
     console = Console()
     host.on_open()
-    with console.screen() as scr:
-        shell.run_home(host, scr, read_key)
+    # The viewport scrolls pages taller than the window (PgUp/PgDn) and repaints on
+    # resize; leave it (with the screen) before running any shell-out child.
+    with console.screen() as scr, Viewport.attach(scr, console, read_key) as (view, view_keys):
+        shell.run_home(host, view, view_keys)
 
 
 def serve_agent(*, stdin=sys.stdin, stdout=sys.stdout, allow_apply: bool = False) -> None:

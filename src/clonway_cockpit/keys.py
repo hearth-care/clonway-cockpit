@@ -30,8 +30,49 @@ RIGHT = "right"
 ENTER = "enter"
 ESC = "esc"
 BACKSPACE = "backspace"
+PGUP = "pgup"
+PGDN = "pgdn"
+HOME = "home"
+END = "end"
 
-_ARROWS = {"[A": UP, "[B": DOWN, "[C": RIGHT, "[D": LEFT}
+# Complete escape sequences (the bytes after ESC) mapped to semantic keys. Terminals
+# disagree on Home/End (xterm sends ``[H``/``[F`` or ``OH``/``OF``; the VT220 family
+# and tmux send ``[1~``/``[4~`` or ``[7~``/``[8~``), so every common spelling maps.
+_SEQUENCES = {
+    "[A": UP,
+    "[B": DOWN,
+    "[C": RIGHT,
+    "[D": LEFT,
+    "OA": UP,
+    "OB": DOWN,
+    "OC": RIGHT,
+    "OD": LEFT,
+    "[5~": PGUP,
+    "[6~": PGDN,
+    "[H": HOME,
+    "[1~": HOME,
+    "[7~": HOME,
+    "OH": HOME,
+    "[F": END,
+    "[4~": END,
+    "[8~": END,
+    "OF": END,
+}
+# Kept for callers that imported the old arrow-only table.
+_ARROWS = {seq: key for seq, key in _SEQUENCES.items() if key in (UP, DOWN, LEFT, RIGHT)}
+
+# A recognised-but-unmapped escape sequence (F-keys, Shift-arrows, Insert, Delete…).
+# ``_read_token`` returns it so the whole sequence is consumed; ``read_key`` skips it
+# rather than handing screens an ESC (which they treat as "back") plus stray bytes.
+_IGNORED = "\x00ignored"
+# A CSI sequence is ESC [ params… final; the longest this reader expects is a
+# modified function key such as ``[15;2~``. The bound stops a malformed stream from
+# swallowing ordinary keypresses.
+_MAX_SEQUENCE = 8
+# How long to wait for each follow-up byte of a sequence. Terminals emit a sequence
+# in one write, so the bytes are normally already buffered; the wait only matters
+# for a lone Esc, which must still come back promptly.
+_SEQUENCE_WAIT = 0.05
 
 # The fd + saved cooked attrs while a ``raw_mode()`` session is active; both None
 # otherwise. This is what lets ``read_key`` skip the per-keypress mode toggle and
@@ -155,32 +196,68 @@ def _read_token(fd: int) -> str:
     if ch == "\x7f":
         return BACKSPACE
     if ch == "\x1b":
-        # Esc alone, or the start of a CSI arrow sequence (Esc [ A/B/C/D).
-        # A short select() distinguishes a lone Esc from an arrow without
-        # blocking forever on the follow-up bytes.
-        ready, _, _ = select.select([fd], [], [], 0.05)
-        if not ready:
-            return ESC
-        seq = os.read(fd, 2).decode(errors="ignore")
-        return _ARROWS.get(seq, ESC)
+        return _read_escape(fd)
     return ch
+
+
+def _read_escape(fd: int) -> str:
+    """Resolve what follows an ESC byte: a lone Esc, or a whole CSI (``ESC [``) /
+    SS3 (``ESC O``) sequence read up to and including its final byte (0x40-0x7E).
+
+    Reading the full sequence matters because PageUp is ``ESC [ 5 ~``: the old
+    two-byte read saw ``[5``, called it Esc (which screens treat as "back") and left
+    ``~`` behind as a phantom keypress. A short select() per byte keeps a lone Esc
+    prompt without blocking on bytes that are not coming."""
+    ready, _, _ = select.select([fd], [], [], _SEQUENCE_WAIT)
+    if not ready:
+        return ESC
+    seq = os.read(fd, 1).decode(errors="ignore")
+    if not seq.startswith(("[", "O")):
+        # Esc followed by an ordinary byte (an Alt-chord): Esc, as before.
+        return ESC
+    while not _sequence_complete(seq) and len(seq) < _MAX_SEQUENCE:
+        ready, _, _ = select.select([fd], [], [], _SEQUENCE_WAIT)
+        if not ready:
+            break
+        seq += os.read(fd, 1).decode(errors="ignore")
+    return _SEQUENCES.get(seq, _IGNORED)
+
+
+def _sequence_complete(seq: str) -> bool:
+    """True once ``seq`` (the bytes after ESC) holds its final byte. SS3 is always
+    ``O`` plus one character; CSI ends at the first byte in 0x40-0x7E after ``[``."""
+    body = seq[1:]
+    if not body:
+        return False
+    if seq[0] == "O":
+        return True
+    return any(0x40 <= ord(c) <= 0x7E for c in body)
 
 
 def read_key() -> str:
     """Block for one keypress and return a semantic token: ``up``/``down``/
-    ``left``/``right``/``enter``/``esc``/``backspace`` or the literal character
-    (``"a"``, ``"1"``, ``"/"``…). Ctrl-C raises ``KeyboardInterrupt``.
+    ``left``/``right``/``enter``/``esc``/``backspace``/``pgup``/``pgdn``/``home``/
+    ``end`` or the literal character (``"a"``, ``"1"``, ``"/"``…). Other escape
+    sequences (F-keys, Shift-arrows) are consumed whole and skipped. Ctrl-C raises
+    ``KeyboardInterrupt``.
 
     Inside a ``raw_mode()`` session the fd is already raw, so this just reads it.
     Standalone (no session held) it toggles raw for exactly one keypress and
     restores with TCSANOW — the legacy path direct callers and tests still use."""
     fd = _session_fd()
     if fd is not None:
-        return _read_token(fd)
+        return _next_key(fd)
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
-        return _read_token(fd)
+        return _next_key(fd)
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, old)
+
+
+def _next_key(fd: int) -> str:
+    """The next meaningful key, skipping escape sequences the cockpit has no use for."""
+    while (token := _read_token(fd)) == _IGNORED:
+        pass
+    return token
