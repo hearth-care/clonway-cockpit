@@ -122,7 +122,7 @@ gate actually proves"). New workers inherit the whole thing from the template.
 
 ```
 src/clonway_cockpit/
-  keys.py        prompts.py     registry.py    state.py     shell.py
+  keys.py        prompts.py     registry.py    state.py     shell.py     viewport.py
   doctor.py      render.py      walk.py        usage.py     shellout.py
   model.py       contract.py    agent.py       obs.py        # the agent-navigability layer
   signals/model.py   signals/rank.py   signals/emit.py   signals/horizon.py
@@ -143,6 +143,11 @@ src/clonway_cockpit/
   self-selection), the front-door receptionist, and the `gateway_responder` wire that lets
   a fleet of personas converse persona → soul → gateway.
 - `shared_memory.py` — the read-only company handbook (facts with frontmatter, keyword recall).
+- `viewport.py` — fits every page to the live terminal. A page taller than the window keeps
+  its header and key help pinned and scrolls its middle with PgUp/PgDn (Home/End jump to the
+  ends); a resize repaints at once. A worker that opens its own alternate screen wraps it:
+  `with console.screen() as scr, Viewport.attach(scr, console, read_key) as (view, view_keys):`
+  and passes `view` and `view_keys` to the shell in place of `scr` and `read_key`.
 
 ## Onboarding & scaffolding
 
