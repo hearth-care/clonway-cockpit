@@ -169,6 +169,8 @@ def model_cockpit_screen(
     }
     if state.breadcrumb:
         meta["breadcrumb"] = list(state.breadcrumb)
+    if state.freshness_note:
+        meta["freshness_note"] = state.freshness_note
     regions = [
         MRegion("pulse", "pulse", rows=pulse_rows),
         MRegion("needs", "needs you", rows=needs_rows),

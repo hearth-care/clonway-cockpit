@@ -110,3 +110,8 @@ class CockpitState:
     # unaffected (this is agent-model data only). Defaulted to () so every
     # existing construction is byte-compatible.
     home_actions: tuple[str, ...] = ()
+    # How current this Home is, shown on its own line under the header when set —
+    # e.g. "as of 22:31" on a Home a worker saved earlier. The shell adds
+    # "refreshing…" or "couldn't refresh" while a live capture is pending or failed
+    # (``Host.provisional_state``). None → no line, the header unchanged.
+    freshness_note: str | None = None
