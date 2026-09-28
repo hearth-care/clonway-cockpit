@@ -51,6 +51,14 @@ Record them here and bump the release tag before merging.
 
 ### Fixed
 
+- Instant Home kept worker code off the background capture only for keys that waited for
+  it. Cursor keys, r and ? still reached `handle_extra_key` /
+  `handle_extra_key_with_session` while the capture ran, and ? ran `before_action` too;
+  those keys are now the framework's alone until the live Home is in. A Home whose
+  refresh failed also kept acting on its saved rows (Enter, digits, ack/snooze and worker
+  keys), whether the failure settled while the key waited or before it arrived; it now
+  moves the cursor, retries on r, shows help and quits, and acts again once a retry
+  succeeds.
 - `keys.read_key` reads whole escape sequences. PageUp (`ESC [ 5 ~`) and similar keys were
   read as Esc, which screens treat as "back", and left a stray `~` keypress behind. Unmapped
   sequences (F-keys, Shift-arrows) are now skipped entirely.

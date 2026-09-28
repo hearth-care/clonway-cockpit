@@ -288,7 +288,9 @@ class Host:
     startup_stages: tuple[tuple[str, str], ...] = ()
     # Runs on the main thread before Home passes a key to anything that may act (every
     # key except cursor moves, q, Esc, Backspace and r). A worker that moved start-up
-    # work off the critical path, such as loading secrets, waits for it here.
+    # work off the critical path, such as loading secrets, waits for it here. Like the
+    # worker key hooks, it runs only on a live Home: never beside a capture in flight
+    # and never on a Home whose refresh failed.
     before_action: Callable[[], None] | None = None
 
 
@@ -615,31 +617,36 @@ def _home(
             sel %= len(items)
             selection = items[sel]
             dirty = True
-        if host.before_action is not None and key not in _CURSOR_KEYS and low != "r":
-            _run_before_action(host)
-        # Worker first refusal — let the host's ``handle_extra_key`` claim any
-        # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
-        # BEFORE the default dispatch fires. ``screen`` + ``read_key`` are
-        # threaded in so a worker key that drills into a capability can drive
-        # the alt-screen the same way the framework's own _activate does.
-        # Returning True means "I handled it; skip the framework's branches
-        # below". A worker key may have drilled + acted, so re-capture afterwards.
-        if (
-            host.handle_extra_key_with_session(
-                state, selection, key, ShellSession(host, screen, read_key)
-            )
-            if host.handle_extra_key_with_session is not None
-            else host.handle_extra_key(state, selection, key, screen, read_key)
-        ):
-            if refresh is not None:
-                # A worker key re-captures on this thread, as it always has, so the
-                # row it acted on moves at once. Let the background capture finish
-                # first (one capture at a time) and drop it: the one below is newer.
-                refresh.wait()
-                refresh, refresh_failed = None, False
-            state, items, sel = _recapture(host, sel)
-            dirty = True
+        # The Home on screen is saved, not live, after a failed refresh: it still
+        # moves the cursor, retries on r and quits, but nothing may act on its rows
+        # until a retry succeeds. Its "press r to retry" note says why.
+        if refresh_failed and key not in _CURSOR_KEYS and low not in ("r", "?"):
             continue
+        # Worker hooks and before_action may act, so they run only on a live,
+        # settled Home. While a capture is in flight the keys that did not wait for
+        # it (cursor moves, r, ?) are the framework's alone: the worker gets first
+        # refusal again once the live Home is in.
+        if refresh is None and not refresh_failed:
+            if host.before_action is not None and key not in _CURSOR_KEYS and low != "r":
+                _run_before_action(host)
+            # Worker first refusal — let the host's ``handle_extra_key`` claim any
+            # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
+            # BEFORE the default dispatch fires. ``screen`` + ``read_key`` are
+            # threaded in so a worker key that drills into a capability can drive
+            # the alt-screen the same way the framework's own _activate does.
+            # Returning True means "I handled it; skip the framework's branches
+            # below". A worker key may have drilled + acted, so re-capture on this
+            # thread afterwards, as it always has, so the acted-on row moves at once.
+            if (
+                host.handle_extra_key_with_session(
+                    state, selection, key, ShellSession(host, screen, read_key)
+                )
+                if host.handle_extra_key_with_session is not None
+                else host.handle_extra_key(state, selection, key, screen, read_key)
+            ):
+                state, items, sel = _recapture(host, sel)
+                dirty = True
+                continue
         # Cursor moves: update the highlight only — no re-capture. Each is a cheap
         # repaint; a burst coalesces via the pending() gate above.
         if key == keys.UP:
