@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextvars
 import threading
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
@@ -17,7 +18,7 @@ from rich.console import Console
 
 from clonway_cockpit import keys, render, shell
 from clonway_cockpit.registry import WizardContext, clear_capabilities
-from clonway_cockpit.state import CockpitState, NeedsItem
+from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 
 _WAIT = 5.0  # generous ceiling for thread hand-offs; never reached when the code is right
 
@@ -343,3 +344,65 @@ def test_a_worker_key_still_recaptures_before_home_is_shown_again():
     assert "Live 2" in texts[-1] and "refreshing" not in texts[-1]
     assert not any("Live 2" in t and "refreshing" in t for t in texts)
     assert len(calls) == 2
+
+
+def test_enter_on_the_saved_home_waits_for_the_live_home_before_acting(monkeypatch):
+    """A key that acts never runs beside the background capture: Enter pressed on
+    the saved Home waits for the capture, swaps the live Home in, and only then
+    acts, on the live row. A wait longer than a blink says it is finishing."""
+    events: list[str] = []
+    typed = [keys.ENTER]
+    saved = CockpitState(tenant_name="Saved Ltd", pills=(Pill("Saved bank", "ok", "", "ok"),))
+    live = CockpitState(tenant_name="Live Ltd", pills=(Pill("Live bank", "ok", "", "ok"),))
+
+    def capture() -> CockpitState:
+        events.append("capture started")
+        assert entered.wait(_WAIT)
+        time.sleep(0.3)  # longer than the "finishing refresh…" threshold
+        events.append("capture finished")
+        return live
+
+    entered = threading.Event()
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+
+    def read_key() -> str:
+        if typed:
+            entered.set()
+            return typed.pop(0)
+        return "q"
+
+    screen = _Screen()
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: saved,
+        activate_pill=lambda pill, scr, rk: events.append(f"acted on {pill.label}"),
+    )
+    shell.run_cockpit(host, read_key=read_key, screen=screen)
+
+    # The refresh after returning from the action follows these three.
+    assert events[:3] == ["capture started", "capture finished", "acted on Live bank"]
+    assert any("Saved Ltd" in t and "finishing refresh…" in t for t in screen.texts())
+
+
+def test_cursor_keys_on_the_saved_home_do_not_wait_for_the_capture(monkeypatch):
+    """The capture is held until the cursor has visibly moved on the saved Home, so
+    an arrow key that waited for the capture would never get there."""
+    release = threading.Event()
+    typed = [keys.DOWN]
+
+    def capture() -> CockpitState:
+        assert release.wait(_WAIT), "the arrow key waited for the capture"
+        return LIVE
+
+    def on_frame(text: str) -> None:
+        moved = [line for line in text.splitlines() if "❯" in line and "Saved need two" in line]
+        if moved:
+            release.set()
+
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+    screen = _Screen(on_frame=on_frame)
+    host = _host(capture_state=capture, provisional_state=lambda: SAVED)
+    shell.run_cockpit(host, read_key=lambda: typed.pop(0) if typed else "q", screen=screen)
+
+    assert release.is_set()
+    assert "Live Ltd" in screen.texts()[-1]

@@ -554,7 +554,10 @@ def _home(
         # coalescing N moves into ONE frame. pending() is False off a held raw
         # session, so tests / non-interactive paths repaint on every change.
         if dirty and not keys.pending():
-            shown = _with_freshness(state, refreshing=refresh is not None, failed=refresh_failed)
+            shown = _with_freshness(
+                state,
+                _REFRESHING if refresh is not None else _REFRESH_FAILED if refresh_failed else None,
+            )
             caps = host.get_capabilities()
             extra = host.extra_regions(state)
             extra_models = (
@@ -602,6 +605,16 @@ def _home(
             # invocation — we've recursed into the restored home.
             _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
             return
+        if refresh is not None and key not in _CURSOR_KEYS and low not in ("r", "?"):
+            # A key that may open or act on something waits for the capture in
+            # flight and swaps it in first, so the worker's code never runs on two
+            # threads at once; the key then acts on the live Home.
+            state, refresh_failed = _finish_refresh(host, screen, refresh, state, selection)
+            refresh = None
+            items = selectables(state, host)
+            sel %= len(items)
+            selection = items[sel]
+            dirty = True
         if host.before_action is not None and key not in _CURSOR_KEYS and low != "r":
             _run_before_action(host)
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
@@ -659,8 +672,6 @@ def _home(
         elif low == "/":
             # Snapshot cursor before opening the filter (back returns here).
             nav.push(NavFrame(key="home", restore_state={"sel": sel}))
-            if refresh is not None:
-                refresh.wait()  # the filter captures on this thread: one capture at a time
             _filter(host, screen, read_key)
             nav.pop_back()
         elif key.isdigit() and 1 <= int(key) <= len(state.needs):
@@ -740,6 +751,9 @@ _REFRESH_POLL = 0.04
 _CURSOR_KEYS = frozenset({keys.UP, keys.DOWN, keys.LEFT, keys.RIGHT})
 _REFRESHING = "refreshing…"
 _REFRESH_FAILED = "couldn't refresh — press r to retry"
+_FINISHING = "finishing refresh…"
+# How long a key that acts may wait on the capture before Home says it is finishing.
+_FINISHING_AFTER = 0.2
 _UNSET = object()
 
 
@@ -860,14 +874,37 @@ def _settle_refresh(
     return state, None, failed
 
 
-def _with_freshness(state: CockpitState, *, refreshing: bool, failed: bool) -> CockpitState:
-    """``state`` as shown: its own age note plus whether a refresh is running or
-    failed. Returns ``state`` itself only when it is live and nothing is pending."""
-    suffix = _REFRESHING if refreshing else _REFRESH_FAILED if failed else None
+def _with_freshness(state: CockpitState, suffix: str | None) -> CockpitState:
+    """``state`` as shown: its own age note plus what the refresh is doing (running,
+    failed, finishing). Returns ``state`` itself only when it is live and settled."""
     if suffix is None:
         return state
     note = f"{state.freshness_note} · {suffix}" if state.freshness_note else suffix
     return replace(state, freshness_note=note)
+
+
+def _finish_refresh(
+    host: Host,
+    screen: Screen,
+    refresh: _Refresh,
+    state: CockpitState,
+    selection: tuple[str, object],
+) -> tuple[CockpitState, bool]:
+    """Wait for the capture in flight, and any follow-up it started, and swap it in.
+    Returns the Home to act on and whether the last capture failed. A wait longer
+    than a blink shows "finishing refresh…" so the keypress visibly registered."""
+    painted = False
+    while True:
+        if not refresh.wait(_FINISHING_AFTER) and not painted:
+            caps = host.get_capabilities()
+            shown = _with_freshness(state, _FINISHING)
+            _paint_home(screen, shown, caps, selection, host.extra_regions(state))
+            painted = True
+        refresh.wait()
+        state, follow_up, failed = _settle_refresh(host, refresh, state)
+        if follow_up is None:
+            return state, failed
+        refresh = follow_up
 
 
 def _key_before_refresh(refresh: _Refresh) -> bool:

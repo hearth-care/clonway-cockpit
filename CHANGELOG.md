@@ -33,8 +33,10 @@ Record them here and bump the release tag before merging.
 - Instant Home, opt-in through four `Host` fields appended after the Doctor hooks.
   `provisional_state` returns a Home to paint at once (normally one the worker saved
   earlier); the shell marks it "refreshing…" under the header, runs the live capture on
-  one background thread and swaps the live Home in without waiting for a key, while
-  cursor keys and actions keep working on the Home on screen. When it returns None, a
+  one background thread and swaps the live Home in without waiting for a key. Cursor
+  keys, q, r and ? stay instant meanwhile; any other key first waits for the capture and
+  its swap (showing "finishing refresh…" if that takes more than 0.2 s) and then acts on
+  the live Home, so worker code never runs beside the capture. When it returns None, a
   framed loading page ticks off `startup_stages` as the capture reports them through the
   `walk.StageReporter` passed to `capture_state_background`. That callback does the slow
   work off the main thread and returns a function the loop runs on the main thread to
