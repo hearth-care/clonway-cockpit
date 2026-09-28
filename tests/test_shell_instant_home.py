@@ -406,3 +406,218 @@ def test_cursor_keys_on_the_saved_home_do_not_wait_for_the_capture(monkeypatch):
 
     assert release.is_set()
     assert "Live Ltd" in screen.texts()[-1]
+
+
+# --- Worker hooks never run beside the capture, nor on a Home that failed to refresh ---
+
+_HOOK_VARIANTS = ("handle_extra_key", "handle_extra_key_with_session")
+
+
+def _claiming_hook(variant: str, record) -> dict[str, Any]:
+    """A worker hook that claims every key it is offered, recording each offer."""
+    if variant == "no worker hook":
+        return {}
+    if variant == "handle_extra_key":
+        return {"handle_extra_key": lambda state, sel, key, scr, rk: record(key) or True}
+    return {"handle_extra_key_with_session": lambda state, sel, key, session: record(key) or True}
+
+
+@pytest.mark.parametrize("variant", _HOOK_VARIANTS)
+@pytest.mark.parametrize("key", [keys.DOWN, "r", "?"])
+def test_keys_that_skip_the_wait_never_reach_worker_hooks_during_the_capture(
+    monkeypatch, variant, key
+):
+    """Cursor moves, r and ? stay usable while the capture runs, but they are the
+    framework's keys then: a worker hook that would claim them (and before_action)
+    must not run beside the capture."""
+    release = threading.Event()
+    finished = threading.Event()
+    beside_capture: list[str] = []
+    models: list[Any] = []
+    typed = [key, "x"] if key == "?" else [key]  # "x" dismisses the help screen
+
+    def capture() -> CockpitState:
+        assert release.wait(_WAIT)
+        finished.set()
+        return LIVE
+
+    def record(name: str) -> None:
+        if not finished.is_set():
+            beside_capture.append(name)
+            release.set()  # fail fast rather than deadlock on the old behaviour
+
+    def on_frame(text: str) -> None:
+        if typed != [key]:  # painted after the key was read: it was handled first
+            release.set()
+
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+    screen = _Screen(on_frame=on_frame)
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: SAVED,
+        before_action=lambda: record("before_action"),
+        on_screen=models.append,
+        **_claiming_hook(variant, lambda k: record(k)),
+    )
+    shell.run_cockpit(host, read_key=lambda: typed.pop(0) if typed else "q", screen=screen)
+
+    assert beside_capture == []
+    # The framework handled the key on the saved Home.
+    if key == keys.DOWN:
+        (cursor_line,) = [line for line in screen.texts()[0].splitlines() if "❯" in line]
+        assert "Saved need two" in cursor_line
+    if key == "?":
+        assert [m.kind for m in models][:1] == ["help"]
+    assert "Live Ltd" in screen.texts()[-1]
+
+
+@pytest.mark.parametrize("variant", _HOOK_VARIANTS)
+def test_an_acting_worker_key_and_before_action_run_after_the_capture(monkeypatch, variant):
+    """A worker-owned key pressed on the saved Home waits for the capture; only
+    then do before_action and the worker hook run, on the live Home."""
+    events: list[str] = []
+    typed = ["z"]
+    entered = threading.Event()
+
+    def capture() -> CockpitState:
+        if not events:
+            assert entered.wait(_WAIT)
+            events.append("capture finished")
+        return LIVE
+
+    def read_key() -> str:
+        if typed:
+            entered.set()
+            return typed.pop(0)
+        return "q"
+
+    def record(key: str) -> None:
+        events.append(f"hook {key}")
+
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: SAVED,
+        before_action=lambda: events.append("before_action"),
+        **_claiming_hook(variant, record),
+    )
+    shell.run_cockpit(host, read_key=read_key, screen=_Screen())
+
+    assert events[:3] == ["capture finished", "before_action", "hook z"]
+
+
+_SAVED_WITH_PILL = CockpitState(
+    tenant_name="Saved Ltd",
+    freshness_note="as of 22:31",
+    needs=(NeedsItem("Saved need", "", "warn", None),),
+    pills=(Pill("Saved bank", "ok", "", "ok"),),
+)
+_LIVE_WITH_PILL = CockpitState(tenant_name="Live Ltd", pills=(Pill("Live bank", "ok", "", "ok"),))
+
+
+def _pill_host(capture, acted: list[str], **changes: Any) -> shell.Host:
+    return _host(
+        capture_state=capture,
+        provisional_state=lambda: _SAVED_WITH_PILL,
+        activate_pill=lambda pill, scr, rk: acted.append(f"pill {pill.label}"),
+        before_action=lambda: acted.append("before_action"),
+        **changes,
+    )
+
+
+@pytest.mark.parametrize("variant", ("no worker hook", *_HOOK_VARIANTS))
+def test_a_refresh_that_fails_while_an_action_waits_does_not_act_on_the_saved_home(
+    monkeypatch, variant
+):
+    """Enter pressed on the saved Home waits for the capture; when that capture
+    fails, the saved Home stays up, marked, and nothing acts on it."""
+    acted: list[str] = []
+    models: list[Any] = []
+    typed = [keys.UP, keys.ENTER]  # onto the saved pill, then act on it
+    entered = threading.Event()
+
+    calls: list[int] = []
+
+    def capture() -> CockpitState:
+        calls.append(1)
+        if len(calls) > 1:
+            return _LIVE_WITH_PILL
+        assert entered.wait(_WAIT)
+        raise RuntimeError("tenant unreachable")
+
+    def read_key() -> str:
+        if typed:
+            entered.set()
+            return typed.pop(0)
+        return "q"
+
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+    screen = _Screen()
+    host = _pill_host(
+        capture,
+        acted,
+        on_screen=models.append,
+        **_claiming_hook(variant, lambda k: acted.append(f"hook {k}")),
+    )
+    shell.run_cockpit(host, read_key=read_key, screen=screen)
+
+    assert acted == []
+    assert len(calls) == 1
+    assert "Saved Ltd" in screen.texts()[-1]
+    assert "couldn't refresh — press r to retry" in screen.texts()[-1]
+    assert _home_models(models) == []
+
+
+@pytest.mark.parametrize("variant", ("no worker hook", *_HOOK_VARIANTS))
+def test_a_home_whose_refresh_already_failed_refuses_actions_until_r_succeeds(variant):
+    """Once the failure has settled, the marked saved Home still moves the cursor,
+    retries on r and quits on q, but no key acts on its stale rows."""
+    acted: list[str] = []
+    models: list[Any] = []
+    calls: list[int] = []
+    painted = threading.Event()
+
+    def capture() -> CockpitState:
+        calls.append(1)
+        if len(calls) > 1:
+            return _LIVE_WITH_PILL
+        assert painted.wait(_WAIT)
+        raise RuntimeError("tenant unreachable")
+
+    scripted = [keys.UP, keys.ENTER, "z", "1", "q"]
+    screen = _Screen(on_frame=lambda text: painted.set())
+    host = _pill_host(
+        capture,
+        acted,
+        on_screen=models.append,
+        **_claiming_hook(variant, lambda k: acted.append(f"hook {k}")),
+    )
+    shell.run_cockpit(host, read_key=lambda: scripted.pop(0), screen=screen)
+
+    assert acted == []
+    assert len(calls) == 1
+    last = screen.texts()[-1]
+    assert "couldn't refresh — press r to retry" in last
+    (cursor_line,) = [line for line in last.splitlines() if "❯" in line]
+    assert "Saved bank" in cursor_line  # UP still moved the cursor off the need
+    assert _home_models(models) == []
+
+
+def test_a_successful_retry_restores_actions_on_the_live_home():
+    acted: list[str] = []
+    calls: list[int] = []
+    painted = threading.Event()
+
+    def capture() -> CockpitState:
+        calls.append(1)
+        assert painted.wait(_WAIT)
+        if len(calls) == 1:
+            raise RuntimeError("tenant unreachable")
+        return _LIVE_WITH_PILL
+
+    scripted = ["r", keys.UP, keys.ENTER, "q"]
+    screen = _Screen(on_frame=lambda text: painted.set())
+    host = _pill_host(capture, acted)
+    shell.run_cockpit(host, read_key=lambda: scripted.pop(0), screen=screen)
+
+    assert acted == ["before_action", "pill Live bank"]
