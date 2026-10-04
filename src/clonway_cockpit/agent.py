@@ -162,7 +162,9 @@ def serve_stdio(
                 continue
             if cmd == "quit":
                 return "q"
-            _write({"error": f"unknown message: {msg}"})
+            # Key names only: values may be pasted secrets and must not reach logs.
+            keys = ",".join(sorted(str(k)[:32] for k in msg)[:8])
+            _write({"error": f"unknown message (keys: {keys}; {len(msg)} total)"})
 
     def authorize_apply(proposal: dict) -> bool:
         # Read ONE message and authorize iff it is exactly {"apply":true,"token":<the
