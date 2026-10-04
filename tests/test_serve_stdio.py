@@ -122,6 +122,18 @@ def test_non_object_and_unknown_command_error():
     assert any("unknown message" in str(f.get("error", "")) for f in frames)
 
 
+def test_unknown_message_error_never_echoes_values():
+    secret = "ghp_SECRETTOKENVALUE123"
+    state = CockpitState(tenant_name="Clonway")
+    inp = io.StringIO(json.dumps({"cmd": secret, "token": secret}) + "\n" + '{"key": "q"}\n')
+    out = io.StringIO()
+    serve_stdio(_host(state), stdin=inp, stdout=out)
+    assert secret not in out.getvalue()
+    errs = [json.loads(x).get("error", "") for x in out.getvalue().splitlines() if x.strip()]
+    err = next(e for e in errs if e.startswith("unknown message"))
+    assert "cmd" in err and "token" in err  # key names stay, for debugging
+
+
 def test_eof_unwinds_without_a_quit_message():
     state = CockpitState(tenant_name="Clonway")
     out = io.StringIO()
