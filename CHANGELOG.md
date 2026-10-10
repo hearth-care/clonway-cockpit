@@ -56,6 +56,30 @@ Record them here and bump the release tag before merging.
   sequences (F-keys, Shift-arrows) are now skipped entirely.
 - The Doctor screen treats Backspace as "back", like `q` and Esc and like the shelf menus.
   It previously ignored Backspace, or re-ran the checks when no fix was offered.
+- Terminal-mode hardening for walks that ask for typed answers. Found on 10 October 2026
+  while building a "Confirm a move-in" walk in auto-admissions, where typed answers
+  silently came back as their defaults in the live TUI:
+  - `keys.raw_mode()` is safe to enter twice. A nested entry is now a no-op that leaves the
+    outer session in charge; before, it saved the already-raw terminal as the "cooked"
+    state, so an inner `cooked_mode()` could not restore echo and the first exit released
+    the session while the outer block was still running. `keys.cooked_mode()` windows nest
+    too: only the outermost restores the cooked terminal and only its exit re-arms raw.
+  - `prompts.make_clean_input_fn()` opens its own `cooked_mode()` window around each typed
+    prompt, so a worker no longer has to remember to. Nothing to call differently: use
+    `input_fn=make_clean_input_fn()` in `build_walk_ctx`. A worker that already wraps the
+    returned function in `cooked_mode()` keeps working and can drop its wrapper.
+  - `walk.confirm_apply()` discards keys buffered on the terminal immediately before it
+    reads the gate key (human context only, one `tcflush`, no-op without a held raw
+    session), so a keypress made before the review page was drawn can no longer confirm a
+    write. Agent dry-run and the guarded-apply handshake are untouched.
+
+  Workers pick this up by bumping their `clonway-cockpit` pin to the release that carries
+  it (see `docs/pin-sync.md`); no code change is required. Known workaround sites to
+  simplify once bumped: auto-admissions `src/xadmissions/cockpit/app.py` (a
+  `cooked_input` wrapper around `make_clean_input_fn()`, and a comment explaining why
+  `run_cockpit` must not enter `raw_mode()` itself) and auto-hr `src/xhr/cockpit/app.py`
+  (lines 129-131 enter `raw_mode()` around `shell.run_cockpit`, which now holds the session
+  itself: harmless on this release, a nested raw session on older ones).
 
 ## [0.3.0] - 2026-07-02
 

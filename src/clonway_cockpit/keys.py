@@ -81,6 +81,10 @@ _SEQUENCE_WAIT = 0.05
 # list (``tcgetattr``'s return), typed for ``tcsetattr`` to accept it back.
 _held_fd: int | None = None
 _held_old: list[Any] | None = None
+# How many ``cooked_mode()`` windows are open inside the held session. Only the
+# outermost one touches the terminal, so a prompt helper that opens its own window
+# inside a worker's window cannot re-arm raw under the worker's remaining reads.
+_cooked_depth = 0
 
 
 def _session_fd() -> int | None:
@@ -115,9 +119,18 @@ def raw_mode():
     restores then re-raises the default disposition, so ``kill`` can't leave the
     terminal wedged). While held, ``read_key`` reads the already-raw fd directly:
     no tcgetattr/setraw/tcsetattr per keypress, so escape sequences never echo
-    between keys. Idempotent against nesting is not needed — the cockpit enters it
-    exactly once per session."""
-    global _held_fd, _held_old
+    between keys.
+
+    Entering it while a session is already held is a no-op: the outer session owns
+    the saved cooked state and the single restore. Without that guard the inner
+    entry would save the already-raw terminal as the "cooked" state, leaving every
+    ``cooked_mode()`` window inside it unable to restore echo. A worker may
+    therefore wrap ``shell.run_cockpit`` (which holds the session itself) in its
+    own ``raw_mode()`` without harm, though it no longer needs to."""
+    global _held_fd, _held_old, _cooked_depth
+    if _held_fd is not None:
+        yield
+        return
     if not sys.stdin.isatty():
         # Non-interactive stdin (a pipe, pytest's captured stdin, Cloud Run): there
         # is no terminal to put in raw mode. Yield untouched so read_key's standalone
@@ -141,14 +154,14 @@ def raw_mode():
 
     try:
         _enter_raw(fd)
-        _held_fd, _held_old = fd, old
+        _held_fd, _held_old, _cooked_depth = fd, old, 0
         # Not the main thread → signal handlers can't be installed; the finally still
         # restores via the context manager, so this is best-effort.
         with suppress(ValueError):
             signal.signal(signal.SIGTERM, _on_sigterm)
         yield
     finally:
-        _held_fd, _held_old = None, None
+        _held_fd, _held_old, _cooked_depth = None, None, 0
         with suppress(ValueError, TypeError):
             signal.signal(signal.SIGTERM, prev_sigterm)
         _restore()
@@ -158,20 +171,29 @@ def raw_mode():
 def cooked_mode():
     """Temporarily restore the pre-raw (cooked, echoing) terminal for a line read
     inside a held session, then re-arm raw mode. A no-op when no session is held
-    (the terminal is already cooked). Wrap any ``input_fn``-style typed prompt a
-    walk runs in this so the keystrokes echo and line-edit normally."""
+    (the terminal is already cooked). ``prompts.make_clean_input_fn`` opens one
+    around every typed prompt itself; a hand-written ``input_fn`` that reads a line
+    should wrap its read in this so the keystrokes echo and line-edit normally.
+
+    Windows nest: only the outermost one restores the cooked terminal and only its
+    exit re-arms raw, so wrapping an already-wrapped prompt is harmless."""
+    global _cooked_depth
     fd = _session_fd()
     if fd is None:
         yield  # no session → already cooked, nothing to toggle
         return
     assert _held_old is not None  # a held session always has saved cooked attrs
-    termios.tcsetattr(fd, termios.TCSAFLUSH, _held_old)
+    if _cooked_depth == 0:
+        termios.tcsetattr(fd, termios.TCSAFLUSH, _held_old)
+    _cooked_depth += 1
     try:
         yield
     finally:
-        # Re-arm raw the same way the session entered it — keeping OPOST on — so a
-        # render after a typed prompt isn't garbled by a bare setraw dropping OPOST.
-        _enter_raw(fd)
+        _cooked_depth = max(_cooked_depth - 1, 0)
+        if _cooked_depth == 0 and _session_fd() == fd:
+            # Re-arm raw the same way the session entered it — keeping OPOST on — so a
+            # render after a typed prompt isn't garbled by a bare setraw dropping OPOST.
+            _enter_raw(fd)
 
 
 def pending(timeout: float = 0.0) -> bool:

@@ -30,11 +30,20 @@ def default_input_fn() -> InputFn:
 
 def make_clean_input_fn() -> InputFn:
     """Prompt fn for the cockpit: renders the prompt text verbatim — no ``": "``
-    suffix and no default echo — so a bare ``"▸ "`` cursor matches the design."""
+    suffix and no default echo — so a bare ``"▸ "`` cursor matches the design.
+
+    Each prompt runs inside ``keys.cooked_mode()``: a cockpit session holds the
+    terminal raw for single keypresses, and a line read in raw mode neither echoes
+    nor line-edits, so the typed answer was lost and the default came back.
+    The window is a no-op outside a held session, and nests harmlessly, so a worker
+    that already wraps this function in ``cooked_mode()`` keeps working."""
     import typer
 
+    from clonway_cockpit import keys
+
     def _ask(prompt_text: str, default: str = "") -> str:
-        return typer.prompt(prompt_text, default=default, show_default=False, prompt_suffix="")
+        with keys.cooked_mode():
+            return typer.prompt(prompt_text, default=default, show_default=False, prompt_suffix="")
 
     return _ask
 
