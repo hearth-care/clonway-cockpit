@@ -638,6 +638,11 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
             equivalent_cli=equivalent_cli,
         )
         return applied
+    # A keypress made before this review page was drawn (a repeated key, a slow redraw)
+    # is still queued on the terminal and would otherwise be read as the answer, so
+    # confirm a write the operator never saw. One tcflush: nothing to loop or cap, and a
+    # no-op without a held raw session (pipes, tests, injected readers).
+    keys.discard_pending()
     k = ctx.read_key()
     applied = k in (keys.ENTER, "a", "A")
     _audit_gate(
