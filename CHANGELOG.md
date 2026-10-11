@@ -11,6 +11,8 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-11
+
 ### Added
 
 - Stable worker integration seams for nested cockpit screens: public
