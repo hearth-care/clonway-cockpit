@@ -83,6 +83,26 @@ Record them here and bump the release tag before merging.
   (lines 129-131 enter `raw_mode()` around `shell.run_cockpit`, which now holds the session
   itself: harmless on this release, a nested raw session on older ones).
 
+### Upgrading a worker from v0.1.0
+
+Added after the release, from the eight worker bumps made on 2026-10-11. None of these is a wire
+change; all three are visible to a worker's own checks.
+
+- **Type checking now covers this package.** `py.typed` has shipped since v0.2.0 and
+  `WizardContext` is generic (`AnyWizardContext` is the unparameterised alias), so a worker's
+  `mypy` starts checking calls it previously treated as `Any`. Expect a handful of annotation
+  errors on first bump: `ctx` parameters typed `WizardContext` need `AnyWizardContext`, a
+  default-argument lambda passed as `input_fn` needs a named function or a targeted ignore, and
+  `equivalent_cli` is declared `str` although a cockpit-only capability may pass `None`.
+- **Doctor probe rows carry two more fields.** Every row now includes `probe_id` and
+  `evidence_revision` alongside `level` and `detail`. A test that compares a whole row for
+  equality must compare only the fields it means.
+- **The run-log buffer is reached through `event_buffer()`.** `clonway_cockpit.obs` is a package
+  and the private `_RUN_BUFFERS` context variable now lives in `obs/_telemetry.py`, so a worker's
+  `obs` wrapper that imported `clonway_cockpit.obs._RUN_BUFFERS` fails at runtime. Use
+  `event_buffer(worker_id)`: `scope.owner` is true for the outermost session, `scope.events` is
+  the buffer, and a nested session for the same worker joins the active one.
+
 ## [0.3.0] - 2026-07-02
 
 ### Added
