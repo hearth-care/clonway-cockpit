@@ -1,6 +1,6 @@
 # Fleet Pin Sync
 
-Supported: v0.1.0
+Supported: v0.4.0
 
 Workers pin clonway-cockpit release tags, not raw SHAs and not `main`. The supported line above
 is the single source an agent or doctor check should read when deciding whether a worker is on the
@@ -14,7 +14,7 @@ For each worker repo:
 2. Replace the current `clonway-cockpit` rev with the supported tag:
 
    ```toml
-   clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "v0.1.0" }
+   clonway-cockpit = { git = "https://github.com/hearth-care/clonway-cockpit.git", rev = "v0.4.0" }
    ```
 
 3. Run `uv lock`.
@@ -30,23 +30,24 @@ The per-worker status rows are the authority: workers on a newer release tag are
 the script marks that row OK, even if the script's final summary names only the supported
 baseline.
 
-Last static snapshot: 2026-07-03 (re-run the script for current state).
+Last static snapshot: 2026-10-11 (re-run the script for current state).
 
 `v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
-persona thread memory) was released on 2026-07-02. The supported baseline remains
-`v0.1.0` until the operator moves it; a worker on a newer release tag is conformant
-under the survey's newer-tag rule from PR #108.
+persona thread memory) was released on 2026-07-02; `v0.4.0` (terminal-mode hardening for
+typed answers, nested-screen shell seams, scrollable viewport) was released on 2026-10-11.
+The operator moved the supported baseline to `v0.4.0` on 2026-10-11; a worker on a newer
+release tag is conformant under the survey's newer-tag rule from PR #108.
 
-| Worker repo | Pin as of 2026-07-03 | Status |
+| Worker repo | Pin as of 2026-10-11 | Status |
 |---|---|---|
-| Auto-Orchestrator | `v0.1.0` | OK (on supported baseline) |
-| auto-admissions | `v0.1.0` | OK (on supported baseline) |
-| auto-bookkeeper | `v0.3.0` | OK (newer release tag than `v0.1.0`) |
-| auto-hr | `v0.1.0` | OK (on supported baseline) |
-| auto-inspector | `v0.1.0` | OK (on supported baseline) |
-| auto-marketer | `v0.1.0` | OK (on supported baseline) |
-| auto-secretary | `v0.1.0` | OK (on supported baseline) |
-| Auto-Procurer | `v0.1.0` | OK (on supported baseline) |
+| Auto-Orchestrator | `v0.1.0` | bump to `v0.4.0` in progress |
+| auto-admissions | `v0.1.0` | bump to `v0.4.0` in progress |
+| auto-bookkeeper | bare SHA `905bc8b` | bump to `v0.4.0` in progress |
+| auto-hr | `v0.1.0` | bump to `v0.4.0` in progress |
+| auto-inspector | `v0.1.0` | bump to `v0.4.0` in progress |
+| auto-marketer | `v0.1.0` | bump to `v0.4.0` in progress |
+| auto-secretary | `v0.1.0` | bump to `v0.4.0` in progress |
+| Auto-Procurer | `v0.1.0` | bump to `v0.4.0` in progress |
 
 Update consumers before emitters when a wire shape changes. The orchestrator is the first consumer
 because it bridges worker output across the fleet; update it before workers that emit changed

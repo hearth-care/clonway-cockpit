@@ -65,8 +65,8 @@ def test_release_workflow_tags_version_from_changelog() -> None:
 def test_pin_sync_advisory_names_one_supported_tag_and_all_workers() -> None:
     text = _pin_sync_doc()
 
-    assert text.count("Supported: v0.1.0") == 1
-    assert 'rev = "v0.1.0"' in text
+    assert text.count("Supported: v0.4.0") == 1
+    assert 'rev = "v0.4.0"' in text
     assert 'rev = "main"' not in text
     for repo in (
         "auto-admissions",
