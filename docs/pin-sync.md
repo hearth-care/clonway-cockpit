@@ -35,19 +35,20 @@ Last static snapshot: 2026-10-11 (re-run the script for current state).
 `v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
 persona thread memory) was released on 2026-07-02; `v0.4.0` (terminal-mode hardening for
 typed answers, nested-screen shell seams, scrollable viewport) was released on 2026-10-11.
-The operator moved the supported baseline to `v0.4.0` on 2026-10-11; a worker on a newer
-release tag is conformant under the survey's newer-tag rule from PR #108.
+The operator moved the supported baseline to `v0.4.0` on 2026-10-11 and all eight workers were
+bumped the same day; a worker on a newer release tag is conformant under the survey's newer-tag
+rule from PR #108.
 
 | Worker repo | Pin as of 2026-10-11 | Status |
 |---|---|---|
-| Auto-Orchestrator | `v0.1.0` | bump to `v0.4.0` in progress |
-| auto-admissions | `v0.1.0` | bump to `v0.4.0` in progress |
-| auto-bookkeeper | bare SHA `905bc8b` | bump to `v0.4.0` in progress |
-| auto-hr | `v0.1.0` | bump to `v0.4.0` in progress |
-| auto-inspector | `v0.1.0` | bump to `v0.4.0` in progress |
-| auto-marketer | `v0.1.0` | bump to `v0.4.0` in progress |
-| auto-secretary | `v0.1.0` | bump to `v0.4.0` in progress |
-| Auto-Procurer | `v0.1.0` | bump to `v0.4.0` in progress |
+| Auto-Orchestrator | `v0.4.0` | OK (on supported baseline) |
+| auto-admissions | `v0.4.0` | OK (on supported baseline) |
+| auto-bookkeeper | `v0.4.0` | OK (on supported baseline) |
+| auto-hr | `v0.4.0` | OK (on supported baseline) |
+| auto-inspector | `v0.4.0` | OK (on supported baseline) |
+| auto-marketer | `v0.4.0` | OK (on supported baseline) |
+| auto-secretary | `v0.4.0` | OK (on supported baseline) |
+| Auto-Procurer | `v0.4.0` | OK (on supported baseline) |
 
 Update consumers before emitters when a wire shape changes. The orchestrator is the first consumer
 because it bridges worker output across the fleet; update it before workers that emit changed
