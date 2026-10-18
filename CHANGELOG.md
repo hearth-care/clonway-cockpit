@@ -11,6 +11,24 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-18
+
+### Added
+
+- Opt-in `Host.act_during_refresh` for instant Home. Set, a key that acts no longer waits
+  for the background capture ("finishing refresh…" for as long as the capture takes, about
+  22 s in xbook): it acts at once on the Home on screen, the capture in flight is marked
+  superseded and a follow-up capture starts when it ends. A worker key handled by
+  `handle_extra_key` requests a background refresh instead of re-capturing on the main
+  thread, and a Backspace pop-back Home is instant too (seeded from the Home just left,
+  joining any capture already running). Results are still adopted on the main thread and
+  only into Home. **Opting in means the worker's capture code can run on the background
+  thread while a capability, walk or worker key runs on the main thread**, so the worker
+  must tolerate that. Default (`False`) behaviour is unchanged; agent mode ignores it.
+- Opt-in `Host.before_action_pending`: with `act_during_refresh`, when it returns True the
+  shell paints Home marked "getting ready…" before running `before_action`, so a wait for
+  deferred start-up work (such as secrets) is visibly a loading state.
+
 ## [0.4.0] - 2026-10-11
 
 ### Added

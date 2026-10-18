@@ -35,7 +35,8 @@ Last static snapshot: 2026-10-11 (re-run the script for current state).
 `v0.2.0` was released on 2026-06-14; `v0.3.0` (chat_addon transport + bounded
 persona thread memory) was released on 2026-07-02; `v0.4.0` (terminal-mode hardening for
 typed answers, nested-screen shell seams, scrollable viewport) was released on 2026-10-11.
-The operator moved the supported baseline to `v0.4.0` on 2026-10-11 and all eight workers were
+`v0.5.0` (opt-in `Host.act_during_refresh` and `Host.before_action_pending`) was released on
+2026-10-18; the supported baseline stays `v0.4.0` until the operator moves it. The operator moved the supported baseline to `v0.4.0` on 2026-10-11 and all eight workers were
 bumped the same day; a worker on a newer release tag is conformant under the survey's newer-tag
 rule from PR #108.
 

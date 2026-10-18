@@ -290,6 +290,23 @@ class Host:
     # key except cursor moves, q, Esc, Backspace and r). A worker that moved start-up
     # work off the critical path, such as loading secrets, waits for it here.
     before_action: Callable[[], None] | None = None
+    # Act during refresh (opt-in, only with ``provisional_state``). Unset, a key that
+    # may act first waits for the capture in flight ("finishing refresh…") and a worker
+    # key re-captures on the main thread, so worker code never runs on two threads at
+    # once. Set, an acting key acts at once on the Home on screen: the capture keeps
+    # running, is marked superseded, and a follow-up capture starts when it ends; a
+    # worker key (``handle_extra_key``) requests a background refresh instead of
+    # re-capturing synchronously; and a Backspace pop-back Home is instant too, seeded
+    # from the Home being left. Opting in means the worker's capture code may run on
+    # the background thread while a capability, walk or worker key runs on the main
+    # thread, so the worker must tolerate that (shared caches, clients, files, locks).
+    # Results are still adopted on the main thread, and only into Home. Agent mode
+    # ignores it and only ever sees a live Home.
+    act_during_refresh: bool = False
+    # With ``act_during_refresh``: returns True while ``before_action`` would still
+    # block (for example, deferred secrets still loading), so Home shows "getting
+    # ready…" under the header for the wait instead of looking frozen.
+    before_action_pending: Callable[[], bool] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,6 +509,7 @@ def _home(
     *,
     _nav: _NavStack | None = None,
     _restore_sel: int | None = None,
+    _seed: tuple[CockpitState, _Refresh | None] | None = None,
 ) -> None:
     """The cockpit home loop.
 
@@ -515,12 +533,17 @@ def _home(
     # capture swaps in when it finishes. ``refresh`` is the capture in flight;
     # ``refresh_failed`` records that the last one raised, so the shown Home stays
     # marked until a retry succeeds.
-    instant = _instant_home(host) and _nav is None
+    instant = _instant_home(host) and (_nav is None or host.act_during_refresh)
+    act_now = instant and host.act_during_refresh
     refresh: _Refresh | None = None
     refresh_failed = False
     if instant:
-        provisional = _provisional_state(host)
-        if provisional is None:
+        provisional = _provisional_state(host) if _seed is None else None
+        if _seed is not None:
+            # A pop-back Home opens on the Home just left and refreshes behind it,
+            # joining the capture already in flight rather than starting a second.
+            state, refresh = _seed[0], _seed[1] or _Refresh(host)
+        elif provisional is None:
             loaded = _load_home(host, screen, read_key)
             if loaded is None:
                 return  # q on the loading page
@@ -603,9 +626,21 @@ def _home(
                 continue
             # Re-enter home with the snapshotted cursor, then return from THIS
             # invocation — we've recursed into the restored home.
-            _home(host, screen, read_key, _nav=nav, _restore_sel=frame.restore_state.get("sel"))
+            _home(
+                host,
+                screen,
+                read_key,
+                _nav=nav,
+                _restore_sel=frame.restore_state.get("sel"),
+                _seed=(state, refresh) if act_now else None,
+            )
             return
-        if refresh is not None and key not in _CURSOR_KEYS and low not in ("r", "?"):
+        if (
+            refresh is not None
+            and not act_now
+            and key not in _CURSOR_KEYS
+            and low not in ("r", "?")
+        ):
             # A key that may open or act on something waits for the capture in
             # flight and swaps it in first, so the worker's code never runs on two
             # threads at once; the key then acts on the live Home.
@@ -616,6 +651,14 @@ def _home(
             selection = items[sel]
             dirty = True
         if host.before_action is not None and key not in _CURSOR_KEYS and low != "r":
+            if act_now and _before_action_pending(host):
+                _paint_home(
+                    screen,
+                    _with_freshness(state, _GETTING_READY),
+                    host.get_capabilities(),
+                    selection,
+                    host.extra_regions(state),
+                )
             _run_before_action(host)
         # Worker first refusal — let the host's ``handle_extra_key`` claim any
         # key on a selection it owns (e.g. ⏎/y/p/c on an xbook statutory row)
@@ -631,6 +674,12 @@ def _home(
             if host.handle_extra_key_with_session is not None
             else host.handle_extra_key(state, selection, key, screen, read_key)
         ):
+            if act_now:
+                # The row it acted on moves when the background capture lands; the
+                # capture in flight predates the key, so another follows it.
+                refresh, refresh_failed = _request_refresh(host, refresh), False
+                dirty = True
+                continue
             if refresh is not None:
                 # A worker key re-captures on this thread, as it always has, so the
                 # row it acted on moves at once. Let the background capture finish
@@ -752,6 +801,7 @@ _CURSOR_KEYS = frozenset({keys.UP, keys.DOWN, keys.LEFT, keys.RIGHT})
 _REFRESHING = "refreshing…"
 _REFRESH_FAILED = "couldn't refresh — press r to retry"
 _FINISHING = "finishing refresh…"
+_GETTING_READY = "getting ready…"
 # How long a key that acts may wait on the capture before Home says it is finishing.
 _FINISHING_AFTER = 0.2
 _UNSET = object()
@@ -777,6 +827,16 @@ def _run_before_action(host: Host) -> None:
         host.before_action()
     except Exception:  # noqa: BLE001 — the action itself reports what it cannot do
         _log.exception("before_action failed")
+
+
+def _before_action_pending(host: Host) -> bool:
+    if host.before_action_pending is None:
+        return False
+    try:
+        return bool(host.before_action_pending())
+    except Exception:  # noqa: BLE001 — a broken probe only costs the loading note
+        _log.exception("before_action_pending failed")
+        return False
 
 
 class _BackgroundCapture:
