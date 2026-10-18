@@ -281,10 +281,10 @@ def test_session_callbacks_are_appended_to_preserve_host_positional_order() -> N
     That is what keeps a pinned worker's positional ``Host(...)`` construction
     bound to the same fields. The session callbacks were appended first; the
     Doctor callbacks were appended after them, and the instant-Home hooks after
-    those, so the invariant is the ORDER of the tail, not that any one group is
+    those, then the act-during-refresh pair, so the invariant is the ORDER of the tail, not that any one group is
     last forever."""
     names = [item.name for item in fields(shell.Host)]
-    assert names[-8:] == [
+    assert names[-10:] == [
         "activate_pill_with_session",
         "handle_extra_key_with_session",
         "doctor_classify_report_failure",
@@ -293,6 +293,8 @@ def test_session_callbacks_are_appended_to_preserve_host_positional_order() -> N
         "capture_state_background",
         "startup_stages",
         "before_action",
+        "act_during_refresh",
+        "before_action_pending",
     ]
     # Nothing was inserted ahead of the last field that pre-dated either pair.
     assert names.index("activate_pill_with_session") == names.index("audit_worker") + 1

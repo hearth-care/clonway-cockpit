@@ -406,3 +406,164 @@ def test_cursor_keys_on_the_saved_home_do_not_wait_for_the_capture(monkeypatch):
 
     assert release.is_set()
     assert "Live Ltd" in screen.texts()[-1]
+
+
+# --- act_during_refresh (opt-in) ---------------------------------------------------
+
+_PILL_SAVED = CockpitState(tenant_name="Saved Ltd", pills=(Pill("Saved bank", "ok", "", "ok"),))
+_PILL_LIVE = CockpitState(tenant_name="Live Ltd", pills=(Pill("Live bank", "ok", "", "ok"),))
+
+
+def _typed_keys(monkeypatch, typed: list[str]):
+    monkeypatch.setattr(shell.keys, "pending", lambda timeout=0.0: bool(typed))
+
+
+def test_act_during_refresh_acts_on_the_saved_home_before_the_capture_finishes(monkeypatch):
+    """The capture is held until the action has run, so an Enter that waited for it
+    would deadlock. The held capture is then adopted and a follow-up capture runs."""
+    acted = threading.Event()
+    events: list[str] = []
+    typed = [keys.ENTER]
+    captures: list[int] = []
+
+    def capture() -> CockpitState:
+        captures.append(1)
+        if len(captures) == 1:
+            assert acted.wait(_WAIT), "the action waited for the capture"
+        return _PILL_LIVE
+
+    def activate(pill, scr, rk) -> None:
+        events.append(f"acted on {pill.label}")
+        acted.set()
+
+    _typed_keys(monkeypatch, typed)
+    done = threading.Event()
+
+    def read_key() -> str:
+        if typed:
+            return typed.pop(0)
+        assert done.wait(_WAIT) or True
+        return "q"
+
+    screen = _Screen(on_frame=lambda text: "Live Ltd" in text and done.set())
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: _PILL_SAVED,
+        activate_pill=activate,
+        act_during_refresh=True,
+    )
+    shell.run_cockpit(host, read_key=read_key, screen=screen)
+
+    assert events == ["acted on Saved bank"]  # the Home on screen, not the live one
+    assert len(captures) == 2  # the superseded capture was followed by another
+    assert "Live Ltd" in screen.texts()[-1] and "refreshing" not in screen.texts()[-1]
+
+
+def test_act_during_refresh_worker_key_requests_a_background_refresh(monkeypatch):
+    main = threading.main_thread()
+    capture_threads: list[threading.Thread] = []
+
+    painted_refreshing = threading.Event()
+
+    def capture() -> CockpitState:
+        capture_threads.append(threading.current_thread())
+        if len(capture_threads) > 1:  # the one the worker key asked for
+            assert painted_refreshing.wait(_WAIT), "Home was not repainted while it ran"
+        return replace(LIVE, tenant_name=f"Live {len(capture_threads)}")
+
+    scripted = ["z", "q"]
+    screen = _Screen(
+        on_frame=lambda t: "Live 1" in t and "refreshing…" in t and painted_refreshing.set()
+    )
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: SAVED,
+        handle_extra_key=lambda state, sel, key, scr, rk: key == "z",
+        act_during_refresh=True,
+    )
+    shell.run_cockpit(host, read_key=lambda: scripted.pop(0), screen=screen)
+
+    assert capture_threads and all(t is not main for t in capture_threads)
+    assert any("refreshing…" in t for t in screen.texts()[1:])
+
+
+def test_act_during_refresh_runs_before_action_pending_note_before_before_action(monkeypatch):
+    release = threading.Event()
+    typed = [keys.ENTER]
+    seen_at_before_action: list[list[str]] = []
+    screen = _Screen()
+
+    def capture() -> CockpitState:
+        assert release.wait(_WAIT)
+        return _PILL_LIVE
+
+    def before_action() -> None:
+        seen_at_before_action.append(screen.texts())
+        release.set()
+
+    _typed_keys(monkeypatch, typed)
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: _PILL_SAVED,
+        act_during_refresh=True,
+        before_action=before_action,
+        before_action_pending=lambda: True,
+    )
+    shell.run_cockpit(host, read_key=lambda: typed.pop(0) if typed else "q", screen=screen)
+
+    assert seen_at_before_action
+    assert any("getting ready…" in t for t in seen_at_before_action[0])
+
+
+def test_act_during_refresh_skips_the_note_when_nothing_is_pending(monkeypatch):
+    typed = [keys.ENTER]
+    _typed_keys(monkeypatch, typed)
+    screen = _Screen()
+    host = _host(
+        provisional_state=lambda: _PILL_SAVED,
+        act_during_refresh=True,
+        before_action=lambda: None,
+        before_action_pending=lambda: False,
+    )
+    shell.run_cockpit(host, read_key=lambda: typed.pop(0) if typed else "q", screen=screen)
+    assert not any("getting ready" in t for t in screen.texts())
+
+
+def test_pop_back_home_is_instant_and_never_recaptures_on_the_main_thread():
+    main = threading.main_thread()
+    capture_threads: list[threading.Thread] = []
+
+    def capture() -> CockpitState:
+        capture_threads.append(threading.current_thread())
+        return _PILL_LIVE
+
+    scripted = [keys.BACKSPACE, "q"]
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: _PILL_SAVED,
+        act_during_refresh=True,
+    )
+    nav = shell._NavStack()
+    nav.push(shell.NavFrame(key="home", restore_state={"sel": 0}))
+    shell._home(host, _Screen(), lambda: scripted.pop(0), _nav=nav)
+    assert all(t is not main for t in capture_threads)
+
+
+def test_default_still_waits_for_the_capture_before_an_acting_key(monkeypatch):
+    """Without the flag the key waits: the action runs only after the capture."""
+    events: list[str] = []
+    typed = [keys.ENTER]
+
+    def capture() -> CockpitState:
+        time.sleep(0.2)
+        events.append("capture finished")
+        return _PILL_LIVE
+
+    _typed_keys(monkeypatch, typed)
+    host = _host(
+        capture_state=capture,
+        provisional_state=lambda: _PILL_SAVED,
+        activate_pill=lambda pill, scr, rk: events.append(f"acted on {pill.label}"),
+    )
+    shell.run_cockpit(host, read_key=lambda: typed.pop(0) if typed else "q", screen=_Screen())
+    assert events[:2] == ["capture finished", "acted on Live bank"]
