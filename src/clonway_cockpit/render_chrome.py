@@ -162,13 +162,13 @@ def render_header(state: CockpitState) -> RenderableType:
     return t if len(lines) == 1 else Group(*lines)
 
 
-def _pill_text(p: Pill, *, selected: bool = False) -> Text:
+def _pill_text(p: Pill, *, selected: bool = False, label_width: int = 9) -> Text:
     # The ❯ cursor (amber) prefixes the selected pill so the operator can see
     # which source ⏎ will sync; an unselected pill keeps a leading space so the
     # dots stay column-aligned across the grid.
     t = Text(f"{_CURSOR} " if selected else "  ", style=ACCENT)
     t.append(f"{_PILL_GLYPH[p.level]} ", style=_DOT[p.level])
-    t.append(f"{p.label:<9}", style="bold" if selected else "")
+    t.append(f"{p.label:<{label_width}}", style="bold" if selected else "")
     # Padded to <10 so a long status (the fleet bridge emits the 9-char "in-flight")
     # keeps a space before the detail instead of running together ("in-flight07:30");
     # xbook's short statuses (ran/idle/stale/synced ≤ 6) are unaffected — widening the
@@ -197,10 +197,15 @@ def render_pulse(state: CockpitState, *, selected: int | None = None) -> Rendera
         # whose pills are read-only (the Fleet Cockpit) passes pulse_hint, e.g.
         # "⏎ open", so the gutter advertises the action it actually has.
         gutter[1] = state.pulse_hint if state.pulse_hint is not None else "⏎ sync"
+    # Nine characters fits xbook's labels; a worker with longer ones ("research
+    # budget") gets the longest label plus a space, so no label runs into its status.
+    width = max([9] + [len(p.label) + 1 for p in pills])
     for r, i in enumerate(range(0, len(pills), 2)):
-        left = _pill_text(pills[i], selected=selected == i)
+        left = _pill_text(pills[i], selected=selected == i, label_width=width)
         right = (
-            _pill_text(pills[i + 1], selected=selected == i + 1) if i + 1 < len(pills) else Text("")
+            _pill_text(pills[i + 1], selected=selected == i + 1, label_width=width)
+            if i + 1 < len(pills)
+            else Text("")
         )
         grid.add_row(gutter[r], left, right)
     return grid

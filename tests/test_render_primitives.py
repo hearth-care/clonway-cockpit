@@ -1023,3 +1023,22 @@ def test_render_staged_progress_shows_controls_hint():
         )
     )
     assert "q cancel" in out
+
+
+def test_pulse_pads_labels_to_the_longest_so_none_runs_into_its_status():
+    """F7: labels longer than nine characters ("research budget") used to run
+    straight into their status ("research budgetok")."""
+    state = CockpitState(
+        tenant_name="Clonway",
+        pills=(Pill("black book", "5", "", "ok"), Pill("research budget", "ok", "", "ok")),
+    )
+    grid = render.render_pulse(state)
+    cells = [cell for column in grid.columns[1:] for cell in column._cells]
+    plains = [c.plain for c in cells if c.plain]
+    assert plains == ["  ● black book      5         ", "  ● research budget ok        "]
+
+
+def test_pulse_keeps_nine_character_labels_for_short_names():
+    state = CockpitState(tenant_name="Clonway", pills=(Pill("Xero", "synced", "06:45", "ok"),))
+    grid = render.render_pulse(state)
+    assert grid.columns[1]._cells[0].plain.startswith("  ● Xero     synced")
