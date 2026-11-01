@@ -610,12 +610,19 @@ def _home(
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         selection = items[sel]
-        # ESC at home: with an empty back stack, quit (preserving today's behaviour).
-        # With frames on the stack the design punts ESC=quit for now — ESC at home
-        # still quits because home is the root; only Backspace pops back from nested
-        # views, and home itself has nowhere to pop to.
-        if low in ("q", keys.ESC):
+        # Every other screen uses q and Esc for "back", so on Home a reflexive one
+        # closed the whole cockpit. A person is asked first (y or a second q quits)
+        # and Esc does nothing here. Agent mode keeps the single-key quit: drivers
+        # end a session with one q (cmd "quit", stdin EOF) and never mistype.
+        if host.agent_mode and low in ("q", keys.ESC):
             return
+        if low == "q":
+            if _confirm_quit(host, screen, read_key):
+                return
+            dirty = True
+            continue
+        if key == keys.ESC:
+            continue
         # Backspace at home: pop back if there is somewhere to go. At home with an
         # empty stack it is a real no-op — nothing changed, so the loop just keeps
         # reading the next key in THIS invocation rather than ending the session
@@ -771,6 +778,12 @@ def _home(
         state, items, sel = _recapture(host, sel)
         keys.discard_pending()
         dirty = True
+
+
+def _confirm_quit(host: Host, screen: Screen, read_key: Callable[[], str]) -> bool:
+    screen.update(r.render_quit_confirm(host.app_label))
+    _safe_emit(host, r.model_quit_confirm(host.app_label))
+    return read_key() in ("y", "Y", "q", "Q")
 
 
 def _paint_home(
@@ -1124,77 +1137,79 @@ def _shelf(
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
     # are unchanged.
     menu_title = title if title is not None else render.SHELVES[letter]
-    n = len(specs)  # navigable rows = the specs plus a trailing "Back"
     sel = 0
-    # One normalized item list feeds Rich, the model AND the dispatch map below —
-    # never three independent readings of the same enumeration. Byte-compatible
-    # for n<=9 (shortcuts stay "1".."9"); beyond that, deterministic letters
-    # (excluding reserved 'q') instead of the old fake multi-character "10".."n".
-    shortcuts = render.assign_menu_shortcuts(n)
-    menu_items = [
-        render.MenuItem(ordinal=i + 1, title=s.title, summary=s.summary, shortcut=shortcuts[i])
-        for i, s in enumerate(specs)
-    ]
-    by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
-    # Load usage once per shelf render-loop and scale the inline notch against the
-    # GLOBAL peak (the busiest tool across ALL shelves), so heights are comparable
-    # shelf-to-shelf. Best-effort: an empty/failed load → no notch (today's look).
-    usage_map = host.usage.load()
-    peak = _usage_peak(usage_map)
     while True:
-        opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
-        screen.update(r.render_menu(menu_title, menu_items, selected=sel, opens=opens, peak=peak))
+        # Re-read on every pass: a job opened from this menu returns here, and it
+        # may have added or removed capabilities on the shelf.
+        specs = [s for s in host.get_capabilities() if s.shelf == letter]
+        if not specs:
+            return
+        n = len(specs)  # navigable rows = the specs plus a trailing "Back"
+        sel = min(sel, n)
+        # One normalized item list feeds Rich, the model AND the dispatch map below —
+        # never three independent readings of the same enumeration. Byte-compatible
+        # for n<=9 (shortcuts stay "1".."9"); beyond that, deterministic letters
+        # (excluding reserved 'q') instead of the old fake multi-character "10".."n".
+        shortcuts = render.assign_menu_shortcuts(n)
+        menu_items = [
+            render.MenuItem(ordinal=i + 1, title=s.title, summary=s.summary, shortcut=shortcuts[i])
+            for i, s in enumerate(specs)
+        ]
+        by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
+        # A finished capability comes back to this menu, not Home: the operator is
+        # usually doing several jobs on one shelf, and landing on Home made their
+        # next "back" q quit the cockpit.
+        opened = _shelf_menu_pass(host, screen, read_key, menu_title, menu_items, by_shortcut, sel)
+        if opened is None:
+            return
+        sel = opened
+        _open_capability(host, specs[sel].key, screen, read_key)
+
+
+def _shelf_menu_pass(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    menu_title: str,
+    menu_items: list,
+    by_shortcut: dict[str, int],
+    sel: int,
+) -> int | None:
+    """Run the shelf menu until the operator picks a row (its index) or leaves (None)."""
+    n = len(menu_items)
+    # No usage notch here: the one-glyph heat bar meant nothing to operators, and its
+    # lowest step (▁) looked like a stray character at the end of rarely used rows.
+    while True:
+        screen.update(r.render_menu(menu_title, menu_items, selected=sel))
         _safe_emit(host, r.model_menu(menu_title, menu_items, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         legacy_ordinal = render.parse_menu_ordinal(key) if len(key) > 1 else None
         if low in ("q", keys.ESC):
-            return
+            return None
         # Backspace in shelf menu = go back. The caller (``_home``) pushed the
-        # entry frame and pops it unconditionally once this function returns —
+        # entry frame and pops it unconditionally once ``_shelf`` returns —
         # this branch (like every other exit below) only needs to return.
         if key == keys.BACKSPACE:
-            return
+            return None
         if key == keys.UP:
             sel = (sel - 1) % (n + 1)
         elif key == keys.DOWN:
             sel = (sel + 1) % (n + 1)
         elif key == keys.ENTER:
-            if sel == n:  # the Back row
-                return
-            _open_capability(host, specs[sel].key, screen, read_key)
-            return
+            return None if sel == n else sel  # the Back row leaves
         elif low in by_shortcut:
             # The exact one-key human/agent shortcut Rich rendered and the model
             # advertised — normalized to lowercase so an uppercase send still
             # routes (never a second, differently-cased action).
-            _open_capability(host, specs[by_shortcut[low]].key, screen, read_key)
-            return
+            return by_shortcut[low]
         elif legacy_ordinal is not None and legacy_ordinal <= n:
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
             # ordinal (e.g. "10") that no human raw keypress can ever produce in
             # one token. Never advertised (absent from actions/Rich); kept so an
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
-            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key)
-            return
-
-
-def _spec_opens(usage_map: dict, key: str) -> int:
-    """The lifetime ``open`` count for ``key`` from a loaded usage map (0 if
-    absent / malformed). Tolerant — never raises."""
-    row = usage_map.get(key)
-    if not isinstance(row, dict):
-        return 0
-    n = row.get("open")
-    return n if isinstance(n, int) else 0
-
-
-def _usage_peak(usage_map: dict) -> int:
-    """The busiest tool's open count across the whole usage map — the denominator
-    the inline notch scales against, so heights are comparable shelf-to-shelf.
-    0 when there's no usage (the notch then renders nothing)."""
-    return max((_spec_opens(usage_map, k) for k in usage_map), default=0)
+            return legacy_ordinal - 1
 
 
 def _open_capability(
@@ -1239,6 +1254,8 @@ def _open_capability(
                 ctx = replace(ctx, input_fn=host.agent_input_fn)
             if host.agent_confirm_fn is not None:
                 ctx = replace(ctx, confirm_fn=host.agent_confirm_fn)
+        else:
+            ctx = _frame_prompts(ctx, host, screen, spec.title)
         try:
             spec.run(ctx)
         except shellout.ShellOut:
@@ -1261,6 +1278,38 @@ def _open_capability(
     # reference-only: no handler, just the equivalent-CLI card
     _safe_emit(host, r.model_capability_card(spec))
     _show(screen, r.render_capability_card(spec), read_key)
+
+
+def _frame_prompts(ctx: WizardContext, host: Host, screen: Screen, title: str) -> WizardContext:
+    """A typed prompt is read as a cooked line below the frame. Straight after the
+    pre-flight, that frame still says "Continue?", so the operator typed under the
+    wrong question. Redraw it with the prompt then, or after a prompt this drew
+    itself; a screen the walk drew since (a review it is asking about) is left up."""
+    if ctx.present is None:
+        return ctx  # console-mode walk: there is no frame to correct
+    present, observe, ask = ctx.present, ctx.on_screen, ctx.input_fn
+    stale = [True]  # the screen shows the pre-flight or one of these prompt pages
+
+    def _present(renderable: RenderableType) -> None:
+        stale[0] = False
+        present(renderable)
+
+    def _observe(model: ScreenModel) -> None:
+        # walk.preflight draws then emits, so its emit marks the screen stale again.
+        if model.kind == "walk.preflight":
+            stale[0] = True
+        if observe is not None:
+            observe(model)
+
+    def _ask(prompt: str, default: str = "") -> str:
+        if stale[0]:
+            screen.update(r.render_input_prompt(title, prompt))
+            _safe_emit(host, r.model_input_prompt(title, prompt))
+        answer = ask(prompt, default)
+        stale[0] = True
+        return answer
+
+    return replace(ctx, present=_present, on_screen=_observe, input_fn=_ask)
 
 
 @dataclass(frozen=True)

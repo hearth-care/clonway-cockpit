@@ -88,6 +88,13 @@ def _clean_registry():
     clear_capabilities()
 
 
+@pytest.fixture(autouse=True)
+def _q_quits_at_once(monkeypatch):
+    # These tests are about refresh, not quitting; one scripted q still ends the
+    # session. The quit question itself is covered in test_shell.py.
+    monkeypatch.setattr(shell, "_confirm_quit", lambda host, screen, read_key: True)
+
+
 def _home_models(models: list[Any]) -> list[Any]:
     return [m for m in models if m.kind == "home"]
 

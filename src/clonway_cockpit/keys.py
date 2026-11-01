@@ -85,6 +85,9 @@ _held_old: list[Any] | None = None
 # outermost one touches the terminal, so a prompt helper that opens its own window
 # inside a worker's window cannot re-arm raw under the worker's remaining reads.
 _cooked_depth = 0
+# A byte read while completing a UTF-8 character that turned out to start the next
+# key instead; ``_read_token`` returns it before reading the fd again.
+_pushback = b""
 
 
 def _session_fd() -> int | None:
@@ -226,7 +229,13 @@ def discard_pending() -> None:
 
 def _read_token(fd: int) -> str:
     """Read one semantic key from a fd that is already in raw mode."""
-    ch = os.read(fd, 1).decode(errors="ignore")
+    global _pushback
+    raw, _pushback = (_pushback, b"") if _pushback else (os.read(fd, 1), b"")
+    if raw and 0xC2 <= raw[0] <= 0xF4:
+        # The lead byte of a multi-byte UTF-8 character (a pasted "é" or "£"): read
+        # its continuation bytes too, or decoding one byte alone drops the character.
+        raw += _read_continuation(fd, 1 if raw[0] < 0xE0 else 2 if raw[0] < 0xF0 else 3)
+    ch = raw.decode(errors="ignore")
     if ch == "\x03":  # Ctrl-C
         raise KeyboardInterrupt
     if ch in ("\r", "\n"):
@@ -236,6 +245,25 @@ def _read_token(fd: int) -> str:
     if ch == "\x1b":
         return _read_escape(fd)
     return ch
+
+
+def _read_continuation(fd: int, count: int) -> bytes:
+    """Up to ``count`` UTF-8 continuation bytes, never blocking past a short wait and
+    never taking a byte that starts the next key (a stray lead byte, an 8-bit Meta
+    key with nothing after it, a slow link splitting a character)."""
+    out = b""
+    while len(out) < count:
+        ready, _, _ = select.select([fd], [], [], _SEQUENCE_WAIT)
+        if not ready:
+            break
+        nxt = os.read(fd, 1)
+        if nxt and not 0x80 <= nxt[0] <= 0xBF:
+            # The start of the next key: keep it for the next read.
+            global _pushback
+            _pushback = nxt
+            break
+        out += nxt
+    return out
 
 
 def _read_escape(fd: int) -> str:
@@ -288,7 +316,10 @@ def read_key() -> str:
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
-        tty.setraw(fd)
+        # TCSANOW, not setraw's default TCSAFLUSH: a flush here discards whatever is
+        # already queued, so a paste into the filter kept only its first character
+        # (each key toggles raw again and flushed the rest of the burst).
+        tty.setraw(fd, termios.TCSANOW)
         return _next_key(fd)
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, old)

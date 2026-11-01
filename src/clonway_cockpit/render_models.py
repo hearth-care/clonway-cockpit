@@ -257,7 +257,9 @@ def model_preflight(
         )
         for i, p in enumerate(preconditions)
     ]
-    if ready:
+    if ready and not blast_radius.writes:
+        actions = []  # read-only: the walk runs on without waiting for a key
+    elif ready:
         actions = ["enter", "y", "n"]
     elif remedy is not None:
         actions = [remedy.key, "back"]
@@ -269,6 +271,7 @@ def model_preflight(
         "ready": ready,
         "blast_radius_summary": blast_radius.summary,
         "reversible": blast_radius.reversible,
+        "writes": blast_radius.writes,
         "remedy": {"key": remedy.key, "label": remedy.label} if remedy is not None else None,
     }
     return ScreenModel(
@@ -378,6 +381,28 @@ def model_remedy_confirm(remedy) -> ScreenModel:  # noqa: ANN001 — mirrors ren
         regions=[MRegion("prose", "", text=f"{label}?")],
         actions=["enter", "y"],
         meta={"confirm_of": "remedy", "key": remedy.key, "label": remedy.label},
+    )
+
+
+def model_input_prompt(title: str, prompt: str) -> ScreenModel:
+    """The semantic twin of :func:`render_input_prompt` — a walk waiting for a typed line."""
+    return ScreenModel(
+        kind="walk.input",
+        title=title,
+        regions=[MRegion("prose", "", text=prompt.strip())],
+        actions=["type"],
+        meta={"prompt": prompt},
+    )
+
+
+def model_quit_confirm(app_label: str) -> ScreenModel:
+    """The semantic twin of :func:`render_quit_confirm` — the guard before Home quits."""
+    return ScreenModel(
+        kind="confirm",
+        title=f"Quit {app_label}",
+        regions=[MRegion("prose", "", text=f"Quit {app_label}?")],
+        actions=["y", "q", "n"],
+        meta={"confirm_of": "quit"},
     )
 
 

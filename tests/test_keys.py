@@ -18,7 +18,7 @@ def _patch_terminal(monkeypatch, byte_chunks, *, select_ready=True):
     monkeypatch.setattr(keys.sys, "stdin", type("S", (), {"fileno": staticmethod(lambda: 0)})())
     monkeypatch.setattr(keys.termios, "tcgetattr", lambda fd: object())
     monkeypatch.setattr(keys.termios, "tcsetattr", lambda fd, when, old: None)
-    monkeypatch.setattr(keys.tty, "setraw", lambda fd: None)
+    monkeypatch.setattr(keys.tty, "setraw", lambda fd, when=None: None)
     monkeypatch.setattr(keys.os, "read", lambda fd, n: chunks.pop(0))
     monkeypatch.setattr(
         keys.select, "select", lambda r, w, x, t: ([0], [], []) if select_ready else ([], [], [])
@@ -323,3 +323,61 @@ def test_discard_pending_drops_typeahead_in_a_held_session(monkeypatch):
 def test_discard_pending_is_a_no_op_without_a_session(monkeypatch):
     monkeypatch.setattr(keys, "_held_fd", None)
     keys.discard_pending()
+
+
+def test_a_pasted_burst_keeps_every_character_outside_a_held_session(monkeypatch):
+    """F5: a worker that runs Home without ``run_cockpit`` has no held raw session,
+    so every key toggles raw mode itself. That toggle used to flush the input queue,
+    so pasting "boiler" into the filter kept only the "b"."""
+    import os
+    import pty
+    import tty
+
+    master, slave = pty.openpty()
+    try:
+        tty.setraw(slave)
+        monkeypatch.setattr(keys, "_held_fd", None)
+        monkeypatch.setattr(
+            keys.sys, "stdin", type("S", (), {"fileno": staticmethod(lambda: slave)})()
+        )
+        os.write(master, "boiler £5".encode())
+
+        def _stuck(_signum, _frame):
+            raise TimeoutError("read_key blocked: the pasted bytes were flushed")
+
+        # The old flush emptied the queue before the first read, so it blocked forever.
+        previous = keys.signal.signal(keys.signal.SIGALRM, _stuck)
+        keys.signal.alarm(2)
+        try:
+            got = [keys.read_key()]
+            # Everything after the first key must still be queued, not flushed away.
+            assert keys.select.select([slave], [], [], 0.2)[0]
+            got += [keys.read_key() for _ in range(len("oiler £5"))]
+        finally:
+            keys.signal.alarm(0)
+            keys.signal.signal(keys.signal.SIGALRM, previous)
+        assert "".join(got) == "boiler £5"
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
+def test_a_lead_byte_without_its_continuation_does_not_swallow_the_next_key(monkeypatch):
+    """An 8-bit Meta key sends a lone byte that looks like a UTF-8 lead byte. The
+    key typed after it must still arrive, not be eaten as a continuation byte."""
+    import os
+    import pty
+    import tty
+
+    master, slave = pty.openpty()
+    try:
+        tty.setraw(slave)
+        monkeypatch.setattr(keys, "_held_fd", slave)
+        monkeypatch.setattr(keys, "_pushback", b"")
+        os.write(master, b"\xe1q")
+        first = keys.read_key()
+        assert keys.read_key() == "q"
+        assert first != "q"
+    finally:
+        os.close(master)
+        os.close(slave)

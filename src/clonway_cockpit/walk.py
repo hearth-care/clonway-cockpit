@@ -511,6 +511,8 @@ def preflight(
             return False
         _await(ctx)
         return False
+    if not blast_radius.writes:
+        return True
     if ctx.read_key is not None:
         k = ctx.read_key()
         return k in (keys.ENTER, "y", "Y")

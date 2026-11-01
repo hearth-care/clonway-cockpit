@@ -51,7 +51,8 @@ def test_driver_records_home_model():
     stream = d.run()
     assert stream, "no screens captured"
     assert stream[0].kind == "home"
-    assert d.last.kind == "home"
+    # Out of scripted keys the driver sends q, which answers Home's quit question.
+    assert d.last.meta["confirm_of"] == "quit"
 
 
 def test_driver_drives_into_a_walk_preflight():

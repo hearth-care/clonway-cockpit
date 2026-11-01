@@ -742,3 +742,96 @@ def test_animate_staged_not_cancellable_by_default(monkeypatch):
         sleep=_noop_sleep,
     )
     assert result == "ok"
+
+
+# --- F3: a read-only walk runs without the pre-flight "Continue?" ------------
+
+
+def _read_only_br():
+    return BlastRadius(summary="Writes nothing.", reversible="No write is performed.", writes=False)
+
+
+def test_read_only_walk_skips_the_preflight_confirmation():
+    models: list = []
+    read: list = []
+    ran: list = []
+
+    def _read_key():
+        read.append(True)
+        return keys.ESC  # would cancel a confirming pre-flight
+
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(record=True),
+        input_fn=lambda p, d="": "",
+        confirm_fn=lambda p: False,
+        present=lambda r: None,
+        read_key=_read_key,
+        on_screen=models.append,
+    )
+
+    def _step(ctx, bag):
+        ran.append(True)
+        return StepResult(ok=True, data={"summary": "3 requests"})
+
+    walk.run_walk(
+        ctx,
+        title="List requests",
+        steps=[Step("list", _step)],
+        blast_radius=_read_only_br(),
+        preconditions=[Precondition("store", ok=True)],
+        equivalent_cli="xsource request list",
+    )
+    assert ran == [True]  # Esc was never read as "no" at the pre-flight
+    preflight = next(m for m in models if m.kind == "walk.preflight")
+    assert preflight.meta["writes"] is False and preflight.actions == []
+    assert read == [True]  # the only key read is the result screen's "any key"
+
+
+def test_read_only_declaration_does_not_open_the_write_gate():
+    """writes=False only skips the pre-flight question. A step that writes anyway
+    still meets confirm_apply, which asks and declines on anything but a/⏎."""
+    presented: list = []
+    ctx = _key_ctx(presented, ["n"])
+    wrote: list = []
+
+    def _step(ctx, bag):
+        if walk.confirm_apply(ctx, equivalent_cli="x"):
+            wrote.append(True)
+        return StepResult(ok=True)
+
+    walk.run_walk(
+        ctx,
+        title="Mislabelled",
+        steps=[Step("write", _step)],
+        blast_radius=_read_only_br(),
+        preconditions=[Precondition("ok", ok=True)],
+        equivalent_cli="x",
+    )
+    assert wrote == []
+
+
+def test_writing_walk_still_asks_continue():
+    models: list = []
+    ran: list = []
+    ctx = WizardContext(
+        state={},
+        client=None,
+        console=Console(record=True),
+        input_fn=lambda p, d="": "",
+        confirm_fn=lambda p: False,
+        present=lambda r: None,
+        read_key=lambda: "n",
+        on_screen=models.append,
+    )
+    walk.run_walk(
+        ctx,
+        title="Writes",
+        steps=[Step("s", lambda c, b: ran.append(True) or StepResult(ok=True))],
+        blast_radius=_br(),
+        preconditions=[Precondition("ok", ok=True)],
+        equivalent_cli="x",
+    )
+    assert ran == []
+    assert next(m for m in models if m.kind == "walk.preflight").actions == ["enter", "y", "n"]

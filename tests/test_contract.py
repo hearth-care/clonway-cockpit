@@ -36,7 +36,7 @@ def test_split_render_modules_keep_parity_discovery():
     from clonway_cockpit import render_chrome, render_models, render_panels
 
     renders = contract.page_framing_renders((render_chrome, render_panels))
-    assert len(renders) == 15
+    assert len(renders) == 17
     assert "render_ledger" in renders
     contract.assert_render_model_parity((render_chrome, render_panels), render_models)
 

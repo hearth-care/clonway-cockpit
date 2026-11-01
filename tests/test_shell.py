@@ -11,13 +11,16 @@ worker-specific callbacks the framework only receives through the host."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from rich.console import Console
 
-from clonway_cockpit import keys, render, shell, usage
+from clonway_cockpit import keys, render, shell, usage, walk
 from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, fixes_for
 from clonway_cockpit.registry import (
+    BlastRadius,
     CapabilitySpec,
     WizardContext,
     clear_capabilities,
@@ -301,7 +304,7 @@ def test_arrowing_down_lands_only_on_present_fleet_letters(usage_to_tmp):
     # show exactly one ❯ cursor (never zero — a phantom F stop drops it to zero).
     keypresses = [keys.DOWN] * 6 + ["q"]
     shell.run_cockpit(host, read_key=_keys(keypresses), screen=scr)
-    for frame in scr.frames:
+    for frame in scr.frames[:-1]:  # the last is the quit question, not Home
         text = _text(frame)
         assert text.count("❯") >= 1, "cursor vanished — landed on a phantom row"
     # And F must never appear as a drawn row label.
@@ -477,7 +480,7 @@ def test_arrow_key_repeat_coalesces_into_a_single_repaint(usage_to_tmp, monkeypa
     monkeypatch.setattr(keys, "pending", lambda timeout=0.0: bool(seq) and seq[0] != "q")
     shell.run_cockpit(fh.as_host(), read_key=_rk, screen=scr)
     # Three moves collapse to a single rendered frame (without coalescing: four).
-    assert len(scr.frames) == 1
+    assert len(scr.frames) == 2  # the one Home repaint, then the quit question
     assert fh.capture_calls == 1  # and still no per-move re-capture
 
 
@@ -680,7 +683,7 @@ def test_filter_q_on_empty_term_quits_back_home(usage_to_tmp):
     # '/' opens the filter; 'q' on the empty term quits it back home; 'q' quits home.
     shell.run_cockpit(host, read_key=_keys(["/", "q", "q"]), screen=scr)
     # The last frame is the home (the legend line), not the filter.
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last  # the home legend
     assert "Find a tool" not in last  # not the filter screen
 
@@ -701,7 +704,7 @@ def test_filter_esc_always_quits(usage_to_tmp):
     host = _FakeHost().as_host()
     scr = _Screen()
     shell.run_cockpit(host, read_key=_keys(["/", "b", "q", keys.ESC, "q"]), screen=scr)
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last
     assert "Find a tool" not in last
 
@@ -1662,7 +1665,7 @@ def test_ack_re_captures_state_so_the_item_drops(usage_to_tmp):
     # increases) and the dropped need's title must be gone from the LAST home frame.
     shell.run_cockpit(fh.as_host(), read_key=_keys(["a", "q"]), screen=scr)
     assert fh.capture_calls > before + 1  # the loop re-captured after the ack
-    last_home = _text(scr.frames[-1])
+    last_home = _text(scr.frames[-2])  # [-1] is the quit question
     assert "Bills overdue" not in last_home  # the acked item dropped on redraw
     assert "Payroll due" in last_home  # the surviving need is still shown
 
@@ -1686,7 +1689,7 @@ def test_snooze_re_captures_state_so_the_item_drops(usage_to_tmp):
     fh._snooze = _snooze
     scr = _Screen()
     shell.run_cockpit(fh.as_host(), read_key=_keys(["s", "q"]), screen=scr)
-    last_home = _text(scr.frames[-1])
+    last_home = _text(scr.frames[-2])  # [-1] is the quit question
     assert "Bills overdue" not in last_home
     assert "Payroll due" in last_home
 
@@ -1983,7 +1986,7 @@ def test_back_from_shelf_returns_to_home_with_cursor_preserved(usage_to_tmp):
     shell.run_cockpit(host, read_key=_keys(["a", keys.BACKSPACE, "q"]), screen=scr)
     # The last frame before the final 'q' quit must be a home frame with cursor on A.
     # Frames: [home(A), shelf-menu, home(A restored), (quit returns)]
-    home_after_back = _text(scr.frames[-1])
+    home_after_back = _text(scr.frames[-2])  # [-1] is the quit question
     assert "❯" in home_after_back  # cursor is showing
     # The cursor line must contain "A." to confirm we're on shelf A.
     lines_with_cursor = [ln for ln in home_after_back.splitlines() if "❯" in ln]
@@ -2017,7 +2020,7 @@ def test_back_from_walk_result_returns_to_home_with_cursor_preserved(usage_to_tm
     shell.run_cockpit(host, read_key=_keys(["a", keys.BACKSPACE, "a", "q"]), screen=scr)
     assert ran == [True, True], "session ended after root Backspace instead of staying open"
     # The last frame must be home (legend "to move" is present).
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last
 
 
@@ -2046,7 +2049,7 @@ def test_root_backspace_empty_stack_then_down_enter_stays_in_one_run(usage_to_tm
     # Exactly the boot capture plus the one re-capture after Enter's action — the
     # no-op Backspace and the cursor-only Down must not have re-captured.
     assert fh.capture_calls == 2
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last
 
 
@@ -2074,18 +2077,66 @@ def test_two_root_backspaces_then_valid_action_neither_exits_nor_recaptures(usag
     )
     assert ran == [True], "Enter after two root Backspaces never reached the walk"
     assert fh.capture_calls == 2  # boot capture + the one after Enter; not one per Backspace
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last
 
 
-def test_esc_at_home_with_empty_back_stack_quits(usage_to_tmp):
-    """ESC at home with an empty back stack quits the cockpit — preserving today's
-    behaviour (ESC = quit at home)."""
-    host = _FakeHost().as_host()
-    scr = _Screen()
-    shell.run_cockpit(host, read_key=_keys([keys.ESC]), screen=scr)
-    # One home frame was drawn; then ESC quit.
-    assert len(scr.frames) == 1
+def test_esc_at_home_does_not_quit(usage_to_tmp):
+    """F1: Esc means "back" everywhere else, so on Home it used to close the cockpit
+    at a reflexive press. Now it does nothing; the session is still open after it."""
+    ran: list = []
+    _register_walk_recorder(ran)
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append)
+    shell.run_cockpit(host, read_key=_keys([keys.ESC, keys.ESC, "a", "q", "y"]), screen=_Screen())
+    assert ran == [True]  # 'a' after two Escapes still reached the shelf's walk
+    assert [m.kind for m in models].count("confirm") == 1
+
+
+def test_q_on_home_asks_before_quitting(usage_to_tmp):
+    """F1: q on Home shows a quit question. Any key but y or q returns to Home."""
+    ran: list = []
+    _register_walk_recorder(ran)
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append)
+    keys_in = ["q", "n", "a", "q", "y"]
+    shell.run_cockpit(host, read_key=_keys(keys_in), screen=_Screen())
+    quits = [m for m in models if m.kind == "confirm"]
+    assert [m.meta["confirm_of"] for m in quits] == ["quit", "quit"]
+    assert ran == [True]  # "n" kept the session open for the walk
+    # The frame after the declined question is Home again.
+    assert models[models.index(quits[0]) + 1].kind == "home"
+
+
+def test_q_twice_on_home_quits(usage_to_tmp):
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append)
+    reads = iter(["q", "q"])
+    shell.run_cockpit(host, read_key=lambda: next(reads), screen=_Screen())
+    assert [m.kind for m in models] == ["home", "confirm"]
+
+
+def test_agent_mode_quits_home_on_one_q(usage_to_tmp):
+    """Agent drivers end a session with a single q (cmd "quit", stdin EOF); they
+    keep that, since the guard is against a person's stray key."""
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append, agent_mode=True)
+    reads = iter(["q"])
+    shell.run_cockpit(host, read_key=lambda: next(reads), screen=_Screen())
+    assert [m.kind for m in models] == ["home"]
+
+
+def _register_walk_recorder(ran: list) -> None:
+    register_capability(
+        CapabilitySpec(
+            key="rec",
+            shelf="A",
+            title="Recorder",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ran.append(True),
+        )
+    )
 
 
 def test_backspace_in_filter_empty_term_goes_back_not_inert(usage_to_tmp):
@@ -2097,7 +2148,7 @@ def test_backspace_in_filter_empty_term_goes_back_not_inert(usage_to_tmp):
     # '/' opens filter; Backspace on empty term should return to home; 'q' quits.
     shell.run_cockpit(host, read_key=_keys(["/", keys.BACKSPACE, "q"]), screen=scr)
     # The last frame must be home, not the filter.
-    last = _text(scr.frames[-1])
+    last = _text(scr.frames[-2])  # [-1] is the quit question
     assert "to move" in last  # home legend
     assert "Find a tool" not in last  # not the filter screen
 
@@ -2515,4 +2566,178 @@ def test_explicit_refresh_does_not_paint_an_interim_home(usage_to_tmp):
     fh = _FakeHost()
     scr = _Screen()
     shell.run_cockpit(fh.as_host(), read_key=_keys(["r", "q"]), screen=scr)
-    assert len(scr.frames) == 2  # first paint + the refreshed paint
+    assert len(scr.frames) == 3  # first paint + the refreshed paint + the quit question
+
+
+# --- F2: a finished walk returns to the shelf it was opened from --------------
+
+
+def _register_two_walks(ran: list) -> None:
+    for key, title in (("list", "List requests"), ("search", "Search suppliers")):
+        register_capability(
+            CapabilitySpec(
+                key=key,
+                shelf="A",
+                title=title,
+                summary="s",
+                equivalent_cli=f"x {key}",
+                run=lambda ctx, key=key: ran.append(key),
+            )
+        )
+
+
+def test_finished_walk_returns_to_its_shelf_menu(usage_to_tmp):
+    ran: list = []
+    _register_two_walks(ran)
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append)
+    # a: open shelf A · 1: first walk · 2: second walk from the same menu · q: back
+    # to Home · q y: quit.
+    shell.run_cockpit(host, read_key=_keys(["a", "1", "2", "q", "q", "y"]), screen=_Screen())
+    assert ran == ["list", "search"]
+    assert [m.kind for m in models] == [
+        "home",
+        "shelf_menu",
+        "shelf_menu",  # back on the shelf after the first walk
+        "shelf_menu",  # and again after the second; its cursor follows the last pick
+        "home",
+        "confirm",
+    ]
+    assert models[2].selection != models[3].selection  # the cursor follows the last pick
+
+
+def test_enter_on_a_shelf_row_also_returns_to_the_menu(usage_to_tmp):
+    ran: list = []
+    _register_two_walks(ran)
+    models: list = []
+    host = replace(_FakeHost().as_host(), on_screen=models.append)
+    keys_in = ["a", keys.DOWN, keys.ENTER, keys.BACKSPACE, "q", "y"]
+    shell.run_cockpit(host, read_key=_keys(keys_in), screen=_Screen())
+    assert ran == ["search"]
+    assert [m.kind for m in models][-3:] == ["shelf_menu", "home", "confirm"]
+
+
+# --- F4: a typed prompt redraws the frame with its question first -------------
+
+
+def _prompting_walk(asked: list, *, review: object | None = None):
+    def _ask(ctx, bag):
+        if review is not None:
+            ctx.present(review)  # the walk shows what it is asking about
+        asked.append(ctx.input_fn("Search term:", ""))
+        return walk.StepResult(ok=True)
+
+    return walk.make_walk_handler(
+        title="Search",
+        steps=[walk.Step("ask", _ask)],
+        blast_radius=BlastRadius(summary="Writes nothing.", writes=False),
+        preconditions_fn=lambda ctx: [walk.Precondition("store", ok=True)],
+        equivalent_cli="x",
+    )
+
+
+def test_typed_prompt_after_the_preflight_redraws_the_frame(usage_to_tmp):
+    """F4: straight after the pre-flight, the frame still said "Continue?" while the
+    operator typed the search term below it. It is redrawn with the question first."""
+    asked: list = []
+    models: list = []
+    seen: list = []
+    register_capability(
+        CapabilitySpec(
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=_prompting_walk(asked),
+        )
+    )
+
+    def _input(prompt, default):
+        seen.append(models[-1])
+        return "boiler"
+
+    host = replace(
+        _FakeHost().as_host(),
+        on_screen=models.append,
+        build_walk_ctx=lambda screen, read_key, **kw: replace(
+            _walk_ctx(screen, read_key, **kw), input_fn=_input
+        ),
+    )
+    shell.run_cockpit(host, read_key=_keys(["a", keys.ENTER, "q", "y"]), screen=_Screen())
+    assert asked == ["boiler"]
+    assert seen[0].kind == "walk.input" and seen[0].meta["prompt"] == "Search term:"
+
+
+def test_typed_prompt_leaves_a_screen_the_walk_drew(usage_to_tmp):
+    """A walk that draws its own screen before asking (a review listing what the
+    answer is about) keeps that screen; only a stale pre-flight is replaced."""
+    asked: list = []
+    review = render.render_walk_progress("Rooms 1-12 listed here")
+    register_capability(
+        CapabilitySpec(
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=_prompting_walk(asked, review=review),
+        )
+    )
+    scr = _Screen()
+    at_prompt: list = []
+
+    def _input(prompt, default):
+        at_prompt.append(scr.frames[-1])
+        return "4"
+
+    host = replace(
+        _FakeHost().as_host(),
+        build_walk_ctx=lambda screen, read_key, **kw: replace(
+            _walk_ctx(screen, read_key, **kw), input_fn=_input
+        ),
+    )
+    shell.run_cockpit(host, read_key=_keys(["a", keys.ENTER, "q", "y"]), screen=scr)
+    assert at_prompt == [review]
+
+
+def test_agent_mode_prompts_are_not_wrapped(usage_to_tmp):
+    """The agent channel answers prompts with its own request frame; no second one."""
+    models: list = []
+    register_capability(
+        CapabilitySpec(
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: ctx.input_fn("Search term:", ""),
+        )
+    )
+    host = replace(
+        _FakeHost().as_host(),
+        on_screen=models.append,
+        agent_mode=True,
+        agent_input_fn=lambda prompt, default: "boiler",
+    )
+    shell.run_cockpit(host, read_key=_keys(["a", "q"]), screen=_Screen())
+    assert "walk.input" not in [m.kind for m in models]
+
+
+# --- F6: no usage glyph trails shelf menu rows --------------------------------
+
+
+def test_shelf_menu_draws_no_usage_notch(usage_to_tmp, monkeypatch):
+    ran: list = []
+    _register_two_walks(ran)
+    usage.record("list", "open")  # usage on record would previously draw a notch
+    calls: list = []
+    real = render.render_menu
+
+    def _spy(*args, **kwargs):
+        calls.append(kwargs)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(render, "render_menu", _spy)
+    shell.run_cockpit(_FakeHost().as_host(), read_key=_keys(["a", "q", "q", "y"]), screen=_Screen())
+    assert calls and all(k.get("opens") is None for k in calls)

@@ -358,7 +358,7 @@ def test_template_home_hook_reuses_exact_active_session_for_nested_work(
             def update(self, renderable: object) -> None:
                 self.frames.append(renderable)
 
-        keys = iter(["z", "nested-return", "q"])
+        keys = iter(["z", "nested-return", "q", "q"])
 
         def read_key() -> str:
             return next(keys)

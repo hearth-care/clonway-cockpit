@@ -69,11 +69,16 @@ Handler = Callable[[WizardContext[Any]], None]
 class BlastRadius:
     """What a capability changes — the single source of truth for pre-flight
     copy (used by the cockpit and, later, the docs). `summary` is one line;
-    `details` are bullet lines; `reversible` describes idempotency/undo."""
+    `details` are bullet lines; `reversible` describes idempotency/undo.
+
+    `writes=False` declares a read-only walk: its pre-flight is shown but not
+    confirmed, since there is nothing to agree to. It does not open any write path:
+    a step that writes still has to pass `walk.confirm_apply`, which asks regardless."""
 
     summary: str
     details: tuple[str, ...] = ()
     reversible: str = ""
+    writes: bool = True
 
 
 @dataclass(frozen=True)
