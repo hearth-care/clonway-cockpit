@@ -226,7 +226,12 @@ def discard_pending() -> None:
 
 def _read_token(fd: int) -> str:
     """Read one semantic key from a fd that is already in raw mode."""
-    ch = os.read(fd, 1).decode(errors="ignore")
+    raw = os.read(fd, 1)
+    if raw and raw[0] >= 0xC0:
+        # The lead byte of a multi-byte UTF-8 character (a pasted "é" or "£"): read
+        # its continuation bytes too, or decoding one byte alone drops the character.
+        raw += os.read(fd, 1 if raw[0] < 0xE0 else 2 if raw[0] < 0xF0 else 3)
+    ch = raw.decode(errors="ignore")
     if ch == "\x03":  # Ctrl-C
         raise KeyboardInterrupt
     if ch in ("\r", "\n"):
@@ -288,7 +293,10 @@ def read_key() -> str:
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
-        tty.setraw(fd)
+        # TCSANOW, not setraw's default TCSAFLUSH: a flush here discards whatever is
+        # already queued, so a paste into the filter kept only its first character
+        # (each key toggles raw again and flushed the rest of the burst).
+        tty.setraw(fd, termios.TCSANOW)
         return _next_key(fd)
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, old)
