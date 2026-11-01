@@ -29,16 +29,19 @@ Record them here and bump the release tag before merging.
 - `BlastRadius(writes=False)` marks a read-only walk: its pre-flight is shown but runs on
   without "Continue? [Y]es / [n]o". The default is `True`, so existing walks are unchanged.
   It does not open a write path: any write still has to pass `confirm_apply`.
-- Before a walk reads a typed answer in the human cockpit, the frame is redrawn with the
-  question (`render_input_prompt` / `model_input_prompt`, kind `walk.input`), so the
-  operator no longer types under the previous screen's footer.
+- When a walk reads a typed answer while the screen still shows its pre-flight (or an
+  earlier prompt), the human cockpit first redraws the frame with the question
+  (`render_input_prompt` / `model_input_prompt`, kind `walk.input`), so the operator no
+  longer types under "Continue?". A screen the walk drew itself before asking is left up.
+- A capability opened from a shelf menu re-reads the shelf when it returns, so the menu
+  reflects capabilities the job added or removed.
 
 ### Fixed
 
 - Pasting into the `/` filter kept only the first character when a worker runs Home
   without `run_cockpit`'s held raw session (xsource does): each key toggled raw mode with a
   flush that discarded the rest of the paste. Multi-byte characters (`£`, `é`) are now read
-  whole as well.
+  whole as well, without blocking on, or swallowing the key after, a stray lead byte.
 
 ## [0.5.0] - 2026-10-18
 

@@ -1137,18 +1137,46 @@ def _shelf(
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
     # are unchanged.
     menu_title = title if title is not None else render.SHELVES[letter]
-    n = len(specs)  # navigable rows = the specs plus a trailing "Back"
     sel = 0
-    # One normalized item list feeds Rich, the model AND the dispatch map below —
-    # never three independent readings of the same enumeration. Byte-compatible
-    # for n<=9 (shortcuts stay "1".."9"); beyond that, deterministic letters
-    # (excluding reserved 'q') instead of the old fake multi-character "10".."n".
-    shortcuts = render.assign_menu_shortcuts(n)
-    menu_items = [
-        render.MenuItem(ordinal=i + 1, title=s.title, summary=s.summary, shortcut=shortcuts[i])
-        for i, s in enumerate(specs)
-    ]
-    by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
+    while True:
+        # Re-read on every pass: a job opened from this menu returns here, and it
+        # may have added or removed capabilities on the shelf.
+        specs = [s for s in host.get_capabilities() if s.shelf == letter]
+        if not specs:
+            return
+        n = len(specs)  # navigable rows = the specs plus a trailing "Back"
+        sel = min(sel, n)
+        # One normalized item list feeds Rich, the model AND the dispatch map below —
+        # never three independent readings of the same enumeration. Byte-compatible
+        # for n<=9 (shortcuts stay "1".."9"); beyond that, deterministic letters
+        # (excluding reserved 'q') instead of the old fake multi-character "10".."n".
+        shortcuts = render.assign_menu_shortcuts(n)
+        menu_items = [
+            render.MenuItem(ordinal=i + 1, title=s.title, summary=s.summary, shortcut=shortcuts[i])
+            for i, s in enumerate(specs)
+        ]
+        by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
+        # A finished capability comes back to this menu, not Home: the operator is
+        # usually doing several jobs on one shelf, and landing on Home made their
+        # next "back" q quit the cockpit.
+        opened = _shelf_menu_pass(host, screen, read_key, menu_title, menu_items, by_shortcut, sel)
+        if opened is None:
+            return
+        sel = opened
+        _open_capability(host, specs[sel].key, screen, read_key)
+
+
+def _shelf_menu_pass(
+    host: Host,
+    screen: Screen,
+    read_key: Callable[[], str],
+    menu_title: str,
+    menu_items: list,
+    by_shortcut: dict[str, int],
+    sel: int,
+) -> int | None:
+    """Run the shelf menu until the operator picks a row (its index) or leaves (None)."""
+    n = len(menu_items)
     # No usage notch here: the one-glyph heat bar meant nothing to operators, and its
     # lowest step (▁) looked like a stray character at the end of rarely used rows.
     while True:
@@ -1158,37 +1186,30 @@ def _shelf(
         low = key.lower() if len(key) == 1 else key
         legacy_ordinal = render.parse_menu_ordinal(key) if len(key) > 1 else None
         if low in ("q", keys.ESC):
-            return
+            return None
         # Backspace in shelf menu = go back. The caller (``_home``) pushed the
-        # entry frame and pops it unconditionally once this function returns —
+        # entry frame and pops it unconditionally once ``_shelf`` returns —
         # this branch (like every other exit below) only needs to return.
         if key == keys.BACKSPACE:
-            return
+            return None
         if key == keys.UP:
             sel = (sel - 1) % (n + 1)
         elif key == keys.DOWN:
             sel = (sel + 1) % (n + 1)
-        # A finished capability comes back to this menu, not Home: the operator is
-        # usually doing several jobs on one shelf, and landing on Home made their
-        # next "back" q quit the cockpit.
         elif key == keys.ENTER:
-            if sel == n:  # the Back row
-                return
-            _open_capability(host, specs[sel].key, screen, read_key)
+            return None if sel == n else sel  # the Back row leaves
         elif low in by_shortcut:
             # The exact one-key human/agent shortcut Rich rendered and the model
             # advertised — normalized to lowercase so an uppercase send still
             # routes (never a second, differently-cased action).
-            sel = by_shortcut[low]
-            _open_capability(host, specs[sel].key, screen, read_key)
+            return by_shortcut[low]
         elif legacy_ordinal is not None and legacy_ordinal <= n:
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
             # ordinal (e.g. "10") that no human raw keypress can ever produce in
             # one token. Never advertised (absent from actions/Rich); kept so an
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
-            sel = legacy_ordinal - 1
-            _open_capability(host, specs[sel].key, screen, read_key)
+            return legacy_ordinal - 1
 
 
 def _open_capability(
@@ -1234,7 +1255,7 @@ def _open_capability(
             if host.agent_confirm_fn is not None:
                 ctx = replace(ctx, confirm_fn=host.agent_confirm_fn)
         else:
-            ctx = replace(ctx, input_fn=_framed_input(host, screen, spec.title, ctx.input_fn))
+            ctx = _frame_prompts(ctx, host, screen, spec.title)
         try:
             spec.run(ctx)
         except shellout.ShellOut:
@@ -1259,19 +1280,36 @@ def _open_capability(
     _show(screen, r.render_capability_card(spec), read_key)
 
 
-def _framed_input(
-    host: Host, screen: Screen, title: str, input_fn: Callable[[str, str], str]
-) -> Callable[[str, str], str]:
-    """A typed prompt is read as a cooked line below the frame, so the frame must be
-    redrawn with the question first; otherwise the operator types under whatever the
-    walk showed last (usually the pre-flight's "Continue?")."""
+def _frame_prompts(ctx: WizardContext, host: Host, screen: Screen, title: str) -> WizardContext:
+    """A typed prompt is read as a cooked line below the frame. Straight after the
+    pre-flight, that frame still says "Continue?", so the operator typed under the
+    wrong question. Redraw it with the prompt then, or after a prompt this drew
+    itself; a screen the walk drew since (a review it is asking about) is left up."""
+    if ctx.present is None:
+        return ctx  # console-mode walk: there is no frame to correct
+    present, observe, ask = ctx.present, ctx.on_screen, ctx.input_fn
+    stale = [True]  # the screen shows the pre-flight or one of these prompt pages
+
+    def _present(renderable: RenderableType) -> None:
+        stale[0] = False
+        present(renderable)
+
+    def _observe(model: ScreenModel) -> None:
+        # walk.preflight draws then emits, so its emit marks the screen stale again.
+        if model.kind == "walk.preflight":
+            stale[0] = True
+        if observe is not None:
+            observe(model)
 
     def _ask(prompt: str, default: str = "") -> str:
-        screen.update(r.render_input_prompt(title, prompt))
-        _safe_emit(host, r.model_input_prompt(title, prompt))
-        return input_fn(prompt, default)
+        if stale[0]:
+            screen.update(r.render_input_prompt(title, prompt))
+            _safe_emit(host, r.model_input_prompt(title, prompt))
+        answer = ask(prompt, default)
+        stale[0] = True
+        return answer
 
-    return _ask
+    return replace(ctx, present=_present, on_screen=_observe, input_fn=_ask)
 
 
 @dataclass(frozen=True)

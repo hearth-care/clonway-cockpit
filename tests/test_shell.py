@@ -16,10 +16,11 @@ from dataclasses import replace
 import pytest
 from rich.console import Console
 
-from clonway_cockpit import keys, render, shell, usage
+from clonway_cockpit import keys, render, shell, usage, walk
 from clonway_cockpit.audit_log import AuditEvent
 from clonway_cockpit.doctor import DoctorActionKind, Fix, Probe, fixes_for
 from clonway_cockpit.registry import (
+    BlastRadius,
     CapabilitySpec,
     WizardContext,
     clear_capabilities,
@@ -2619,39 +2620,85 @@ def test_enter_on_a_shelf_row_also_returns_to_the_menu(usage_to_tmp):
 # --- F4: a typed prompt redraws the frame with its question first -------------
 
 
-def test_typed_prompt_redraws_the_frame_with_the_question(usage_to_tmp):
+def _prompting_walk(asked: list, *, review: object | None = None):
+    def _ask(ctx, bag):
+        if review is not None:
+            ctx.present(review)  # the walk shows what it is asking about
+        asked.append(ctx.input_fn("Search term:", ""))
+        return walk.StepResult(ok=True)
+
+    return walk.make_walk_handler(
+        title="Search",
+        steps=[walk.Step("ask", _ask)],
+        blast_radius=BlastRadius(summary="Writes nothing.", writes=False),
+        preconditions_fn=lambda ctx: [walk.Precondition("store", ok=True)],
+        equivalent_cli="x",
+    )
+
+
+def test_typed_prompt_after_the_preflight_redraws_the_frame(usage_to_tmp):
+    """F4: straight after the pre-flight, the frame still said "Continue?" while the
+    operator typed the search term below it. It is redrawn with the question first."""
     asked: list = []
     models: list = []
-
-    stale = render.render_walk_progress("Continue? [Y]es · [n]o")
-
-    def _walk(ctx):
-        ctx.present(stale)
-        asked.append(ctx.input_fn("Search term:", ""))
-
+    seen: list = []
     register_capability(
         CapabilitySpec(
-            key="find", shelf="A", title="Search", summary="s", equivalent_cli="x", run=_walk
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=_prompting_walk(asked),
         )
     )
-    scr = _Screen()
 
     def _input(prompt, default):
-        # When the line is read, the frame on screen is the question, not the old footer.
-        assert scr.frames[-1] is not stale
-        assert models[-1].kind == "walk.input" and models[-1].meta["prompt"] == "Search term:"
+        seen.append(models[-1])
         return "boiler"
 
-    fh = _FakeHost()
-    host = replace(fh.as_host(), on_screen=models.append)
     host = replace(
-        host,
+        _FakeHost().as_host(),
+        on_screen=models.append,
         build_walk_ctx=lambda screen, read_key, **kw: replace(
             _walk_ctx(screen, read_key, **kw), input_fn=_input
         ),
     )
-    shell.run_cockpit(host, read_key=_keys(["a", "q", "y"]), screen=scr)
+    shell.run_cockpit(host, read_key=_keys(["a", keys.ENTER, "q", "y"]), screen=_Screen())
     assert asked == ["boiler"]
+    assert seen[0].kind == "walk.input" and seen[0].meta["prompt"] == "Search term:"
+
+
+def test_typed_prompt_leaves_a_screen_the_walk_drew(usage_to_tmp):
+    """A walk that draws its own screen before asking (a review listing what the
+    answer is about) keeps that screen; only a stale pre-flight is replaced."""
+    asked: list = []
+    review = render.render_walk_progress("Rooms 1-12 listed here")
+    register_capability(
+        CapabilitySpec(
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=_prompting_walk(asked, review=review),
+        )
+    )
+    scr = _Screen()
+    at_prompt: list = []
+
+    def _input(prompt, default):
+        at_prompt.append(scr.frames[-1])
+        return "4"
+
+    host = replace(
+        _FakeHost().as_host(),
+        build_walk_ctx=lambda screen, read_key, **kw: replace(
+            _walk_ctx(screen, read_key, **kw), input_fn=_input
+        ),
+    )
+    shell.run_cockpit(host, read_key=_keys(["a", keys.ENTER, "q", "y"]), screen=scr)
+    assert at_prompt == [review]
 
 
 def test_agent_mode_prompts_are_not_wrapped(usage_to_tmp):

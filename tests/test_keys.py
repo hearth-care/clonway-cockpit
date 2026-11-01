@@ -360,3 +360,24 @@ def test_a_pasted_burst_keeps_every_character_outside_a_held_session(monkeypatch
     finally:
         os.close(master)
         os.close(slave)
+
+
+def test_a_lead_byte_without_its_continuation_does_not_swallow_the_next_key(monkeypatch):
+    """An 8-bit Meta key sends a lone byte that looks like a UTF-8 lead byte. The
+    key typed after it must still arrive, not be eaten as a continuation byte."""
+    import os
+    import pty
+    import tty
+
+    master, slave = pty.openpty()
+    try:
+        tty.setraw(slave)
+        monkeypatch.setattr(keys, "_held_fd", slave)
+        monkeypatch.setattr(keys, "_pushback", b"")
+        os.write(master, b"\xe1q")
+        first = keys.read_key()
+        assert keys.read_key() == "q"
+        assert first != "q"
+    finally:
+        os.close(master)
+        os.close(slave)

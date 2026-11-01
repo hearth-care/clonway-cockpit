@@ -89,7 +89,11 @@ def test_shell_injects_on_screen_into_walk_ctx():
 
     # Open shelf C (single spec → opens directly), which runs the handler, then quit.
     shell.run_cockpit(host, read_key=_keys(["c", "q"]), screen=_Screen())
-    # The handler-received ctx (last appended) carries the host observer.
+    # The handler-received ctx (last appended) delivers to the host observer. It may
+    # be wrapped (the shell watches for the pre-flight to frame typed prompts).
     handler_ctx = seen_ctx[-1]
-    assert handler_ctx.on_screen is on_screen_cb
+    probe = ScreenModel(kind="note", title="probe")
+    assert handler_ctx.on_screen is not None
+    handler_ctx.on_screen(probe)
+    assert captured[-1] is probe
     clear_capabilities()
