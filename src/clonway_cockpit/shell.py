@@ -610,12 +610,19 @@ def _home(
         key = read_key()
         low = key.lower() if len(key) == 1 else key
         selection = items[sel]
-        # ESC at home: with an empty back stack, quit (preserving today's behaviour).
-        # With frames on the stack the design punts ESC=quit for now — ESC at home
-        # still quits because home is the root; only Backspace pops back from nested
-        # views, and home itself has nowhere to pop to.
-        if low in ("q", keys.ESC):
+        # Every other screen uses q and Esc for "back", so on Home a reflexive one
+        # closed the whole cockpit. A person is asked first (y or a second q quits)
+        # and Esc does nothing here. Agent mode keeps the single-key quit: drivers
+        # end a session with one q (cmd "quit", stdin EOF) and never mistype.
+        if host.agent_mode and low in ("q", keys.ESC):
             return
+        if low == "q":
+            if _confirm_quit(host, screen, read_key):
+                return
+            dirty = True
+            continue
+        if key == keys.ESC:
+            continue
         # Backspace at home: pop back if there is somewhere to go. At home with an
         # empty stack it is a real no-op — nothing changed, so the loop just keeps
         # reading the next key in THIS invocation rather than ending the session
@@ -771,6 +778,12 @@ def _home(
         state, items, sel = _recapture(host, sel)
         keys.discard_pending()
         dirty = True
+
+
+def _confirm_quit(host: Host, screen: Screen, read_key: Callable[[], str]) -> bool:
+    screen.update(r.render_quit_confirm(host.app_label))
+    _safe_emit(host, r.model_quit_confirm(host.app_label))
+    return read_key() in ("y", "Y", "q", "Q")
 
 
 def _paint_home(
@@ -1136,14 +1149,10 @@ def _shelf(
         for i, s in enumerate(specs)
     ]
     by_shortcut = {item.shortcut: idx for idx, item in enumerate(menu_items) if item.shortcut}
-    # Load usage once per shelf render-loop and scale the inline notch against the
-    # GLOBAL peak (the busiest tool across ALL shelves), so heights are comparable
-    # shelf-to-shelf. Best-effort: an empty/failed load → no notch (today's look).
-    usage_map = host.usage.load()
-    peak = _usage_peak(usage_map)
+    # No usage notch here: the one-glyph heat bar meant nothing to operators, and its
+    # lowest step (▁) looked like a stray character at the end of rarely used rows.
     while True:
-        opens = [_spec_opens(usage_map, s.key) for s in specs] if usage_map else None
-        screen.update(r.render_menu(menu_title, menu_items, selected=sel, opens=opens, peak=peak))
+        screen.update(r.render_menu(menu_title, menu_items, selected=sel))
         _safe_emit(host, r.model_menu(menu_title, menu_items, selected=sel))
         key = read_key()
         low = key.lower() if len(key) == 1 else key
@@ -1159,42 +1168,27 @@ def _shelf(
             sel = (sel - 1) % (n + 1)
         elif key == keys.DOWN:
             sel = (sel + 1) % (n + 1)
+        # A finished capability comes back to this menu, not Home: the operator is
+        # usually doing several jobs on one shelf, and landing on Home made their
+        # next "back" q quit the cockpit.
         elif key == keys.ENTER:
             if sel == n:  # the Back row
                 return
             _open_capability(host, specs[sel].key, screen, read_key)
-            return
         elif low in by_shortcut:
             # The exact one-key human/agent shortcut Rich rendered and the model
             # advertised — normalized to lowercase so an uppercase send still
             # routes (never a second, differently-cased action).
-            _open_capability(host, specs[by_shortcut[low]].key, screen, read_key)
-            return
+            sel = by_shortcut[low]
+            _open_capability(host, specs[sel].key, screen, read_key)
         elif legacy_ordinal is not None and legacy_ordinal <= n:
             # Legacy agent compatibility alias ONLY: a multi-character all-digit
             # ordinal (e.g. "10") that no human raw keypress can ever produce in
             # one token. Never advertised (absent from actions/Rich); kept so an
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
-            _open_capability(host, specs[legacy_ordinal - 1].key, screen, read_key)
-            return
-
-
-def _spec_opens(usage_map: dict, key: str) -> int:
-    """The lifetime ``open`` count for ``key`` from a loaded usage map (0 if
-    absent / malformed). Tolerant — never raises."""
-    row = usage_map.get(key)
-    if not isinstance(row, dict):
-        return 0
-    n = row.get("open")
-    return n if isinstance(n, int) else 0
-
-
-def _usage_peak(usage_map: dict) -> int:
-    """The busiest tool's open count across the whole usage map — the denominator
-    the inline notch scales against, so heights are comparable shelf-to-shelf.
-    0 when there's no usage (the notch then renders nothing)."""
-    return max((_spec_opens(usage_map, k) for k in usage_map), default=0)
+            sel = legacy_ordinal - 1
+            _open_capability(host, specs[sel].key, screen, read_key)
 
 
 def _open_capability(
@@ -1239,6 +1233,8 @@ def _open_capability(
                 ctx = replace(ctx, input_fn=host.agent_input_fn)
             if host.agent_confirm_fn is not None:
                 ctx = replace(ctx, confirm_fn=host.agent_confirm_fn)
+        else:
+            ctx = replace(ctx, input_fn=_framed_input(host, screen, spec.title, ctx.input_fn))
         try:
             spec.run(ctx)
         except shellout.ShellOut:
@@ -1261,6 +1257,21 @@ def _open_capability(
     # reference-only: no handler, just the equivalent-CLI card
     _safe_emit(host, r.model_capability_card(spec))
     _show(screen, r.render_capability_card(spec), read_key)
+
+
+def _framed_input(
+    host: Host, screen: Screen, title: str, input_fn: Callable[[str, str], str]
+) -> Callable[[str, str], str]:
+    """A typed prompt is read as a cooked line below the frame, so the frame must be
+    redrawn with the question first; otherwise the operator types under whatever the
+    walk showed last (usually the pre-flight's "Continue?")."""
+
+    def _ask(prompt: str, default: str = "") -> str:
+        screen.update(r.render_input_prompt(title, prompt))
+        _safe_emit(host, r.model_input_prompt(title, prompt))
+        return input_fn(prompt, default)
+
+    return _ask
 
 
 @dataclass(frozen=True)

@@ -15,12 +15,13 @@ any agent script that asserts on it.
 |---|---|---|
 | `home` | `pill:<i>`, `need:<i>`, `shelf:<LETTER>` | `app_label`, `tenant_name` |
 | `shelf_menu` | `option:<identity>`, `back` | `label` |
-| `walk.preflight` | `change:<i>`, `precond:<i>` | `ready`, `equivalent_cli`, `remedy` |
+| `walk.preflight` | `change:<i>`, `precond:<i>` | `ready`, `equivalent_cli`, `remedy`, `writes` (False: a read-only walk, no `actions`, runs on without a key) |
+| `walk.input` | (prose region, no rows) | `prompt` (human mode only: drawn before a typed answer is read) |
 | `walk.result` | (prose region, no rows) | `ok`, `message`, `links` |
 | `card` | (prose region, no rows) | `equivalent_cli` |
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |
-| `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix`) |
+| `confirm` | (prose region, no rows) | `confirm_of` (`remedy` \| `doctor_fix` \| `quit`; `quit` is human mode only) |
 | `doctor` | `probe:<i>`, `fix:<n>` (callback/capability), `fix:display:<i>` | `warnings`, `errors`, `ok`, `focus_requested`, `focus_matched`, `focus_state`, `focus_row` |
 | `filter` | `match:<i>` | `term` |
 | `walk.progress` | `log:<i>` (sync), `stage:<key>` (staged) | `label`, `elapsed`, `stages` |

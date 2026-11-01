@@ -151,11 +151,11 @@ def test_action_container_matrix_never_crashes_real_home_and_preserves_base_acti
         needs = (NeedsItem("Park me", "deferred", "warn", "", actions=raw),)
     state = CockpitState(tenant_name="Clonway", needs=needs, home_actions=home_actions)
     models = []
-    reads = iter(["q"])
+    reads = iter(["q", "q"])
 
     shell.run_cockpit(_host_for(state, models), read_key=lambda: next(reads), screen=_Screen())
 
-    assert len(models) == 1
+    assert [m.kind for m in models] == ["home", "confirm"]  # Home, then the quit question
     assert {"up", "enter", "q"}.issubset(models[0].actions)
     if location == "home":
         assert ("z" in models[0].actions) is declared

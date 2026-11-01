@@ -157,7 +157,10 @@ def render_preflight(
     parts.append(Text(""))
     parts.append(chip(equivalent_cli))
     parts.append(Text(""))
-    if ready:
+    if ready and not blast_radius.writes:
+        # A read-only walk runs straight on; this frame is only seen for a moment.
+        parts.append(Text("  ▸ opening…", style=DIM))
+    elif ready:
         footer = Text("  ")
         footer.append("▸ ", style=ACCENT)
         footer.append("Continue?  ", style=DIM)
@@ -201,6 +204,30 @@ def render_remedy_confirm(remedy) -> RenderableType:
             body,
         )
     )
+
+
+def render_quit_confirm(app_label: str) -> RenderableType:
+    """Asked when ``q`` is pressed on Home, so one stray key cannot close the cockpit.
+    ``y`` or a second ``q`` quits; anything else returns to Home (the default is no)."""
+    body = Text("  ")
+    body.append("▸ ", style=ACCENT)
+    body.append(f"Quit {app_label}?  ", style=DIM)
+    body.append("[y]es", style=_KEY_STYLE)
+    body.append(" / ", style=DIM)
+    body.append("q", style=_KEY_STYLE)
+    body.append(" · ", style=DIM)
+    body.append("[N]o, any other key stays", style=DIM)
+    return page(Group(screen_header("▸", f"Quit {app_label}", "confirm"), Text(""), body))
+
+
+def render_input_prompt(title: str, prompt: str) -> RenderableType:
+    """Drawn just before a walk reads a typed answer, so the frame above the input
+    line shows the question being asked instead of the previous screen's footer."""
+    parts: list[RenderableType] = [screen_header("walk", title, "⏎ to finish"), Text("")]
+    parts.extend(Text(f"  {line}") for line in prompt.strip().splitlines() or [""])
+    parts.append(Text(""))
+    parts.append(Text("  ▸ type your answer below", style=DIM))
+    return page(Group(*parts))
 
 
 def render_walk_progress(message: str, progress: str = "") -> RenderableType:

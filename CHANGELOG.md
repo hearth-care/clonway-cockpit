@@ -11,6 +11,35 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+### Changed
+
+- Quitting from Home now asks first. `q` shows "Quit <app>? [y]es / q" (kind `confirm`,
+  `confirm_of: "quit"`); `y` or a second `q` quits and any other key goes back. Escape on
+  Home does nothing. Agent mode keeps the one-key quit. **Worker tests that end Home with a
+  single scripted `q` from a finite key list need a second `q` after the pin bump**; the
+  "q forever" readers (`CockpitDriver`, the usual `_keys` helper) are unaffected.
+- A capability opened from a multi-capability shelf menu returns to that menu when it
+  finishes, not to Home.
+- The shelf menu no longer draws the one-glyph usage notch (`▁`…`▇`) after each row.
+- Pulse labels are padded to the longest label (minimum nine characters, as before), so
+  long labels no longer run into their status.
+
+### Added
+
+- `BlastRadius(writes=False)` marks a read-only walk: its pre-flight is shown but runs on
+  without "Continue? [Y]es / [n]o". The default is `True`, so existing walks are unchanged.
+  It does not open a write path: any write still has to pass `confirm_apply`.
+- Before a walk reads a typed answer in the human cockpit, the frame is redrawn with the
+  question (`render_input_prompt` / `model_input_prompt`, kind `walk.input`), so the
+  operator no longer types under the previous screen's footer.
+
+### Fixed
+
+- Pasting into the `/` filter kept only the first character when a worker runs Home
+  without `run_cockpit`'s held raw session (xsource does): each key toggled raw mode with a
+  flush that discarded the rest of the paste. Multi-byte characters (`£`, `é`) are now read
+  whole as well.
+
 ## [0.5.0] - 2026-10-18
 
 ### Added
