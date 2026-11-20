@@ -54,3 +54,9 @@ def test_confirm_apply_ignores_unrelated_keys_and_keeps_waiting():
 def test_confirm_apply_console_mirrors_confirm_fn():  # TS1c
     assert walk.confirm_apply(_ctx(confirm_fn=lambda _p: True), equivalent_cli="x") is True
     assert walk.confirm_apply(_ctx(confirm_fn=lambda _p: False), equivalent_cli="x") is False
+
+
+def test_confirm_apply_declines_when_the_terminal_has_gone_away():
+    # A closed terminal reads as an empty key for ever; the gate must decline, not spin.
+    ctx = _ctx(read_key=lambda: "")
+    assert walk.confirm_apply(ctx, equivalent_cli="x") is False

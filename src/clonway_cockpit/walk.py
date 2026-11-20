@@ -670,7 +670,8 @@ def confirm_apply(
     keys.discard_pending()
     while True:
         k = ctx.read_key()
-        if k in _SAVE_YES or k in _SAVE_NO:
+        # An empty read is the terminal gone away (end of input): decline, never spin.
+        if not k or k in _SAVE_YES or k in _SAVE_NO:
             break
     applied = k in _SAVE_YES
     _audit_gate(
