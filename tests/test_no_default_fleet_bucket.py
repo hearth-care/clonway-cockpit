@@ -36,6 +36,10 @@ _UNCONFIGURED_LINE = "no fleet bucket configured: reminders are not being publis
 _SECRET = "SECRET-BODY-CONTENT"
 
 
+class NotFound(Exception):  # matched by name, as the real google error is
+    pass
+
+
 class _Blob:
     def __init__(self, store: dict, bucket: str, name: str, fail: Exception | None) -> None:
         self._store, self._bucket, self._name, self._fail = store, bucket, name, fail
@@ -49,7 +53,10 @@ class _Blob:
     def download_as_text(self) -> str:
         if self._fail:
             raise self._fail
-        return self._store[(self._bucket, self._name)]
+        try:
+            return self._store[(self._bucket, self._name)]
+        except KeyError:
+            raise NotFound(self._name) from None
 
 
 class _Bucket:

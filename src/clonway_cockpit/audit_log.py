@@ -19,11 +19,15 @@ from datetime import date as Date
 from pathlib import Path
 from typing import Any
 
+from clonway_cockpit.fleet_bucket import (
+    FleetStorageOutcome,
+    note_failure,
+    note_unconfigured,
+    resolve_fleet_bucket,
+)
 from clonway_cockpit.obs import atomic_append, resolve_run_id
 
 AUDIT_SCHEMA = "audit/1"
-_BUCKET = "clonway-orchestrator-eu-west2"
-_QUIET_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
 EVENTS = frozenset(
     {
         "capability.launched",
@@ -114,7 +118,7 @@ class _LocalJsonlAuditSink:
         worker_id: str,
         *,
         base_dir: Path,
-        bucket: str,
+        bucket: str | None,
         gcs: bool,
         storage_client_factory: StorageClientFactory | None,
         flush_every: int,
@@ -126,6 +130,7 @@ class _LocalJsonlAuditSink:
         self.gcs = gcs
         self.storage_client_factory = storage_client_factory or _default_factory()
         self.flush_every = flush_every
+        self.last_outcome: FleetStorageOutcome = FleetStorageOutcome.OK
         self.log = logger
         self._by_path: dict[str, list[dict[str, object]]] = {}
         self._since_flush = 0
@@ -155,20 +160,31 @@ class _LocalJsonlAuditSink:
             self.flush()
 
     def flush(self) -> bool:
+        """Upload buffered records to the fleet bucket. ``True`` when there was nothing
+        to upload or the upload succeeded; ``False`` when no bucket is configured or the
+        upload failed (``last_outcome`` says which). The local JSONL file is the record
+        of truth either way."""
         if not self.gcs or not self._by_path:
             return True
+        bucket_name = resolve_fleet_bucket(self.bucket)
+        if bucket_name is None:
+            note_unconfigured(self.log)
+            self.last_outcome = FleetStorageOutcome.NOT_CONFIGURED
+            self._by_path.clear()  # nothing will ever upload these; the local file has them
+            self._since_flush = 0
+            return False
+        path = f"audit/{self.worker_id}/"
         try:
-            bucket = self.storage_client_factory().bucket(self.bucket)
+            bucket = self.storage_client_factory().bucket(bucket_name)
             for path, records in self._by_path.items():
                 body = "".join(json.dumps(e, separators=(",", ":")) + "\n" for e in records)
                 bucket.blob(path).upload_from_string(body, content_type="application/x-ndjson")
             self._since_flush = 0
+            self.last_outcome = FleetStorageOutcome.OK
             return True
         except Exception as exc:  # noqa: BLE001 - best-effort mirror
-            if type(exc).__name__ in _QUIET_ERROR_NAMES:
-                self.log.debug("audit GCS flush skipped (%s)", type(exc).__name__)
-            else:
-                self.log.exception("audit GCS flush failed")
+            note_failure(self.log, exc, f"gs://{bucket_name}/{path}")
+            self.last_outcome = FleetStorageOutcome.FAILED
             return False
 
 
@@ -176,12 +192,18 @@ def make_audit_sink(
     worker_id: str,
     *,
     base_dir: Path | None = None,
-    bucket: str = _BUCKET,
+    bucket: str | None = None,
     gcs: bool | None = None,
     storage_client_factory: StorageClientFactory | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> AuditSink:
-    """Return a never-raising append-only audit sink for one worker."""
+    """Return a never-raising append-only audit sink for one worker.
+
+    The optional GCS mirror (``gcs=True`` or ``<WORKER>_AUDIT_GCS`` / ``CLONWAY_AUDIT_GCS``)
+    needs a bucket: the ``bucket`` argument, else ``CLONWAY_FLEET_BUCKET``. With neither,
+    the mirror uploads nothing and logs one info line; the local JSONL file is unaffected.
+    The returned sink also has ``flush() -> bool`` and ``last_outcome``.
+    """
     del now  # Reserved for future event-factory helpers; events carry their own timestamp today.
     return _LocalJsonlAuditSink(
         worker_id,

@@ -18,8 +18,10 @@ invoke your consumer callback before committing the object cursor; a callback
 exception yields re-delivery on the next :func:`poll`. Consumers MUST dedup by
 ``(signal.dedup_key, signal.emitted_at)``.
 
-**Fail-open.** On creds/offline errors :func:`poll` returns ``[]`` and logs at
-debug (same ``_QUIET_ERROR_NAMES`` idiom as ``emit.py``). A cursor write failure
+**Fail-open.** On creds/offline errors :func:`poll` returns an empty result and logs
+one warning (exception type and object path), with ``outcome`` set to ``FAILED``.
+With no bucket configured it reads nothing, logs one info line and reports
+``NOT_CONFIGURED``. A cursor write failure
 or ``on_delivery`` exception is also logged and leaves that object to be
 re-delivered — the delivery list returned by the call still contains those
 signals for audit/debug.
@@ -46,16 +48,24 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from clonway_cockpit.signals.emit import _BUCKET, _QUIET_ERROR_NAMES
+from clonway_cockpit.fleet_bucket import (
+    FleetStorageOutcome,
+    note_failure,
+    note_unconfigured,
+    resolve_fleet_bucket,
+)
 from clonway_cockpit.signals.model import Signal
 
 _log = logging.getLogger(__name__)
+
+# Credential/permission failures: reported (warning + ``last_outcome``) but never raised.
+_AUTH_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
 
 # Urgency ladder — "info" is lowest, "overdue" is highest.
 # min_urgency filtering excludes signals below the requested level.
@@ -80,6 +90,26 @@ class Subscription:
     workers: tuple[str, ...] | None = None  # None = all emitters in the bucket
     kinds: tuple[str, ...] | None = None  # filter on Signal.kind
     min_urgency: str | None = None  # info < soon < due < overdue
+
+
+class PollResult(list["Delivery"]):
+    """The deliveries :func:`poll` returned, plus how the poll went.
+
+    A plain ``list`` for every existing caller. ``outcome`` is ``OK``,
+    ``NOT_CONFIGURED`` (no bucket argument and no ``CLONWAY_FLEET_BUCKET``; nothing
+    was read) or ``FAILED`` (a read, listing, callback or cursor save failed; the
+    deliveries gathered before the failure are still returned).
+    """
+
+    outcome: FleetStorageOutcome
+
+    def __init__(
+        self,
+        deliveries: Sequence[Delivery] = (),
+        outcome: FleetStorageOutcome = FleetStorageOutcome.OK,
+    ) -> None:
+        super().__init__(deliveries)
+        self.outcome = outcome
 
 
 @dataclass(frozen=True)
@@ -163,18 +193,28 @@ class GcsCursorStore:
     Single-writer assumption: two replicas sharing a ``consumer_id`` will race on
     writes. The precondition narrows (but does not eliminate) the double-process
     window. Use ``min-instances=1`` Cloud Run jobs to enforce single-writer.
+
+    The bucket is the ``bucket=`` argument, else ``CLONWAY_FLEET_BUCKET``. With neither,
+    ``load`` returns ``None`` and ``save`` does nothing (one info line). ``last_outcome``
+    is the :class:`~clonway_cockpit.fleet_bucket.FleetStorageOutcome` of the latest
+    ``load`` or ``save``.
     """
 
     def __init__(
         self,
         consumer_id: str,
         *,
-        bucket: str = _BUCKET,
+        bucket: str | None = None,
         storage_client_factory: Callable[[], Any] | None = None,
     ) -> None:
         self._consumer_id = consumer_id
-        self._bucket = bucket
+        self._bucket_arg = bucket
         self._factory = storage_client_factory
+        self.last_outcome: FleetStorageOutcome = FleetStorageOutcome.OK
+
+    @property
+    def _bucket(self) -> str | None:
+        return resolve_fleet_bucket(self._bucket_arg)
 
     def _obj_name(self) -> str:
         return f"subscriptions/{self._consumer_id}/cursor.json"
@@ -186,10 +226,10 @@ class GcsCursorStore:
 
         return storage.Client()
 
-    def _get(self) -> tuple[dict[str, str], int | None]:
+    def _get(self, bucket: str) -> tuple[dict[str, str], int | None]:
         """Return (cursor dict, blob generation). ({}, None) if object absent."""
         client = self._client()
-        blob = client.bucket(self._bucket).blob(self._obj_name())
+        blob = client.bucket(bucket).blob(self._obj_name())
         try:
             text = blob.download_as_text()
             data: dict[str, str] = json.loads(text)
@@ -204,22 +244,31 @@ class GcsCursorStore:
         return f"{consumer_id}\x00{worker}"
 
     def load(self, consumer_id: str, worker: str) -> str | None:
+        bucket = self._bucket
+        if bucket is None:
+            note_unconfigured(_log)
+            self.last_outcome = FleetStorageOutcome.NOT_CONFIGURED
+            return None
         try:
-            data, _ = self._get()
+            data, _ = self._get(bucket)
+            self.last_outcome = FleetStorageOutcome.OK
             return data.get(self._key(consumer_id, worker))
         except Exception as exc:  # noqa: BLE001
-            if type(exc).__name__ in _QUIET_ERROR_NAMES:
-                _log.debug("GcsCursorStore.load skipped (%s)", type(exc).__name__)
-                return None
-            _log.exception("GcsCursorStore.load failed")
+            note_failure(_log, exc, f"gs://{bucket}/{self._obj_name()}")
+            self.last_outcome = FleetStorageOutcome.FAILED
             return None
 
     def save(self, consumer_id: str, worker: str, cursor: str) -> None:
+        bucket = self._bucket
+        if bucket is None:
+            note_unconfigured(_log)
+            self.last_outcome = FleetStorageOutcome.NOT_CONFIGURED
+            return
         try:
-            data, generation = self._get()
+            data, generation = self._get(bucket)
             data[self._key(consumer_id, worker)] = cursor
             client = self._client()
-            blob = client.bucket(self._bucket).blob(self._obj_name())
+            blob = client.bucket(bucket).blob(self._obj_name())
             # if_generation_match=0 means "create only if not yet exists".
             # For an existing object, the actual generation enforces single-writer.
             precondition = 0 if generation is None else generation
@@ -228,12 +277,13 @@ class GcsCursorStore:
                 content_type="application/json",
                 if_generation_match=precondition,
             )
+            self.last_outcome = FleetStorageOutcome.OK
         except Exception as exc:  # noqa: BLE001
             name = type(exc).__name__
-            if name in _QUIET_ERROR_NAMES:
-                _log.debug("GcsCursorStore.save skipped (%s)", name)
-                return
-            _log.exception("GcsCursorStore.save failed (%s)", name)
+            note_failure(_log, exc, f"gs://{bucket}/{self._obj_name()}")
+            self.last_outcome = FleetStorageOutcome.FAILED
+            if name in _AUTH_ERROR_NAMES:
+                return  # creds absent: reported above, never raised (as before)
             raise
 
 
@@ -341,7 +391,6 @@ def _read_signals(bucket_obj: Any, obj_name: str) -> list[Signal]:
     try:
         text = bucket_obj.blob(obj_name).download_as_text()
     except Exception as exc:  # noqa: BLE001
-        _log.debug("could not download archive object %s", obj_name)
         raise _ArchiveReadError(obj_name) from exc
     out: list[Signal] = []
     for raw_line in text.splitlines():
@@ -381,11 +430,11 @@ def poll(
     sub: Subscription,
     *,
     cursor_store: CursorStore,
-    bucket: str = _BUCKET,
+    bucket: str | None = None,
     storage_client_factory: Callable[[], Any] | None = None,
     on_delivery: Callable[[Delivery], None] | None = None,
     now: datetime | None = None,
-) -> list[Delivery]:
+) -> PollResult:
     """Return new :class:`Delivery` items since the last cursor, or ``[]`` on error.
 
     **Ordering.** Deliveries within a worker are in object-name order — chronological
@@ -403,10 +452,19 @@ def poll(
     will also be re-delivered — handle duplicates by deduping on
     ``(signal.dedup_key, signal.emitted_at)``.
 
-    **Fail-open.** Returns ``[]`` (never raises) on GCS creds/offline errors or
-    when worker discovery fails.
+    **Fail-open.** Returns an empty result (never raises) on GCS creds/offline errors
+    or when worker discovery fails. The result is a ``list`` whose ``outcome`` says
+    how the poll went: ``OK``, ``NOT_CONFIGURED`` (no ``bucket`` argument and no
+    ``CLONWAY_FLEET_BUCKET``; nothing was read) or ``FAILED`` (each failure is also
+    logged once at warning with its exception type and object path).
     """
     _ = now  # accepted for API symmetry with emit; not needed here
+    resolved = resolve_fleet_bucket(bucket)
+    if resolved is None:
+        note_unconfigured(_log)
+        return PollResult((), FleetStorageOutcome.NOT_CONFIGURED)
+    bucket = resolved
+    failed = False
 
     def _default_factory() -> Any:
         from google.cloud import storage  # noqa: PLC0415 — lazy import
@@ -418,36 +476,33 @@ def poll(
         client = factory()
         bkt = client.bucket(bucket)
     except Exception as exc:  # noqa: BLE001
-        if type(exc).__name__ in _QUIET_ERROR_NAMES:
-            _log.debug("signal poll skipped (%s)", type(exc).__name__)
-        else:
-            _log.exception("signal poll: client init failed")
-        return []
+        note_failure(_log, exc, f"gs://{bucket}/signals/")
+        return PollResult((), FleetStorageOutcome.FAILED)
 
     workers: tuple[str, ...] | None = sub.workers
     if workers is None:
         try:
             workers = tuple(_discover_workers(bkt))
         except Exception as exc:  # noqa: BLE001
-            if type(exc).__name__ in _QUIET_ERROR_NAMES:
-                _log.debug("signal poll: worker discovery skipped (%s)", type(exc).__name__)
-            else:
-                _log.exception("signal poll: worker discovery failed")
-            return []
+            note_failure(_log, exc, f"gs://{bucket}/signals/")
+            return PollResult((), FleetStorageOutcome.FAILED)
 
     deliveries: list[Delivery] = []
     for worker in workers:
         cursor = cursor_store.load(sub.consumer_id, worker)
         try:
             obj_names = _archive_objects_after(bkt, worker=worker, cursor=cursor)
-        except Exception:  # noqa: BLE001
-            _log.exception("signal poll: listing failed for worker %s", worker)
+        except Exception as exc:  # noqa: BLE001
+            note_failure(_log, exc, f"gs://{bucket}/signals/{worker}/")
+            failed = True
             continue
         active_date, processed = _decode_cursor(cursor)
         for obj_name in obj_names:
             try:
                 signals = _read_signals(bkt, obj_name)
-            except _ArchiveReadError:
+            except _ArchiveReadError as err:
+                note_failure(_log, err.__cause__ or err, f"gs://{bucket}/{obj_name}")
+                failed = True
                 break
             run_id = _run_id_from_path(obj_name)
             callback_failed = False
@@ -462,11 +517,9 @@ def poll(
                     if on_delivery is not None:
                         try:
                             on_delivery(delivery)
-                        except Exception:  # noqa: BLE001
-                            _log.exception(
-                                "signal poll: consumer callback failed for %s",
-                                obj_name,
-                            )
+                        except Exception as exc:  # noqa: BLE001
+                            note_failure(_log, exc, f"consumer callback for gs://{bucket}/{obj_name}")
+                            failed = True
                             callback_failed = True
                             break
             if callback_failed:
@@ -483,11 +536,12 @@ def poll(
                 processed = processed | {run_id}
             try:
                 cursor_store.save(sub.consumer_id, worker, _encode_cursor(active_date, processed))
-            except Exception:  # noqa: BLE001
-                _log.exception(
-                    "cursor save failed for %s/%s — object will be re-delivered",
-                    sub.consumer_id,
-                    worker,
+            except Exception as exc:  # noqa: BLE001
+                note_failure(
+                    _log,
+                    exc,
+                    f"cursor for {sub.consumer_id}/{worker} (object will be re-delivered)",
                 )
+                failed = True
 
-    return deliveries
+    return PollResult(deliveries, FleetStorageOutcome.FAILED if failed else FleetStorageOutcome.OK)

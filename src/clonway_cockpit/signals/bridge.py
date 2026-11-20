@@ -23,7 +23,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from clonway_cockpit.signals.emit import _BUCKET, emit_signals
+from clonway_cockpit.signals.emit import emit_signals
 from clonway_cockpit.signals.model import Signal, dedup_key
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ def failure_to_signal(
     *,
     worker_id: str,
     flag_env: str,
-    bucket: str = _BUCKET,
+    bucket: str | None = None,
     storage_client_factory: Callable[[], Any] | None = None,
 ) -> Callable[[HandoffFailure], None]:
     """Return an ``on_handoff_failed`` callback that emits an ``anomaly.detected`` Signal.
@@ -58,8 +58,10 @@ def failure_to_signal(
     - ``urgency="due"`` — handoff failures need attention now
     - ``level="error"``
 
-    The callback never raises; failures in ``emit_signals`` are swallowed by its
-    own best-effort idiom (same as any other signal flush).
+    ``bucket`` is the explicit fleet bucket; when ``None`` it falls back to
+    ``CLONWAY_FLEET_BUCKET``, and with neither nothing is published (one info line).
+    The callback never raises; failures in ``emit_signals`` are logged once at
+    warning and swallowed (same as any other signal flush).
     """
 
     def _callback(failure: HandoffFailure) -> None:
