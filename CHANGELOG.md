@@ -11,6 +11,8 @@ Record them here and bump the release tag before merging.
 
 ## [Unreleased]
 
+- Screens now use plain words for what a person sees ("latest" for the feed row, "same as typing" for the command chip, "before this can run" / "not ready yet" for checks, "guide" for the screen label). Agent frames and ids are unchanged. The public template and tests no longer name the real Google Cloud project.
+
 ### Changed
 
 - **There is no built-in fleet bucket any more (breaking for workers that relied on it).**

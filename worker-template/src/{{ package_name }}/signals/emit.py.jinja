@@ -26,7 +26,7 @@ from {{ package_name }}.signals.build import FACTORY, build_{{ package_name }}_s
 {% if deploy_shape == "local" %}
 # A launchd daemon's env is HOME-only, so a bare storage.Client() can't resolve
 # a GCP project. Pin it (xquill's deviation). Set to your project before go-live.
-_PROJECT: str | None = "clonway-care-bookkeeper"
+_PROJECT: str | None = "example-care-project"
 {% else %}
 # Cloud Run resolves the project from the runtime — bare Client(), no project=.
 _PROJECT: str | None = None

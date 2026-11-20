@@ -258,7 +258,7 @@ Against that bar, as of 2026-06-08:
   transport core, reference edge, and per-space memory are coded; worker wiring and operator deploy
   are the next slice.
 
-Project: `clonway-care-bookkeeper`, region `europe-west2`.
+Project: `example-care-project`, region `europe-west2`.
 
 ## The Chat transport — a Workspace add-on, not a classic app
 

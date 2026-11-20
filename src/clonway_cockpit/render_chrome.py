@@ -181,7 +181,7 @@ def _pill_text(p: Pill, *, selected: bool = False, label_width: int = 9) -> Text
 
 def render_pulse(state: CockpitState, *, selected: int | None = None) -> RenderableType:
     if not state.pills:
-        return Text("pulse   no feed data yet — run a sync", style=DIM)
+        return Text("latest  nothing new yet — run a sync", style=DIM)
     grid = Table(show_header=False, box=None, padding=(0, 3), pad_edge=False)
     grid.add_column(style=DIM)
     grid.add_column(no_wrap=True)
@@ -191,7 +191,7 @@ def render_pulse(state: CockpitState, *, selected: int | None = None) -> Rendera
     # distinctly: pulse rows ⏎ to sync. The cue rides the second gutter row when
     # there is one; a single-row pulse keeps just the label.
     n_rows = (len(pills) + 1) // 2
-    gutter = ["pulse"] + [""] * (n_rows - 1)
+    gutter = ["latest"] + [""] * (n_rows - 1)
     if n_rows > 1:
         # The ⏎ cue defaults to "⏎ sync" (xbook syncs the selected pill); a worker
         # whose pills are read-only (the Fleet Cockpit) passes pulse_hint, e.g.
@@ -474,8 +474,8 @@ def render_toolkit(
 
 
 def chip(cli: str) -> Text:
-    """The inset `equivalent CLI` command chip (P2) — shared by walks + cards."""
-    t = Text("equivalent CLI  ", style=DIM)
+    """The inset "same as typing" command chip (P2) — shared by walks + cards."""
+    t = Text("same as typing  ", style=DIM)
     t.append(f" {cli.strip()} ", style="bold white on grey23")
     return t
 
