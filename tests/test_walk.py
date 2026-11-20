@@ -835,3 +835,148 @@ def test_writing_walk_still_asks_continue():
     )
     assert ran == []
     assert next(m for m in models if m.kind == "walk.preflight").actions == ["enter", "y", "n"]
+
+
+# --- save screen (F1) -----------------------------------------------------------
+
+
+def _text(renderable) -> str:
+    con = Console(record=True, width=100)
+    con.print(renderable)
+    return con.export_text()
+
+
+def test_save_step_y_applies_and_unrelated_key_keeps_waiting():
+    seq = iter([" ", "x", "y"])
+    ctx = _key_ctx([], [])
+    ctx = WizardContext(**{**ctx.__dict__, "read_key": lambda: next(seq)})
+    assert walk.confirm_apply(ctx, equivalent_cli="x") is True
+
+
+def test_save_step_n_and_esc_decline():
+    for k in ("n", keys.ESC):
+        ctx = _key_ctx([], [k])
+        assert walk.confirm_apply(ctx, equivalent_cli="x") is False
+
+
+def test_review_page_is_drawn_before_the_key_is_read_with_exact_footer():
+    presented: list = []
+    seen_at_read: list = []
+    ctx = _key_ctx(presented, [])
+
+    def _read():
+        seen_at_read.append(len(presented))
+        return "a"
+
+    ctx = WizardContext(**{**ctx.__dict__, "read_key": _read})
+    ok = walk.confirm_apply(
+        ctx,
+        equivalent_cli="x",
+        review=("Save the plan", ["3 items will change", "Nothing is sent"]),
+        question="Save these changes?",
+    )
+    assert ok is True
+    assert seen_at_read == [1]
+    out = _text(presented[0])
+    for want in (
+        "Save the plan",
+        "3 items will change",
+        "Nothing is sent",
+        "Save these changes?",
+        "A or Enter saves · N or Esc cancels",
+    ):
+        assert want in out
+    assert "any key to return" not in out
+
+
+def test_review_goes_out_before_the_gate_frame_in_agent_mode():
+    from clonway_cockpit.model import ScreenModel  # noqa: F401
+
+    frames: list = []
+    ctx = _key_ctx([], [], dry_run=True, authorize_apply=lambda proposal: False)
+    ctx = WizardContext(**{**ctx.__dict__, "on_screen": frames.append})
+    walk.confirm_apply(ctx, equivalent_cli="x", review=("Save", ["line one"]), question="Save?")
+    kinds = [f.kind for f in frames]
+    assert kinds[0] == "walk.review" and kinds.index("walk.gate") > 0
+    assert frames[0].meta["keys"] == "A or Enter saves · N or Esc cancels"
+    assert frames[0].meta["lines"] == ["line one"]
+
+
+def test_render_note_hint_and_default():
+    from clonway_cockpit import render
+
+    assert "any key to return" in _text(render.render_note("T", "d"))
+    out = _text(render.render_note("T", "d", hint="A saves"))
+    assert "A saves" in out and "any key to return" not in out
+    assert render.model_note("T", "d", hint="A saves").meta["hint"] == "A saves"
+    assert "hint" not in render.model_note("T", "d").meta
+
+
+def test_links_heading_parameter_and_context_default():
+    from clonway_cockpit import render
+
+    links = [("Doc 1", "https://example.test/1")]
+    assert "view in Xero" in _text(
+        render.render_walk_result("T", ok=True, message="m", links=links)
+    )
+    out = _text(
+        render.render_walk_result("T", ok=True, message="m", links=links, links_heading="open it")
+    )
+    assert "open it" in out and "view in Xero" not in out
+
+    presented: list = []
+    ctx = _key_ctx(presented, [" "])
+    ctx = WizardContext(**{**ctx.__dict__, "links_heading": "view in Drive"})
+    step = Step("s", lambda c, bag: StepResult(ok=True, data={"result_links": links}))
+    walk.run_walk(
+        ctx,
+        title="T",
+        steps=[step],
+        blast_radius=BlastRadius(summary="x", writes=False),
+        preconditions=[],
+        equivalent_cli="x",
+    )
+    assert "view in Drive" in _text(presented[-1])
+
+
+def test_long_result_pages_and_space_advances(monkeypatch):
+    monkeypatch.setattr(walk, "_terminal_rows", lambda: 30)
+    presented: list = []
+    msg = "\n".join(["Done"] + [f"line {i}" for i in range(60)])
+    step = Step("s", lambda c, bag: StepResult(ok=True, data={"summary": msg}))
+    ctx = _key_ctx(presented, [" ", " ", "x"])
+    walk.run_walk(
+        ctx,
+        title="T",
+        steps=[step],
+        blast_radius=BlastRadius(summary="x", writes=False),
+        preconditions=[],
+        equivalent_cli="x",
+    )
+    pages = [t for t in (_text(p) for p in presented) if "page " in t]
+    assert "page 1 of 3 · space for more · any other key to return" in pages[0]
+    assert "page 2 of 3" in pages[1] and "line 0" not in pages[1]
+    assert "page 3 of 3" in pages[2] and "line 59" in pages[2]
+
+
+def test_long_result_pages_stop_on_other_key_and_agent_gets_all_lines(monkeypatch):
+    monkeypatch.setattr(walk, "_terminal_rows", lambda: 30)
+    msg = "\n".join(["Done"] + [f"line {i}" for i in range(60)])
+    step = Step("s", lambda c, bag: StepResult(ok=True, data={"summary": msg}))
+    kwargs = dict(
+        title="T",
+        steps=[step],
+        blast_radius=BlastRadius(summary="x", writes=False),
+        preconditions=[],
+        equivalent_cli="x",
+    )
+    presented: list = []
+    walk.run_walk(_key_ctx(presented, ["x"]), **kwargs)
+    pages = [t for t in (_text(p) for p in presented) if "page " in t]
+    assert len(pages) == 1 and "page 1 of 3" in pages[0]
+    frames: list = []
+    ctx = _key_ctx([], [], dry_run=True)
+    ctx = WizardContext(**{**ctx.__dict__, "on_screen": frames.append})
+    walk.run_walk(ctx, **kwargs)
+    result = [f for f in frames if f.kind == "walk.result"][-1]
+    assert "line 59" in result.meta["message"]

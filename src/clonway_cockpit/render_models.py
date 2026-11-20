@@ -293,26 +293,52 @@ def model_walk_result(
     ok: bool,
     message: str,
     links: list[tuple[str, str]] | None = None,
+    links_heading: str = "view in Xero",
 ) -> ScreenModel:
     """The semantic twin of :func:`render_walk_result`."""
     link_dicts = [{"label": lbl, "url": url} for lbl, url in (links or [])]
+    meta: dict = {"ok": ok, "message": message, "links": link_dicts}
+    if link_dicts and links_heading != "view in Xero":
+        meta["links_heading"] = links_heading
     return ScreenModel(
         kind="walk.result",
         title=title,
         regions=[MRegion("result", "", text=message)],
         actions=["any"],
-        meta={"ok": ok, "message": message, "links": link_dicts},
+        meta=meta,
     )
 
 
-def model_note(title: str, detail: str) -> ScreenModel:
+def model_save_review(title: str, lines: Sequence[str], question: str = "") -> ScreenModel:
+    """The semantic twin of :func:`render_save_review` — the page a driving agent is
+    shown before the gate frame, with the same key text a person sees."""
+    regions = [MRegion("review", "", text="\n".join(lines))]
+    if question:
+        regions.append(MRegion("question", "", text=question))
+    return ScreenModel(
+        kind="walk.review",
+        title=title,
+        regions=regions,
+        actions=["enter", "a", "y", "n", "esc"],
+        meta={
+            "lines": list(lines),
+            "question": question,
+            "keys": "A or Enter saves · N or Esc cancels",
+        },
+    )
+
+
+def model_note(title: str, detail: str, hint: str | None = None) -> ScreenModel:
     """The semantic twin of :func:`render_note` — a titled prose leaf, any key returns."""
+    meta: dict = {"detail": detail}
+    if hint is not None:
+        meta["hint"] = hint
     return ScreenModel(
         kind="note",
         title=title,
         regions=[MRegion("prose", "", text=detail)],
         actions=["any"],
-        meta={"detail": detail},
+        meta=meta,
     )
 
 

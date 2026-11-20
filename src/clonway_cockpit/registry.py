@@ -59,6 +59,10 @@ class WizardContext[ClientT]:
     # Optional framework audit sink. None keeps existing workers byte-identical.
     audit: AuditSink | None = None
     audit_worker: str = "cockpit"
+    # Heading above the final walk screen's links. A worker whose links are not Xero's sets
+    # this (or ``Host.links_heading``, which the shell copies here); a step can override it
+    # per run with ``StepResult.data["result_links_heading"]``.
+    links_heading: str = "view in Xero"
 
 
 AnyWizardContext = WizardContext[object]

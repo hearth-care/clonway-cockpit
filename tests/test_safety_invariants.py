@@ -30,15 +30,25 @@ def _ctx(*, read_key=None, confirm_fn=lambda _p: False) -> WizardContext:
 
 
 def test_confirm_apply_cockpit_accepts_enter_and_a():  # TS1a
-    for key in (keys.ENTER, "a", "A"):
+    for key in (keys.ENTER, "a", "A", "y", "Y"):
         ctx = _ctx(read_key=lambda k=key: k)
         assert walk.confirm_apply(ctx, equivalent_cli="x") is True
 
 
 def test_confirm_apply_cockpit_rejects_other_keys():  # TS1b
-    for key in (keys.ESC, "n", "N", "x", " "):
+    for key in (keys.ESC, "n", "N", "q", "Q"):
         ctx = _ctx(read_key=lambda k=key: k)
         assert walk.confirm_apply(ctx, equivalent_cli="x") is False
+
+
+def test_confirm_apply_ignores_unrelated_keys_and_keeps_waiting():
+    # Previously any other key declined; now it is ignored (deliberate, safer change).
+    seq = iter(["x", " ", keys.UP, "y"])
+    ctx = _ctx(read_key=lambda: next(seq))
+    assert walk.confirm_apply(ctx, equivalent_cli="x") is True
+    seq = iter([" ", "x", "n"])
+    ctx = _ctx(read_key=lambda: next(seq))
+    assert walk.confirm_apply(ctx, equivalent_cli="x") is False
 
 
 def test_confirm_apply_console_mirrors_confirm_fn():  # TS1c
