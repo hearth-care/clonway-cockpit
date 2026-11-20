@@ -1,14 +1,24 @@
 """Shared test fixtures for {{ worker_id }}.
 
+The ``clonway_cockpit.testing.no_live_storage`` plugin (loaded below) keeps every test off
+the machine it runs on: ``HOME`` and the gcloud configuration point at a temporary folder,
+bucket settings are removed, and building a real Google Cloud Storage client fails the test.
+A developer machine holds working credentials; without this a suite can write test data
+into live fleet storage. Mark a test ``@pytest.mark.live_storage`` only if it must reach
+real storage.
+
 ``fake_gcs`` patches the shared emitter's lazy ``google.cloud.storage`` import
 with an in-memory fake, so the flag-on emit path can be exercised without creds
-or network. Captures every upload as ``{blob_path: body}``.
+or network. Captures every upload as ``{blob_path: body}`` and configures an example
+bucket, because nothing is published without one.
 """
 
 from __future__ import annotations
 
 import pytest
 from clonway_cockpit.signals import emit as _emit
+
+pytest_plugins = ["clonway_cockpit.testing.no_live_storage"]
 
 
 class _FakeBlob:
@@ -47,5 +57,6 @@ class _FakeStorageModule:
 @pytest.fixture
 def fake_gcs(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     store: dict[str, str] = {}
+    monkeypatch.setenv("{{ worker_upper }}__FLEET_BUCKET", "example-fleet-bucket")
     monkeypatch.setattr(_emit, "_import_storage", lambda: _FakeStorageModule(store))
     return store

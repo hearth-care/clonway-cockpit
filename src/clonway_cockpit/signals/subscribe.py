@@ -518,7 +518,9 @@ def poll(
                         try:
                             on_delivery(delivery)
                         except Exception as exc:  # noqa: BLE001
-                            note_failure(_log, exc, f"consumer callback for gs://{bucket}/{obj_name}")
+                            note_failure(
+                                _log, exc, f"consumer callback for gs://{bucket}/{obj_name}"
+                            )
                             failed = True
                             callback_failed = True
                             break

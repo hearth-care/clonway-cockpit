@@ -51,6 +51,7 @@ from clonway_cockpit.signals.model import Signal
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
+
 class EmitResult(tuple[Signal, ...]):
     """The signals :func:`emit_signals` built, plus what happened to the upload.
 
@@ -172,16 +173,12 @@ def _flush(
     try:
         gcs = factory().bucket(bucket)
         body = "".join(json.dumps(s.to_wire(), separators=(",", ":")) + "\n" for s in signals)
-        gcs.blob(path).upload_from_string(
-            body, content_type="application/x-ndjson"
-        )
+        gcs.blob(path).upload_from_string(body, content_type="application/x-ndjson")
         if signals:
             date = now.astimezone(UTC).date().isoformat()
             rid = run_id or uuid.uuid4().hex
             path = f"signals/{worker_id}/{date}/{rid}.jsonl"
-            gcs.blob(path).upload_from_string(
-                body, content_type="application/x-ndjson"
-            )
+            gcs.blob(path).upload_from_string(body, content_type="application/x-ndjson")
         return FleetStorageOutcome.OK
     except Exception as exc:  # noqa: BLE001 — observability must never break worker logic
         note_failure(log, exc, f"gs://{bucket}/{path}")

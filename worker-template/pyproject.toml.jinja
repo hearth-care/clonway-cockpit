@@ -47,6 +47,8 @@ addopts = "-ra --strict-markers"
 markers = [
     "horizon_stub: marks the xfail test guarding the empty @scan_horizon stub",
 ]
+# Worker-specific bucket settings the no_live_storage guard removes before every test.
+no_live_storage_env_vars = ["{{ worker_upper }}__FLEET_BUCKET"]
 
 [tool.ruff]
 line-length = 100

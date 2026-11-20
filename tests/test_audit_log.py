@@ -20,6 +20,12 @@ from clonway_cockpit.audit_log import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _fleet_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the upload path, which needs a bucket; there is no built-in one."""
+    monkeypatch.setenv("CLONWAY_FLEET_BUCKET", "example-fleet-bucket")
+
+
 class _FakeBlob:
     def __init__(self, store: dict[str, str], name: str) -> None:
         self._store = store

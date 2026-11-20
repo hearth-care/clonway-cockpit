@@ -23,6 +23,12 @@ _NOW = datetime(2026, 5, 25, 9, 0, 0, tzinfo=UTC)
 _TODAY = Date(2026, 5, 25)
 
 
+@pytest.fixture(autouse=True)
+def _fleet_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the upload path, which needs a bucket; there is no built-in one."""
+    monkeypatch.setenv("CLONWAY_FLEET_BUCKET", "example-fleet-bucket")
+
+
 # ---- fakes -----------------------------------------------------------------
 
 

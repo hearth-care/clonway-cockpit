@@ -38,6 +38,14 @@ def test_emit_writes_latest_when_flag_on(monkeypatch, fake_gcs) -> None:
     assert fake_gcs[_LATEST] == ""  # empty set → empty body, snapshot still flushed
 
 
+def test_emit_publishes_nothing_without_a_configured_bucket(monkeypatch, fake_gcs) -> None:
+    monkeypatch.setenv("{{ emit_flag }}", "1")
+    monkeypatch.delenv("{{ worker_upper }}__FLEET_BUCKET", raising=False)
+    out = scan_and_emit(now=_NOW)
+    assert out.outcome == "not_configured"
+    assert fake_gcs == {}  # no bucket, no upload
+
+
 def test_cli_scan_disabled_when_flag_off(monkeypatch) -> None:
     monkeypatch.delenv("{{ emit_flag }}", raising=False)
     result = runner.invoke(app, ["signals", "scan"])

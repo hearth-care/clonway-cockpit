@@ -135,9 +135,11 @@ _LAST_FLUSH_OUTCOME: dict[str, FleetStorageOutcome] = {}
 
 
 def last_flush_outcome(worker_id: str) -> FleetStorageOutcome | None:
-    """The outcome of ``worker_id``'s latest ``run_session`` flush in this process, or
-    ``None`` if it has not flushed (or the runtime gate skipped the upload)."""
+    """The outcome of ``worker_id``'s latest non-empty buffer flush in this process (the
+    one ``run_session`` makes on exit), or ``None`` if there has been none since the
+    ``run_session`` began or the runtime gate skipped the upload."""
     return _LAST_FLUSH_OUTCOME.get(worker_id)
+
 
 # Per-(worker_id) run buffer. None when no run_session is active on this
 # contextvar — in that case event() goes straight to local logging (+ cloud
@@ -256,6 +258,29 @@ def flush_buffer_outcome(
     """
     if not buffer:
         return FleetStorageOutcome.OK
+    outcome = _upload_buffer(
+        buffer,
+        worker_id=worker_id,
+        run_id=run_id,
+        bucket=bucket,
+        project=project,
+        storage_client_factory=storage_client_factory,
+        log=log,
+    )
+    _LAST_FLUSH_OUTCOME[worker_id] = outcome
+    return outcome
+
+
+def _upload_buffer(
+    buffer: list[dict],
+    *,
+    worker_id: str,
+    run_id: str | None,
+    bucket: str | None,
+    project: str | None,
+    storage_client_factory: StorageClientFactory | None,
+    log: logging.Logger,
+) -> FleetStorageOutcome:
     resolved = resolve_fleet_bucket(bucket)
     if resolved is None:
         note_unconfigured(log)
@@ -471,7 +496,8 @@ def make_obs(
                 _RUN_BUFFERS.reset(buffer_token)
             session_buffer = buffer[flush_from:]
             if _flush_allowed():
-                _LAST_FLUSH_OUTCOME[worker_id] = flush_buffer_outcome(
+                _LAST_FLUSH_OUTCOME.pop(worker_id, None)
+                flush_buffer(
                     session_buffer,
                     worker_id=worker_id,
                     run_id=rid,

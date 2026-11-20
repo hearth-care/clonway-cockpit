@@ -214,7 +214,10 @@ class _Failure:
 def test_bridge_threads_bucket_and_env(flag, monkeypatch):
     client = _Client()
     failure_to_signal(
-        worker_id="demo", flag_env="DEMO_EMIT", bucket=_EXPLICIT, storage_client_factory=lambda: client
+        worker_id="demo",
+        flag_env="DEMO_EMIT",
+        bucket=_EXPLICIT,
+        storage_client_factory=lambda: client,
     )(_Failure())
     assert {b for b, _ in client.store} == {_EXPLICIT}
     monkeypatch.setenv(FLEET_BUCKET_ENV, _FROM_ENV)
@@ -309,7 +312,9 @@ def test_gcs_cursor_store_failed_save_reports_and_warns(caplog):
 
 # ---- telemetry ------------------------------------------------------------------
 
-_BUF = [{"event": "x", "ts": "2026-05-25T09:00:00+00:00", "payload": {"severity": "INFO", "d": _SECRET}}]
+_BUF = [
+    {"event": "x", "ts": "2026-05-25T09:00:00+00:00", "payload": {"severity": "INFO", "d": _SECRET}}
+]
 
 
 def _flush(client: _Client, **kw):

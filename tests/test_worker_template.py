@@ -574,7 +574,17 @@ def test_ac_c6_2_emit_flag_guarded_writes_latest(tmp_path: Path, monkeypatch) ->
 
         # Flag ON → writes signals/<worker>/latest.jsonl (empty body for the
         # empty stub set — the read-model snapshot is still flushed).
+        # No bucket configured → nothing published, and the result says so.
         monkeypatch.setenv("XGENEMIT_EMIT_SIGNALS", "1")
+        monkeypatch.delenv("XGENEMIT__FLEET_BUCKET", raising=False)
+        monkeypatch.delenv("CLONWAY_FLEET_BUCKET", raising=False)
+        unconfigured = worker_emit.scan_and_emit(now=_NOW)
+        assert unconfigured == ()
+        assert unconfigured.outcome == "not_configured"
+        assert store == {}
+
+        # The worker passes its own configured bucket explicitly.
+        monkeypatch.setenv("XGENEMIT__FLEET_BUCKET", "example-fleet-bucket")
         assert worker_emit.scan_and_emit(now=_NOW) == ()
         assert "signals/xgenemit/latest.jsonl" in store
         assert store["signals/xgenemit/latest.jsonl"] == ""
