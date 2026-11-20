@@ -17,7 +17,8 @@ any agent script that asserts on it.
 | `shelf_menu` | `option:<identity>`, `back` | `label` |
 | `walk.preflight` | `change:<i>`, `precond:<i>` | `ready`, `equivalent_cli`, `remedy`, `writes` (False: a read-only walk, no `actions`, runs on without a key) |
 | `walk.input` | (prose region, no rows) | `prompt` (human mode only: drawn before a typed answer is read) |
-| `walk.result` | (prose region, no rows) | `ok`, `message`, `links` |
+| `walk.result` | (prose region, no rows) | `ok`, `message`, `links` (+ `links_heading` when a worker overrides the default) |
+| `walk.review` | `review` and `question` prose regions | `lines`, `question`, `keys` (emitted by `confirm_apply(review=...)` ahead of the gate frame) |
 | `card` | (prose region, no rows) | `equivalent_cli` |
 | `note` | (prose region, no rows) | `detail` |
 | `help` | `help:<i>` (field `keys`) | — |

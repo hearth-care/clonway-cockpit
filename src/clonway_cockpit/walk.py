@@ -18,9 +18,10 @@ from __future__ import annotations
 import collections
 import contextlib
 import inspect
+import shutil
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -519,12 +520,29 @@ def preflight(
     return ctx.confirm_fn("Continue? [Y]es / [n]o")
 
 
-def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) -> bool:
+_SAVE_YES = (keys.ENTER, "a", "A", "y", "Y")
+_SAVE_NO = ("n", "N", keys.ESC, "q", "Q")
+
+
+def confirm_apply(
+    ctx: WizardContext,
+    *,
+    prompt: str = "",
+    equivalent_cli: str,
+    review: tuple[str, Sequence[str]] | None = None,
+    question: str = "",
+) -> bool:
     """The single write gate. The chip is drawn inside the review screen, so this
     only reads the gate key. The ONLY place a walk may post to Xero.
 
     ``equivalent_cli`` is kept in the signature for API stability even though the
     review screen renders it.
+
+    ``review`` (a title and lines) makes the save step draw its own page — the lines, the
+    ``question`` and a footer naming the keys — instead of relying on whatever screen the
+    walk left up. In agent mode the same content goes out as a ``walk.review`` frame ahead
+    of the gate frame. Keys in a terminal: Enter, ``a``, ``y`` save; ``n``, Esc, ``q``
+    cancel; any other key is ignored and the step keeps waiting.
 
     Agent mode (``ctx.dry_run``):
     * **guarded apply** (``ctx.authorize_apply`` set, M4) — mint a per-gate token, emit
@@ -537,6 +555,8 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     # of read_key/confirm_fn (FBA hardening: previously a read_key=None + dry_run ctx fell
     # through to confirm_fn and could post; not reachable via the agent channel, which always
     # sets read_key, but closed defensively so dry_run is the single source of truth).
+    if review is not None and ctx.dry_run:
+        _emit(ctx, render.model_save_review(review[0], review[1], question))
     if ctx.dry_run:
         if ctx.authorize_apply is not None:
             token = _next_gate_token()
@@ -644,9 +664,16 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
     # is still queued on the terminal and would otherwise be read as the answer, so
     # confirm a write the operator never saw. One tcflush: nothing to loop or cap, and a
     # no-op without a held raw session (pipes, tests, injected readers).
+    if review is not None:
+        _present(ctx, render.render_save_review(review[0], review[1], question))
+        _emit(ctx, render.model_save_review(review[0], review[1], question))
     keys.discard_pending()
-    k = ctx.read_key()
-    applied = k in (keys.ENTER, "a", "A")
+    while True:
+        k = ctx.read_key()
+        # An empty read is the terminal gone away (end of input): decline, never spin.
+        if not k or k in _SAVE_YES or k in _SAVE_NO:
+            break
+    applied = k in _SAVE_YES
     _audit_gate(
         ctx,
         "gate.applied" if applied else "gate.declined",
@@ -655,6 +682,63 @@ def confirm_apply(ctx: WizardContext, *, prompt: str = "", equivalent_cli: str) 
         equivalent_cli=equivalent_cli,
     )
     return applied
+
+
+# Rows the frame itself takes on a result screen: border (2), padding (2), header and its
+# rules (2), the blank line and outcome heading (2), and the blank and footer lines (2).
+_RESULT_CHROME_ROWS = 10
+
+
+def _terminal_rows() -> int:
+    return shutil.get_terminal_size((80, 24)).lines
+
+
+def _finish_screen(ctx: WizardContext, title: str, *, ok: bool, message: str, bag: dict) -> None:
+    """Draw the final walk screen and wait for a key. A terminal pages an outcome longer
+    than the window; the agent frame always carries every line."""
+    links = bag.get("result_links")
+    heading = bag.get("result_links_heading") or ctx.links_heading
+    _emit(
+        ctx,
+        render.model_walk_result(title, ok=ok, message=message, links=links, links_heading=heading),
+    )
+    head, *rest = message.split("\n")
+    link_rows = len(links) + 2 if links else 0
+    capacity = max(3, _terminal_rows() - _RESULT_CHROME_ROWS - link_rows)
+    paged = ctx.read_key is not None and not ctx.dry_run and len(rest) > capacity
+    if not paged:
+        _present(
+            ctx,
+            render.render_walk_result(
+                title, ok=ok, message=message, links=links, links_heading=heading
+            ),
+        )
+        _await(ctx)
+        return
+    pages = [rest[i : i + capacity] for i in range(0, len(rest), capacity)]
+    assert ctx.read_key is not None
+    for n, chunk in enumerate(pages, start=1):
+        last = n == len(pages)
+        footer = (
+            f"page {n} of {len(pages)} · any key to return"
+            if last
+            else f"page {n} of {len(pages)} · space for more · any other key to return"
+        )
+        _present(
+            ctx,
+            render.render_walk_result(
+                title,
+                ok=ok,
+                message="\n".join([head, *chunk]),
+                links=links,
+                links_heading=heading,
+                footer=footer,
+            ),
+        )
+        if last or ctx.read_key() != " ":
+            if last:
+                ctx.read_key()
+            return
 
 
 def run_walk(
@@ -688,29 +772,9 @@ def run_walk(
         result = step.run(ctx, bag)
         bag.update(result.data)
         if not result.ok:
-            _present(ctx, render.render_walk_result(title, ok=False, message=result.message))
-            _emit(ctx, render.model_walk_result(title, ok=False, message=result.message))
-            _await(ctx)
+            _finish_screen(ctx, title, ok=False, message=result.message, bag=bag)
             return
-    _present(
-        ctx,
-        render.render_walk_result(
-            title,
-            ok=True,
-            message=bag.get("summary") or "Done.",
-            links=bag.get("result_links"),
-        ),
-    )
-    _emit(
-        ctx,
-        render.model_walk_result(
-            title,
-            ok=True,
-            message=bag.get("summary") or "Done.",
-            links=bag.get("result_links"),
-        ),
-    )
-    _await(ctx)
+    _finish_screen(ctx, title, ok=True, message=bag.get("summary") or "Done.", bag=bag)
 
 
 def make_walk_handler(

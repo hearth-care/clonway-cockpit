@@ -331,14 +331,22 @@ def render_staged_progress(
 
 
 def render_walk_result(
-    title: str, *, ok: bool, message: str, links: list[tuple[str, str]] | None = None
+    title: str,
+    *,
+    ok: bool,
+    message: str,
+    links: list[tuple[str, str]] | None = None,
+    links_heading: str = "view in Xero",
+    footer: str = "press any key to return",
 ) -> RenderableType:
     """Final walk screen — a ✓/✗ + outcome lines + 'press any key to return'. Framed.
 
     ``links`` is an optional list of ``(label, url)`` pairs for the entities a
     confirmed post created — rendered as a "view in Xero" section of amber,
     underlined OSC-8 hyperlinks (clickable in modern terminals; plain text
-    elsewhere). ``None``/empty leaves the screen unchanged."""
+    elsewhere). ``None``/empty leaves the screen unchanged. ``links_heading`` names that
+    section for workers whose links are not Xero's; ``footer`` replaces the closing line
+    (the pager shows "page 1 of 3 ..." there)."""
     lines = message.split("\n")
     first = lines[0] if lines else ""
     head = Text("  ")
@@ -353,7 +361,7 @@ def render_walk_result(
         parts.append(Text(f"  {extra}", style=DIM))
     if links:
         parts.append(Text(""))
-        parts.append(Text("  view in Xero", style=DIM))
+        parts.append(Text(f"  {links_heading}", style=DIM))
         for label, url in links:
             row = Text("  ")
             # Rich's ``link <url>`` style emits an OSC-8 hyperlink — clickable in
@@ -361,14 +369,32 @@ def render_walk_result(
             row.append(label, style=f"{ACCENT} underline link {url}")
             parts.append(row)
     parts.append(Text(""))
-    parts.append(Text("  press any key to return", style=DIM))
+    parts.append(Text(f"  {footer}", style=DIM))
     return page(Group(*parts))
 
 
-def render_note(title: str, detail: str) -> RenderableType:
+SAVE_KEYS_FOOTER = "A or Enter saves · N or Esc cancels"
+
+
+def render_save_review(title: str, lines: Sequence[str], question: str = "") -> RenderableType:
+    """The page the save step draws for itself: what is about to be saved, the question,
+    and a footer that names the keys exactly (no "any key" wording on a page that saves)."""
+    parts: list[RenderableType] = [screen_header("save", title, ""), Text("")]
+    parts.extend(Text(f"  {line}") for line in lines)
+    if question:
+        parts.append(Text(""))
+        parts.append(Text(f"  {question}", style="bold"))
+    parts.append(Text(""))
+    parts.append(Text(f"  {SAVE_KEYS_FOOTER}", style=DIM))
+    return page(Group(*parts))
+
+
+def render_note(title: str, detail: str, hint: str | None = None) -> RenderableType:
     return page(
         Group(
-            screen_header("▸", title, "any key to return"), Text(""), Text(f"  {detail}", style=DIM)
+            screen_header("▸", title, "any key to return" if hint is None else hint),
+            Text(""),
+            Text(f"  {detail}", style=DIM),
         )
     )
 

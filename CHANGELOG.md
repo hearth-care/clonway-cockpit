@@ -13,6 +13,13 @@ Record them here and bump the release tag before merging.
 
 ### Changed
 
+- **The save step (`confirm_apply`) now ignores unrelated keys (the one behaviour change for
+  workers).** In a terminal, Enter, `a`/`A` and `y`/`Y` save; `n`/`N`, Esc and `q`/`Q`
+  cancel; any other key used to cancel and is now ignored while the step keeps waiting.
+  `y` previously cancelled, which contradicted the "[Y]es / [n]o" shown one screen earlier.
+  Agent-mode gate behaviour (tokens, dry-run) is unchanged. Worker tests that end a save
+  step with an arbitrary key to mean "decline" should send `n` or Esc.
+
 - Quitting from Home now asks first. `q` shows "Quit <app>? [y]es / q" (kind `confirm`,
   `confirm_of: "quit"`); `y` or a second `q` quits and any other key goes back. Escape on
   Home does nothing. Agent mode keeps the one-key quit. **Worker tests that end Home with a
@@ -25,6 +32,17 @@ Record them here and bump the release tag before merging.
   long labels no longer run into their status.
 
 ### Added
+
+- Opt-in, default behaviour unchanged: `confirm_apply(..., review=(title, lines), question="")`
+  draws its own review page with the footer "A or Enter saves · N or Esc cancels" (agent mode
+  emits a `walk.review` frame first). `render_note` / `model_note` take `hint=` for the header's
+  right-hand text. `render_walk_result` / `model_walk_result` take `links_heading=`; a host sets
+  it once with `Host.links_heading`, a step per run with `data["result_links_heading"]`.
+  `Host.show_usage=False` hides the Doctor "what you reach for" panel.
+- Shelf letters now work inside a shelf menu (a menu's own item keys win). A typed question is
+  drawn once (inside the frame) with only a `▸ ` cursor beneath it. A terminal result longer
+  than the window is paged ("page 1 of 3 · space for more · any other key to return"); agent
+  mode still receives every line.
 
 - `BlastRadius(writes=False)` marks a read-only walk: its pre-flight is shown but runs on
   without "Continue? [Y]es / [n]o". The default is `True`, so existing walks are unchanged.

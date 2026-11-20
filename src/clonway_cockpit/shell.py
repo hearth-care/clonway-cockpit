@@ -179,6 +179,11 @@ class Host:
     # default worker; a fleet bridge passes its own label ("Clonway Office doctor").
     # Defaulted so existing Host constructions that don't set it are unchanged.
     app_label: str = "xbook"
+    # Heading above the links on a walk's final screen; None leaves the worker's own
+    # ``WizardContext.links_heading`` (default "view in Xero") untouched.
+    links_heading: str | None = None
+    # False hides the Doctor screen's "what you reach for" usage counts.
+    show_usage: bool = True
     # Optional in-cockpit ack / snooze on a SELECTED needs-you item — the Fleet
     # bridge wires these to its real Firestore-backed lifecycle store; each takes the
     # selected NeedsItem and returns a short confirmation line (or None). The host
@@ -751,6 +756,7 @@ def _home(
                 screen,
                 read_key,
                 title=_shelf_label(state, low.upper()),
+                state=state,
             )
             nav.pop_back()
         else:
@@ -1079,7 +1085,7 @@ def _activate(
 ) -> None:
     kind, ref = item
     if kind == "shelf" and isinstance(ref, str):
-        _shelf(host, ref, screen, read_key, title=_shelf_label(state, ref))
+        _shelf(host, ref, screen, read_key, title=_shelf_label(state, ref), state=state)
         return
     if not isinstance(ref, int):
         return
@@ -1122,17 +1128,36 @@ def _shelf(
     read_key: Callable[[], str],
     *,
     title: str | None = None,
+    state: CockpitState | None = None,
 ) -> None:
+    """Open a shelf. With ``state`` given, another shelf's letter pressed in the shelf
+    menu moves straight to that shelf (a menu's own item keys always win)."""
+    while True:
+        switch = _shelf_once(host, letter, screen, read_key, title=title, state=state)
+        if switch is None or state is None:
+            return
+        letter, title = switch, _shelf_label(state, switch)
+
+
+def _shelf_once(
+    host: Host,
+    letter: str,
+    screen: Screen,
+    read_key: Callable[[], str],
+    *,
+    title: str | None = None,
+    state: CockpitState | None = None,
+) -> str | None:
     specs = [s for s in host.get_capabilities() if s.shelf == letter]
     if not specs:
-        return
+        return None
     # A shelf with exactly one spec has no real choice to make — open it directly
     # instead of forcing a second ⏎ through a one-row "browse" menu. For the fleet,
     # every worker-shelf is single-spec, so this removes a detour on every drill;
     # xbook's multi-spec shelves still get the menu (the branch below).
     if len(specs) == 1:
         _open_capability(host, specs[0].key, screen, read_key)
-        return
+        return None
     # The menu title names the worker (fleet roster) or xbook's shelf taxonomy.
     # Default to the canonical SHELVES name so callers that don't pass one (xbook)
     # are unchanged.
@@ -1143,7 +1168,7 @@ def _shelf(
         # may have added or removed capabilities on the shelf.
         specs = [s for s in host.get_capabilities() if s.shelf == letter]
         if not specs:
-            return
+            return None
         n = len(specs)  # navigable rows = the specs plus a trailing "Back"
         sel = min(sel, n)
         # One normalized item list feeds Rich, the model AND the dispatch map below —
@@ -1159,9 +1184,16 @@ def _shelf(
         # A finished capability comes back to this menu, not Home: the operator is
         # usually doing several jobs on one shelf, and landing on Home made their
         # next "back" q quit the cockpit.
-        opened = _shelf_menu_pass(host, screen, read_key, menu_title, menu_items, by_shortcut, sel)
+        other_shelves = frozenset(
+            x for x in (_shelf_letters(state) if state is not None else ()) if x != letter
+        )
+        opened = _shelf_menu_pass(
+            host, screen, read_key, menu_title, menu_items, by_shortcut, sel, other_shelves
+        )
+        if isinstance(opened, str):
+            return opened
         if opened is None:
-            return
+            return None
         sel = opened
         _open_capability(host, specs[sel].key, screen, read_key)
 
@@ -1174,8 +1206,10 @@ def _shelf_menu_pass(
     menu_items: list,
     by_shortcut: dict[str, int],
     sel: int,
-) -> int | None:
-    """Run the shelf menu until the operator picks a row (its index) or leaves (None)."""
+    other_shelves: frozenset[str] = frozenset(),
+) -> int | str | None:
+    """Run the shelf menu until the operator picks a row (its index), presses another
+    shelf's letter (that letter) or leaves (None)."""
     n = len(menu_items)
     # No usage notch here: the one-glyph heat bar meant nothing to operators, and its
     # lowest step (▁) looked like a stray character at the end of rarely used rows.
@@ -1210,6 +1244,8 @@ def _shelf_menu_pass(
             # agent that cached/used the old advertised "10"-style value still
             # opens the right capability.
             return legacy_ordinal - 1
+        elif low.isalpha() and low.upper() in other_shelves:
+            return low.upper()
 
 
 def _open_capability(
@@ -1245,6 +1281,8 @@ def _open_capability(
             audit=host.audit_sink,
             audit_worker=host.audit_worker,
         )
+        if host.links_heading is not None:
+            ctx = replace(ctx, links_heading=host.links_heading)
         # In agent mode, route a walk's typed-input / confirm prompts over the protocol so a capture
         # step is drivable by an agent (the driver answers each request) rather than blocking on
         # terminal stdin. Only swaps when serve_stdio supplied the agent fns; the live human cockpit
@@ -1305,6 +1343,10 @@ def _frame_prompts(ctx: WizardContext, host: Host, screen: Screen, title: str) -
         if stale[0]:
             screen.update(r.render_input_prompt(title, prompt))
             _safe_emit(host, r.model_input_prompt(title, prompt))
+            # The frame already shows the question; beneath it, only a cursor marker.
+            answer = ask("▸ ", default)
+            stale[0] = True
+            return answer
         answer = ask(prompt, default)
         stale[0] = True
         return answer
@@ -1613,7 +1655,7 @@ def _doctor(
             # claim a match for a row the operator is not on.
             focus_matched = decision.matched_identity(sel_arg)
             focus_row = decision.row if focus is not None else None
-            usage_arg = host.usage.load()  # best-effort; {} on any failure
+            usage_arg = host.usage.load() if host.show_usage else None  # best-effort; {} on failure
             specs_arg = host.get_capabilities()
             screen.update(
                 r.render_doctor(

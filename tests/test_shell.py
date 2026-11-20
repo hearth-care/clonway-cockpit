@@ -2741,3 +2741,101 @@ def test_shelf_menu_draws_no_usage_notch(usage_to_tmp, monkeypatch):
     monkeypatch.setattr(render, "render_menu", _spy)
     shell.run_cockpit(_FakeHost().as_host(), read_key=_keys(["a", "q", "q", "y"]), screen=_Screen())
     assert calls and all(k.get("opens") is None for k in calls)
+
+
+# --- F1: save screen companions in the shell --------------------------------
+
+
+def test_typed_prompt_question_is_drawn_once(usage_to_tmp):
+    asked: list = []
+    seen_prompts: list = []
+    register_capability(
+        CapabilitySpec(
+            key="find",
+            shelf="A",
+            title="Search",
+            summary="s",
+            equivalent_cli="x",
+            run=_prompting_walk(asked),
+        )
+    )
+
+    def _input(prompt, default):
+        seen_prompts.append(prompt)
+        return "boiler"
+
+    host = replace(
+        _FakeHost().as_host(),
+        build_walk_ctx=lambda screen, read_key, **kw: replace(
+            _walk_ctx(screen, read_key, **kw), input_fn=_input
+        ),
+    )
+    scr = _Screen()
+    shell.run_cockpit(host, read_key=_keys(["a", keys.ENTER, "q", "y"]), screen=scr)
+    assert "Search term:" not in "".join(seen_prompts)
+    assert sum("Search term:" in _text(f) for f in scr.frames) == 1
+
+
+def _two_shelves(ran: list) -> None:
+    for shelf, key in (("A", "a1"), ("A", "a2"), ("B", "b1"), ("B", "b2")):
+        register_capability(
+            CapabilitySpec(
+                key=key,
+                shelf=shelf,
+                title=f"Job {key}",
+                summary="s",
+                equivalent_cli=f"x {key}",
+                run=lambda ctx, key=key: ran.append(key),
+            )
+        )
+
+
+def test_shelf_letter_inside_a_shelf_switches_shelf(usage_to_tmp):
+    ran: list = []
+    _two_shelves(ran)
+    # a: open shelf A · b: switch to shelf B · 2: second job there · q q y: back, back, quit
+    shell.run_cockpit(
+        _FakeHost().as_host(), read_key=_keys(["a", "b", "2", "q", "q", "y"]), screen=_Screen()
+    )
+    assert ran == ["b2"]
+
+
+def test_item_key_wins_over_a_shelf_letter(usage_to_tmp):
+    ran: list = []
+    _two_shelves(ran)
+    # In shelf A, "1" and "2" are item keys; with ten items letters would be item keys too.
+    shell.run_cockpit(
+        _FakeHost().as_host(), read_key=_keys(["a", "1", "q", "q", "y"]), screen=_Screen()
+    )
+    assert ran == ["a1"]
+
+
+def test_doctor_usage_panel_can_be_turned_off(usage_to_tmp):
+    usage.record("doctor", "open")
+    probes = [Probe("auth · xero", "ok", "ok", None)]
+
+    def _doctor_text(host):
+        scr = _Screen()
+        shell.run_doctor(host, scr, _keys(["q"]))
+        return "\n".join(_text(f) for f in scr.frames)
+
+    host = _FakeHost(probes=probes).as_host()
+    assert "what you reach for" in _doctor_text(host)
+    assert "what you reach for" not in _doctor_text(replace(host, show_usage=False))
+
+
+def test_host_links_heading_reaches_the_walk_context(usage_to_tmp):
+    got: list = []
+    register_capability(
+        CapabilitySpec(
+            key="k",
+            shelf="A",
+            title="K",
+            summary="s",
+            equivalent_cli="x",
+            run=lambda ctx: got.append(ctx.links_heading),
+        )
+    )
+    host = replace(_FakeHost().as_host(), links_heading="view in Drive")
+    shell.run_cockpit(host, read_key=_keys(["a", "q", "y"]), screen=_Screen())
+    assert got == ["view in Drive"]
