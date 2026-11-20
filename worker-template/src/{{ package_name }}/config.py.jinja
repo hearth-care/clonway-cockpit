@@ -16,8 +16,22 @@ class WorkerConfig(BaseModel):
     tenant_name: str = "{{ worker_title }}"
     timezone: str = "Europe/London"
     workspace_api_key_env: SecretEnvName | None = None
+    # The shared fleet storage bucket this worker publishes to (signals, run telemetry,
+    # audit mirror). There is no built-in default: with none set, nothing is published.
+    # Set it in the config file or with {{ worker_upper }}__FLEET_BUCKET.
+    fleet_bucket: str | None = None
 
 
 def load(*, paths: Sequence[Path] | None = None) -> WorkerConfig:
     """Load {{ worker_id }} config from the first config file plus env overlay."""
     return load_config(WorkerConfig, worker_id="{{ worker_id }}", paths=paths)
+
+
+def fleet_bucket() -> str | None:
+    """The configured fleet bucket, or ``None``. Passed explicitly to every framework
+    writer; a config that cannot be read means "not configured", never a crash, because
+    publishing is best-effort."""
+    try:
+        return load().fleet_bucket
+    except Exception:  # noqa: BLE001
+        return None

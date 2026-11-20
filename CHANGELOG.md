@@ -13,6 +13,23 @@ Record them here and bump the release tag before merging.
 
 ### Changed
 
+- **There is no built-in fleet bucket any more (breaking for workers that relied on it).**
+  The signal emitter, subscriber and handoff bridge, run telemetry and the audit log used to
+  default to the live shared bucket's name. They now take the bucket from the `bucket=`
+  argument, else the `CLONWAY_FLEET_BUCKET` environment variable, else nothing. **At the next
+  pin bump, a worker that relied on the built-in bucket publishes nothing until it sets
+  `CLONWAY_FLEET_BUCKET` or passes `bucket=`.** To tell: the log shows one info line, `no
+  fleet bucket configured: reminders are not being published`, and the call returns a result
+  whose `outcome` is `"not_configured"` (`emit_signals` returns an `EmitResult`, `poll` a
+  `PollResult`, `flush_buffer` returns `False`; both new types are plain tuple/list subclasses,
+  so existing code is unchanged). The fix is two lines: set `CLONWAY_FLEET_BUCKET=<your bucket>`
+  in the service's environment, or pass `bucket="<your bucket>"` to the calls. Nothing raises
+  and no keyword changed name or position; the `bucket` parameters are now `str | None = None`.
+  The private `_BUCKET` constants in `signals.emit` and `obs` are gone.
+- A failed upload or read is no longer silent. Credentials, permission and offline errors used
+  to be logged at debug (or swallowed); every failure now logs one warning with the exception
+  type and the object path, never the contents, and is reported as the call's `outcome`
+  (`"failed"`) or, for `flush_buffer`, `False`. Nothing starts raising.
 - **The save step (`confirm_apply`) now ignores unrelated keys (the one behaviour change for
   workers).** In a terminal, Enter, `a`/`A` and `y`/`Y` save; `n`/`N`, Esc and `q`/`Q`
   cancel; any other key used to cancel and is now ignored while the step keeps waiting.
@@ -32,6 +49,19 @@ Record them here and bump the release tag before merging.
   long labels no longer run into their status.
 
 ### Added
+
+- A pytest guard that keeps a worker's tests off live storage:
+  `pytest_plugins = ["clonway_cockpit.testing.no_live_storage"]` in `tests/conftest.py` is the
+  one line that switches it on. For every test it points `HOME` and the gcloud configuration at
+  a temporary folder, clears `GOOGLE_APPLICATION_CREDENTIALS` and `CLONWAY_FLEET_BUCKET` (plus
+  any variables listed in the `no_live_storage_env_vars` ini option), and makes building a
+  Google Cloud Storage client fail the test unless it is marked `@pytest.mark.live_storage`.
+  `clonway_cockpit.testing` is now a package; the existing import path is unchanged. New
+  workers generated from `worker-template/` load it and read their bucket from their own
+  `fleet_bucket` config setting.
+- `clonway_cockpit.fleet_bucket` (`FleetStorageOutcome`, `resolve_fleet_bucket`),
+  `obs.flush_buffer_outcome` and `obs.last_flush_outcome`, `GcsCursorStore.last_outcome`, and a
+  `last_outcome` on the audit sink, to read what an upload did.
 
 - Opt-in, default behaviour unchanged: `confirm_apply(..., review=(title, lines), question="")`
   draws its own review page with the footer "A or Enter saves · N or Esc cancels" (agent mode

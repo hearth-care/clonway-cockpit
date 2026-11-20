@@ -25,7 +25,9 @@ from clonway_cockpit.obs._telemetry import (
     StorageClientFactory,
     event_buffer,
     flush_buffer,
+    flush_buffer_outcome,
     isolated_event_buffers,
+    last_flush_outcome,
     make_obs,
     resolve_run_id,
 )
@@ -43,7 +45,9 @@ __all__ = [
     "atomic_write_bytes",
     "event_buffer",
     "flush_buffer",
+    "flush_buffer_outcome",
     "isolated_event_buffers",
+    "last_flush_outcome",
     "make_obs",
     "resolve_run_id",
 ]

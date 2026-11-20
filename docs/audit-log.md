@@ -72,6 +72,17 @@ GCS mirroring is best-effort and never allowed to break cockpit work. It is enab
 
 The mirror path is `audit/<worker>/<YYYY-MM-DD>/<run_id>.jsonl` in the shared fleet bucket.
 
+The bucket is the `bucket=` argument to `make_audit_sink`, else the `CLONWAY_FLEET_BUCKET`
+environment variable. There is no built-in name. With neither, the mirror uploads nothing and
+logs `no fleet bucket configured: reminders are not being published` once at info level; the
+local JSONL file is unaffected. A failed upload logs one warning naming the exception type and
+the object path (never the contents) and keeps the records for the next flush.
+
+The sink returned by `make_audit_sink` is still called with an `AuditEvent` and never raises.
+It also has `flush() -> bool` (`True` when there was nothing to upload or the upload worked;
+`False` when no bucket is configured or the upload failed) and a `last_outcome` attribute
+(`"ok"`, `"not_configured"` or `"failed"`) so a caller can tell which.
+
 ## Reading And Rendering
 
 Use `read_events(base_dir, since=...)` for local JSONL readback, and render the ledger with:

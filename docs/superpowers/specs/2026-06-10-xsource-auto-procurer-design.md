@@ -32,7 +32,7 @@ Framework abstractions you will use (all in `src/clonway_cockpit/`):
 - `registry.py` — `CapabilitySpec(key, shelf, title, summary, run=walk_handler, blast_radius=…)`; register via `register_capability()`.
 - `walk.py` / `shell.py` — step-based walks; the **single write gate** is `confirm_apply()`: dry-run by default, real side effects only behind a guarded-apply token + `--allow-apply`. Agent mode sees `ScreenModel(kind="walk.gate", meta={"gate":"awaiting_apply","token":…})`.
 - `model.py` — `ScreenModel` JSON protocol (`schema_version="1.0"`), stable `Row.id`s; human Rich render and agent JSON are two projections of one screen, enforced by `assert_render_model_parity` and `assert_drives_clean`.
-- `signals/` — `Signal(kind, title, detail, due_at, dedup_key, source_id)`; kinds used here: `action.required`, `deadline.approaching`, `anomaly.detected`. Emit to `gs://clonway-orchestrator-eu-west2/signals/xsource/latest.jsonl` (+ dated archive), flag-gated by `XSOURCE_EMIT_SIGNALS` (default OFF), empty `latest.jsonl` written on clean runs to clear stale sets.
+- `signals/` — `Signal(kind, title, detail, due_at, dedup_key, source_id)`; kinds used here: `action.required`, `deadline.approaching`, `anomaly.detected`. Emit to `gs://example-fleet-bucket/signals/xsource/latest.jsonl` (+ dated archive), flag-gated by `XSOURCE_EMIT_SIGNALS` (default OFF), empty `latest.jsonl` written on clean runs to clear stale sets.
 - `gateway/` — `Gateway.complete_structured(messages, schema, role=…)` for the triage call. **Caveat:** the gateway's OpenAI-compatible adapter may not pass Anthropic's server-side web-search tool; see §8.4.
 
 Register xsource in the xops roster: `/Users/olliepage/Developer/Auto-Orchestrator/src/xops/bridge/workers.py` — add `"xsource"` to `ROSTER` and `"auto-procurer": "xsource"` to `WORKER_ALIASES` (separate PR to that repo, phase 3).
@@ -74,7 +74,7 @@ Walk-step structure for `request.new` (5 steps, matching journey frames 02–07)
 
 ## 6. Data model
 
-Store: worker-owned JSONL at `gs://clonway-orchestrator-eu-west2/state/xsource/` — `suppliers.jsonl`, `requests.jsonl`. Single operator ⇒ single writer; read-modify-write whole file is acceptable at this scale (hundreds of records). Keep a local cache for offline reads; offline degrades to read-only with a warn pill. Corrupt lines are quarantined with a warning, never a crash. Round-trip property test required (upsert → reload → identical).
+Store: worker-owned JSONL at `gs://example-fleet-bucket/state/xsource/` — `suppliers.jsonl`, `requests.jsonl`. Single operator ⇒ single writer; read-modify-write whole file is acceptable at this scale (hundreds of records). Keep a local cache for offline reads; offline degrades to read-only with a warn pill. Corrupt lines are quarantined with a warning, never a crash. Round-trip property test required (upsert → reload → identical).
 
 ```jsonc
 // Supplier
@@ -232,7 +232,7 @@ Unit-test matrix (minimum): fresh request → none; 3-day unanswered → chase; 
 - **Secrets (Secret Manager, loaded at startup; none in code):** Google Maps Platform key (Places API (New)); Anthropic API key (research role); Drive/Sheets OAuth token; reuse of milo.garth Gmail OAuth for `SafeOutreachClient` + watcher (compose/read as needed — keep xhr's `gmail.readonly` invariant on *xhr's* token untouched; xsource has its own).
 - **Costs:** Places text search ≈ pennies/call with a monthly free tier; Anthropic web search ≈ $10/1k searches + tokens. `[ASSUMPTION — verify both price sheets at build time; do not hardcode]`. Per-run cost estimate shown live on the research screen and written to obs telemetry (xops `model_spend` picks it up). Budget pill on Home: `◐` at 75% of monthly cap, `✗` + block new research walks at 100%.
 - **Deployment:** `deploy_shape=local`. Interactive runs in the cockpit on the Mac. launchd jobs (xquill precedent — see xquill's plist): watcher daemon, nightly sync, daily `signals scan` with `XSOURCE_EMIT_SIGNALS=1`. Cloud Run promotion only if ever needed.
-- **Telemetry:** obs JSONL to `gs://clonway-orchestrator-eu-west2/logs/xsource/…`; gateway telemetry stays content-free (no PII off-box).
+- **Telemetry:** obs JSONL to `gs://example-fleet-bucket/logs/xsource/…`; gateway telemetry stays content-free (no PII off-box).
 
 ## 14. Testing strategy
 

@@ -2058,7 +2058,7 @@ from xsource.research.companies_house import company_check
 from xsource.store.models import Request, Supplier
 from xsource.store.remote import SyncedStore, make_blob
 
-_BUCKET = "clonway-orchestrator-eu-west2"
+_BUCKET = "example-fleet-bucket"
 
 
 def build_stores(cfg: Config) -> tuple[SyncedStore, SyncedStore]:

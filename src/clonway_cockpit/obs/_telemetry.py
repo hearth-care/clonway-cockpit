@@ -19,7 +19,7 @@ The wire contract (do NOT change without coordinating with the xops dashboard):
   ``key=value`` extras) and — when ``runtime_env`` is set to ``cloud_run`` —
   mirrors to a worker-supplied Cloud Logging sink.
 * The buffer flushes to
-  ``gs://clonway-orchestrator-eu-west2/logs/<worker_id>/<YYYY-MM-DD>/<run_id>.jsonl``
+  ``gs://<fleet bucket>/logs/<worker_id>/<YYYY-MM-DD>/<run_id>.jsonl``
   where the date is taken from the FIRST buffered event's ``ts`` (so a run that
   straddles midnight UTC stays in one file) and ``run_id`` resolves to
   ``CLOUD_RUN_EXECUTION`` or a fresh uuid. Body is compact NDJSON with a
@@ -35,9 +35,13 @@ The wire contract (do NOT change without coordinating with the xops dashboard):
   otherwise. Workers with ``runtime_env=None`` (xquill's launchd daemon, whose
   production runtime IS local) keep the legacy behaviour byte-identical:
   always flush, ``source="cloud_run"``.
-* Best-effort: a creds-less / offline / quota-throttled environment degrades
-  silently, never crashing a worker run. An auth/forbidden failure (expected in
-  local/dev) logs at debug; anything else logs at exception.
+* No built-in bucket: the fleet bucket is the ``bucket=`` argument, else
+  ``CLONWAY_FLEET_BUCKET``, else none. With none, nothing is uploaded and one info
+  line says so (see :mod:`clonway_cockpit.fleet_bucket`).
+* Best-effort: a creds-less / offline / quota-throttled environment never crashes a
+  worker run. A failed upload is logged once at warning (exception type and object
+  path, never the contents) and reported through :func:`flush_buffer_outcome` and
+  :func:`last_flush_outcome`.
 
 ``google-cloud-storage`` is NOT a dependency of clonway-cockpit — the import is
 lazy (only the workers, which already depend on it, hit the default factory).
@@ -66,7 +70,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-_BUCKET = "clonway-orchestrator-eu-west2"  # shared fleet bucket
+from clonway_cockpit.fleet_bucket import (
+    FleetStorageOutcome,
+    note_failure,
+    note_unconfigured,
+    resolve_fleet_bucket,
+)
 
 # Opt-in override for the runtime flush gate: set to "1" to flush a
 # run_session's buffer to GCS even when the worker's ``runtime_env`` says this
@@ -120,10 +129,17 @@ RESERVED_LOGRECORD_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# google auth/forbidden error class names — matched by name so this module never
-# imports google packages clonway-cockpit doesn't depend on. A match logs at
-# debug (expected when creds are absent); anything else logs at exception.
-_QUIET_ERROR_NAMES = {"Forbidden", "GoogleAuthError", "DefaultCredentialsError"}
+# Outcome of the most recent run_session flush, per worker_id. A run_session cannot
+# return a value, so this is how a caller (or a test) sees whether the upload happened.
+_LAST_FLUSH_OUTCOME: dict[str, FleetStorageOutcome] = {}
+
+
+def last_flush_outcome(worker_id: str) -> FleetStorageOutcome | None:
+    """The outcome of ``worker_id``'s latest non-empty buffer flush in this process (the
+    one ``run_session`` makes on exit), or ``None`` if there has been none since the
+    ``run_session`` began or the runtime gate skipped the upload."""
+    return _LAST_FLUSH_OUTCOME.get(worker_id)
+
 
 # Per-(worker_id) run buffer. None when no run_session is active on this
 # contextvar — in that case event() goes straight to local logging (+ cloud
@@ -218,53 +234,104 @@ def _default_factory(project: str | None) -> StorageClientFactory:
     return factory
 
 
-def flush_buffer(
+def flush_buffer_outcome(
     buffer: list[dict],
     *,
     worker_id: str,
     run_id: str | None = None,
-    bucket: str = _BUCKET,
+    bucket: str | None = None,
     project: str | None = None,
     storage_client_factory: StorageClientFactory | None = None,
     log: logging.Logger,
-) -> bool:
-    """Upload ``buffer`` as one JSONL object to the orchestrator bucket.
+) -> FleetStorageOutcome:
+    """Upload ``buffer`` as one JSONL object to the fleet bucket; say what happened.
 
     Blob path is ``logs/<worker_id>/<YYYY-MM-DD>/<run_id>.jsonl`` where the date
     is taken from the first event's ``ts`` (a run straddling midnight UTC stays
-    in one file) and ``run_id`` resolves via :func:`resolve_run_id`. An empty
-    buffer is a no-op (returns ``True``). Returns ``True`` only on a clean
-    upload; swallows every error (auth/quota/transient/offline) — observability
-    must never break worker logic. Auth/forbidden failures (expected when creds
-    are absent) log at debug; anything else logs at exception.
+    in one file) and ``run_id`` resolves via :func:`resolve_run_id`.
+
+    The bucket is ``bucket``, else ``CLONWAY_FLEET_BUCKET``, else none. Returns
+    ``OK`` for a clean upload (and for an empty buffer, which is a no-op),
+    ``NOT_CONFIGURED`` when there is no bucket (one info line; nothing uploaded), or
+    ``FAILED`` when the upload raised (one warning with the exception type and object
+    path, never the contents). Never raises: observability must never break worker logic.
     """
     if not buffer:
-        return True
+        return FleetStorageOutcome.OK
+    outcome = _upload_buffer(
+        buffer,
+        worker_id=worker_id,
+        run_id=run_id,
+        bucket=bucket,
+        project=project,
+        storage_client_factory=storage_client_factory,
+        log=log,
+    )
+    _LAST_FLUSH_OUTCOME[worker_id] = outcome
+    return outcome
+
+
+def _upload_buffer(
+    buffer: list[dict],
+    *,
+    worker_id: str,
+    run_id: str | None,
+    bucket: str | None,
+    project: str | None,
+    storage_client_factory: StorageClientFactory | None,
+    log: logging.Logger,
+) -> FleetStorageOutcome:
+    resolved = resolve_fleet_bucket(bucket)
+    if resolved is None:
+        note_unconfigured(log)
+        return FleetStorageOutcome.NOT_CONFIGURED
     factory = storage_client_factory or _default_factory(project)
+    blob_path = f"logs/{worker_id}/"
     try:
         body = "\n".join(json.dumps(e, separators=(",", ":")) for e in buffer) + "\n"
         date = buffer[0]["ts"][:10]
         rid = resolve_run_id(run_id)
         blob_path = f"logs/{worker_id}/{date}/{rid}.jsonl"
-        factory().bucket(bucket).blob(blob_path).upload_from_string(
+        factory().bucket(resolved).blob(blob_path).upload_from_string(
             body, content_type="application/x-ndjson"
         )
-        return True
+        return FleetStorageOutcome.OK
     except Exception as exc:  # noqa: BLE001 — observability must never break worker logic
-        if type(exc).__name__ in _QUIET_ERROR_NAMES:
-            log.debug(
-                "obs flush skipped (%s); %d events not uploaded", type(exc).__name__, len(buffer)
-            )
-        else:
-            log.exception("obs flush failed; %d events dropped", len(buffer))
-        return False
+        note_failure(log, exc, f"gs://{resolved}/{blob_path}")
+        return FleetStorageOutcome.FAILED
+
+
+def flush_buffer(
+    buffer: list[dict],
+    *,
+    worker_id: str,
+    run_id: str | None = None,
+    bucket: str | None = None,
+    project: str | None = None,
+    storage_client_factory: StorageClientFactory | None = None,
+    log: logging.Logger,
+) -> bool:
+    """:func:`flush_buffer_outcome` as a boolean: ``True`` only when the buffer was
+    empty or uploaded cleanly. ``False`` means not uploaded, either because no fleet
+    bucket is configured or because the upload failed; use
+    :func:`flush_buffer_outcome` to tell which."""
+    outcome = flush_buffer_outcome(
+        buffer,
+        worker_id=worker_id,
+        run_id=run_id,
+        bucket=bucket,
+        project=project,
+        storage_client_factory=storage_client_factory,
+        log=log,
+    )
+    return outcome is FleetStorageOutcome.OK
 
 
 def make_obs(
     *,
     worker_id: str,
     project: str | None = None,
-    bucket: str = _BUCKET,
+    bucket: str | None = None,
     runtime_env: str | None = None,
     cloud_logging_sink: CloudLoggingSink | None = None,
     reserved_prefix: str = "field_",
@@ -298,6 +365,9 @@ def make_obs(
       ``xbook.logutil.get_logger``; others use stdlib ``logging.getLogger``.
       The logger name defaults to ``<worker_id>.obs``.
     * ``storage_client_factory`` — test injection / custom client construction.
+    * ``bucket`` — the fleet bucket the run's JSONL is uploaded to. ``None`` (the
+      default) defers to ``CLONWAY_FLEET_BUCKET`` at flush time; with neither, the
+      upload is skipped with one info line. There is no built-in name.
     """
     log_name = logger_name or f"{worker_id}.obs"
     get_log: LoggerFactory = logger_factory or logging.getLogger
@@ -426,6 +496,7 @@ def make_obs(
                 _RUN_BUFFERS.reset(buffer_token)
             session_buffer = buffer[flush_from:]
             if _flush_allowed():
+                _LAST_FLUSH_OUTCOME.pop(worker_id, None)
                 flush_buffer(
                     session_buffer,
                     worker_id=worker_id,
@@ -436,6 +507,7 @@ def make_obs(
                     log=get_log(log_name),
                 )
             else:
+                _LAST_FLUSH_OUTCOME.pop(worker_id, None)
                 get_log(log_name).debug(
                     "obs flush gated (%s != 'cloud_run', %s unset); %d events not uploaded",
                     runtime_env,

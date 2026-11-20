@@ -30,4 +30,13 @@ def cmd_scan() -> None:
         typer.echo("signals: disabled (set {{ emit_flag }}=1 to enable)")
         return
     signals = scan_and_emit()
-    typer.echo(f"signals: emitted {len(signals)}")
+    outcome = signals.outcome
+    if outcome == "not_configured":
+        typer.echo(
+            "signals: no fleet bucket configured: nothing published "
+            "(set {{ worker_upper }}__FLEET_BUCKET or CLONWAY_FLEET_BUCKET)"
+        )
+    elif outcome == "failed":
+        typer.echo(f"signals: built {len(signals)} but the upload failed (see the log)")
+    else:
+        typer.echo(f"signals: emitted {len(signals)}")

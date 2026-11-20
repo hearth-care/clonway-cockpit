@@ -34,6 +34,12 @@ from clonway_cockpit.obs import (
 # ---- fakes -----------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _fleet_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the upload path, which needs a bucket; there is no built-in one."""
+    monkeypatch.setenv("CLONWAY_FLEET_BUCKET", "example-fleet-bucket")
+
+
 class _FakeBlob:
     def __init__(self, store: dict[str, str], name: str) -> None:
         self._store = store
@@ -627,7 +633,7 @@ def test_flush_buffer_threads_bucket_and_body():  # CC-OBS-FLUSH-1
         log=logging.getLogger("t"),
     )
     assert ok is True
-    assert client._store["__bucket__"] == "clonway-orchestrator-eu-west2"
+    assert client._store["__bucket__"] == "example-fleet-bucket"
     body = client._store["logs/xbook/2026-05-25/rid.jsonl"]
     assert body == json.dumps(buf[0], separators=(",", ":")) + "\n"
 
@@ -691,10 +697,10 @@ def test_default_factory_no_project(monkeypatch):  # CC-OBS-FLUSH-4
     assert captured["project"] is None
 
 
-def test_flush_buffer_quiet_on_auth_error(caplog):  # CC-OBS-FLUSH-5
-    # An auth/forbidden failure (creds absent in local/dev) logs at debug, not
-    # exception — matching xbook's quiet skip. Matched by class name so this
-    # module never imports google.
+def test_flush_buffer_auth_error_is_a_single_warning(caplog):  # CC-OBS-FLUSH-5
+    # An auth/forbidden failure used to be logged at debug, which hid a failed upload
+    # entirely. It is now one warning naming the exception type and object path.
+    # Matched by class name so this module never imports google.
     class Forbidden(Exception):
         pass
 
@@ -713,9 +719,10 @@ def test_flush_buffer_quiet_on_auth_error(caplog):  # CC-OBS-FLUSH-5
             log=log,
         )
     assert ok is False
-    # Quiet: debug record, no ERROR/exception record.
-    assert all(r.levelno < logging.ERROR for r in caplog.records)
-    assert any("skipped" in r.getMessage() for r in caplog.records)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "Forbidden" in warnings[0].getMessage()
+    assert "logs/xbook/2026-05-25/rid.jsonl" in warnings[0].getMessage()
 
 
 def _flush_helper():

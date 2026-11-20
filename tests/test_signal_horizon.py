@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from datetime import date as Date
 
+import pytest
+
 from clonway_cockpit.signals.emit import emit_signals
 from clonway_cockpit.signals.horizon import (
     ScanHorizon,
@@ -26,6 +28,12 @@ from clonway_cockpit.state import NeedsItem
 
 _NOW = datetime(2026, 5, 25, 9, 0, 0, tzinfo=UTC)
 _TODAY = Date(2026, 5, 25)
+
+
+@pytest.fixture(autouse=True)
+def _fleet_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests exercise the upload path, which needs a bucket; there is no built-in one."""
+    monkeypatch.setenv("CLONWAY_FLEET_BUCKET", "example-fleet-bucket")
 
 
 def _signal(*, title: str, source_id: str) -> Signal:

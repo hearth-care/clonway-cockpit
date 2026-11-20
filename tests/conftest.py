@@ -19,6 +19,11 @@ from clonway_cockpit.registry import CapabilitySpec
 from clonway_cockpit.state import CockpitState, NeedsItem, Pill
 from clonway_cockpit.testing import capability_registry_guard as capability_registry_guard
 
+# The framework's own suite runs under the same guard it ships to workers, so no test here can
+# reach live storage even on a machine with working cloud credentials. ``pytester`` runs the
+# plugin's own tests.
+pytest_plugins = ["clonway_cockpit.testing.no_live_storage", "pytester"]
+
 _DOCTOR = CapabilitySpec(
     key="doctor",
     shelf="G",

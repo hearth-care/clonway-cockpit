@@ -10,15 +10,18 @@ worker is byte-identical on the xops dashboard.
   fires a local stdlib log line; buffered into the active run's JSONL flush.
 * ``run_session(trigger=…, args=…)`` — wraps a run: ``run.started`` … yield …
   ``run.finished`` + a JSONL flush to
-  ``gs://clonway-orchestrator-eu-west2/logs/{{ worker_id }}/<date>/<run_id>.jsonl``.
+  ``gs://<your fleet bucket>/logs/{{ worker_id }}/<date>/<run_id>.jsonl``.
 
-Both degrade silently with no creds (local/dev) — observability never breaks a
-worker run.
+The bucket comes from this worker's own config (``fleet_bucket``); the framework has no
+built-in name, so with none configured nothing is uploaded and one info line says so.
+A failed upload logs one warning; observability never breaks a worker run.
 """
 
 from __future__ import annotations
 
 from clonway_cockpit import obs as _obs
+
+from {{ package_name }}.config import fleet_bucket
 
 _WORKER_ID = "{{ worker_id }}"
 {%- if deploy_shape != "local" %}
@@ -32,6 +35,7 @@ _RUNTIME_ENV = None  # launchd daemon — no Cloud Logging mirror
 # caller field that collides with a LogRecord attribute, prefixed with this.
 event, run_session = _obs.make_obs(
     worker_id=_WORKER_ID,
+    bucket=fleet_bucket(),
 {%- if deploy_shape != "local" %}
     runtime_env=_RUNTIME_ENV,
 {%- endif %}

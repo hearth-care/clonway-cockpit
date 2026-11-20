@@ -19,8 +19,10 @@ _EXPECTED_EXPORTS = {
     "atomic_write_bytes",
     "event_buffer",
     "flush_buffer",
+    "flush_buffer_outcome",
     "make_obs",
     "isolated_event_buffers",
+    "last_flush_outcome",
     "resolve_run_id",
 }
 
