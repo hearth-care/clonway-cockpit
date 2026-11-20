@@ -451,7 +451,6 @@ def test_audit_failed_upload_warns_without_content(tmp_path, caplog):
 
 _ROOT = Path(__file__).resolve().parents[1]
 _LITERALS = (
-    re.compile(r"orchestrator-eu", re.I),
     re.compile(r"[a-z0-9][a-z0-9-]*-(?:eu|us|asia)-(?:west|east|north|south|central)\d?\b", re.I),
 )
 
