@@ -109,7 +109,8 @@ def render_capability_card(spec: CapabilitySpec) -> RenderableType:
             chip(spec.equivalent_cli),
             Text(""),
             Text(
-                "  not yet a guided walk — run the command above (Wave 2 wires this up)", style=DIM
+                "  not yet a guided screen — run the command above (Wave 2 wires this up)",
+                style=DIM,
             ),
         )
     )
@@ -134,7 +135,7 @@ def render_preflight(
     plain "fix the above first · press any key" message."""
     hint = f"{progress} · ‹esc› cancel" if progress else "‹esc› cancel"
     parts: list[RenderableType] = [
-        screen_header("walk", title, hint),
+        screen_header("guide", title, hint),
         Text(""),
         Text("what this does", style=DIM),
         Text(f"  {blast_radius.summary}"),
@@ -146,7 +147,7 @@ def render_preflight(
     if blast_radius.reversible:
         parts.append(Text(f"  {blast_radius.reversible}", style=DIM))
     parts.append(Text(""))
-    parts.append(Text("preconditions", style=DIM))
+    parts.append(Text("before this can run", style=DIM))
     for p in preconditions:
         row = Text("  ")
         row.append("✓ " if p.ok else "✗ ", style="#7faa7f" if p.ok else "#e06c6c")
@@ -171,7 +172,7 @@ def render_preflight(
     elif remedy is not None:
         footer = Text("  ")
         footer.append("▸ ", style=ACCENT)
-        footer.append("preconditions not met — press ", style="#e06c6c")
+        footer.append("not ready yet — press ", style="#e06c6c")
         footer.append(f"[{remedy.key}]", style=_KEY_STYLE)
         footer.append(f" to {remedy.label}", style="#e06c6c")
         footer.append(" · any other key to go back", style=DIM)
@@ -179,7 +180,7 @@ def render_preflight(
     else:
         footer = Text("  ")
         footer.append("▸ ", style=ACCENT)
-        footer.append("preconditions not met — fix the above first", style="#e06c6c")
+        footer.append("not ready yet — fix the above first", style="#e06c6c")
         footer.append(" · press any key", style=DIM)
         parts.append(footer)
     return page(Group(*parts))
@@ -199,7 +200,7 @@ def render_remedy_confirm(remedy) -> RenderableType:
     body.append("any other key cancels", style=DIM)
     return page(
         Group(
-            screen_header("walk", remedy.label.capitalize(), "confirm"),
+            screen_header("guide", remedy.label.capitalize(), "confirm"),
             Text(""),
             body,
         )
@@ -223,7 +224,7 @@ def render_quit_confirm(app_label: str) -> RenderableType:
 def render_input_prompt(title: str, prompt: str) -> RenderableType:
     """Drawn just before a walk reads a typed answer, so the frame above the input
     line shows the question being asked instead of the previous screen's footer."""
-    parts: list[RenderableType] = [screen_header("walk", title, "⏎ to finish"), Text("")]
+    parts: list[RenderableType] = [screen_header("guide", title, "⏎ to finish"), Text("")]
     parts.extend(Text(f"  {line}") for line in prompt.strip().splitlines() or [""])
     parts.append(Text(""))
     parts.append(Text("  ▸ type your answer below", style=DIM))
@@ -353,7 +354,7 @@ def render_walk_result(
     head.append("✓ " if ok else "✗ ", style="#7faa7f" if ok else "#e06c6c")
     head.append(first)
     parts: list[RenderableType] = [
-        screen_header("walk", title, "done"),
+        screen_header("guide", title, "done"),
         Text(""),
         head,
     ]
@@ -423,8 +424,8 @@ def render_ledger(events: Sequence[AuditEvent]) -> RenderableType:
 # model_help so the rendered help and its semantic twin can never drift.
 DEFAULT_HELP_LINES: tuple[tuple[str, str], ...] = (
     ("↑ ↓", "move the highlight"),
-    ("← →", "jump between the two columns (pulse pills · toolkit shelves)"),
-    ("⏎", "open the item · sync the selected pulse pill"),
+    ("← →", "jump between the two columns (status pills · tool shelves)"),
+    ("⏎", "open the item · sync the selected status pill"),
     ("1–9", "jump to a needs-you item"),
     ("A–G", "open a toolkit shelf"),
     ("/", "filter capabilities by name"),
@@ -789,7 +790,7 @@ def render_usage_section(usage: dict, specs: list[CapabilitySpec]) -> Renderable
         comp_rows.append(line)
     if comp_rows:
         parts.append(Text(""))
-        parts.append(Text("  completion  (posting walks)", style=DIM))
+        parts.append(Text("  completion  (posting)", style=DIM))
         parts.extend(comp_rows)
 
     return Group(*parts)

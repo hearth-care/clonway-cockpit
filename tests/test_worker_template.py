@@ -272,8 +272,8 @@ def test_ac_c6_1_cockpit_opens_three_region_shell(tmp_path: Path) -> None:
         cockpit.run_cockpit(read_key=lambda: "q", screen=_Screen())
         assert frames, "cockpit painted no frame"
         frame = frames[0]
-        # The three-region grammar: pulse / needs you / toolkit.
-        assert "pulse" in frame
+        # The three-region grammar: latest / needs you / toolkit.
+        assert "latest" in frame
         assert "needs you" in frame
         assert "toolkit" in frame
         assert "xgencockpit" in frame  # the worker's identity

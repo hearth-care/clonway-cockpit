@@ -260,10 +260,10 @@ def test_default_factory_threads_project(monkeypatch):  # CC-SIG-EMIT-7
         build=_build_one,
         now=_NOW,
         today=_TODAY,
-        project="clonway-care-bookkeeper",
+        project="example-care-project",
     )
     # xquill's launchd-env requirement: explicit project= threads through.
-    assert captured["project"] == "clonway-care-bookkeeper"
+    assert captured["project"] == "example-care-project"
 
 
 def test_default_factory_no_project(monkeypatch):  # CC-SIG-EMIT-8

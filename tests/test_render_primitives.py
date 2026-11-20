@@ -48,7 +48,7 @@ def test_cockpit_screen_has_three_regions():
     ]
     out = _capture(render.render_cockpit_screen(_state(), shelves))
     assert "Clonway Care" in out
-    assert "pulse" in out and "needs you" in out and "toolkit" in out
+    assert "latest" in out and "needs you" in out and "toolkit" in out
     assert "Bills overdue" in out  # ranked needs-you item
 
 
@@ -281,10 +281,10 @@ def test_render_needs_you_lists_items_with_count_badge():
 
 def test_render_help_default_is_xbook_verbatim():
     """H1 default-preserving — render_help() with no help_lines keeps xbook's exact
-    help body (toolkit shelves / sync the pulse pill / A–G / filter capabilities)."""
+    help body (tool shelves / sync the status pill / A–G / filter capabilities)."""
     out = _capture(render.render_help())
-    assert "toolkit shelves" in out
-    assert "sync the selected pulse pill" in out
+    assert "tool shelves" in out
+    assert "sync the selected status pill" in out
     assert "open a toolkit shelf" in out
     assert "filter capabilities by name" in out
     # The chrome (title + return hint) is present.
@@ -304,8 +304,8 @@ def test_render_help_renders_custom_help_lines():
     assert "open the selected worker" in out
     assert "open a worker · Fleet Doctor" in out
     # xbook's verbatim lines are gone.
-    assert "toolkit shelves" not in out
-    assert "sync the selected pulse pill" not in out
+    assert "tool shelves" not in out
+    assert "sync the selected status pill" not in out
     # The chrome is unchanged.
     assert "Keys" in out and "any key to return" in out
 

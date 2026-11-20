@@ -673,11 +673,11 @@ def test_default_factory_threads_project(monkeypatch):  # CC-OBS-FLUSH-3
         buf,
         worker_id="xsecretary",
         run_id="rid",
-        project="clonway-care-bookkeeper",
+        project="example-care-project",
         log=logging.getLogger("t"),
     )
     # xquill/xsecretary's launchd-env requirement: explicit project= threads through.
-    assert captured["project"] == "clonway-care-bookkeeper"
+    assert captured["project"] == "example-care-project"
 
 
 def test_default_factory_no_project(monkeypatch):  # CC-OBS-FLUSH-4
