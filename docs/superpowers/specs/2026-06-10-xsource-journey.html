@@ -572,7 +572,7 @@ it). The nightly sync extracts everything into the black book — nobody enters 
 <div class="duo">
   <div class="card"><h4>Design notes</h4><ul>
     <li><b>The sheet is the entry path; the store is the memory.</b> Sync extracts the human-editable columns (Chosen, Quote £, Status, Notes) into the request record and supplier histories. TUI book screens are browse/QA only — <code>[n]</code> add note and <code>[p]</code> preferred remain as conveniences, never requirements.</li>
-    <li>Store is worker-owned JSONL at <code>gs://clonway-orchestrator-eu-west2/state/xsource/</code> (<code>suppliers.jsonl</code>, <code>requests.jsonl</code>) — same bucket conventions as fleet telemetry/signals; single operator, single writer.</li>
+    <li>Store is worker-owned JSONL at <code>gs://example-fleet-bucket/state/xsource/</code> (<code>suppliers.jsonl</code>, <code>requests.jsonl</code>) — same bucket conventions as fleet telemetry/signals; single operator, single writer.</li>
     <li>Conflict rule: human columns — sheet wins; worker columns — store wins. Deterministic, no merge UI.</li>
     <li><code>book.import</code> seeds from your existing black book (CSV/Sheet, one-off). <code>book.publish</code> renders a read-only directory Sheet for staff. Supplier records carry optional <code>recurs_every</code> (boiler service: 12 months) — fuel for horizon signals.</li>
   </ul></div>

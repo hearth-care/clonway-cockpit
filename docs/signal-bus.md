@@ -142,9 +142,36 @@ discovery order for `workers=None`).
 
 ### Fail-open
 
-`poll()` returns `[]` and logs at DEBUG on creds/offline errors (`GoogleAuthError`,
-`DefaultCredentialsError`, `Forbidden`). It never raises. Worker logic that
-calls `poll()` is unaffected by GCS outages.
+`poll()` never raises. On a credentials, permission or offline error it returns an empty
+result and logs **one warning** naming the exception type and the object path (never the
+contents). Worker logic that calls `poll()` is unaffected by GCS outages, but a failure is no
+longer silent.
+
+The return value is a `list` subclass, `PollResult`, so existing code is unchanged. Its
+`outcome` attribute says how the poll went:
+
+| `outcome` | Meaning |
+|---|---|
+| `"ok"` | The poll completed (it may still have returned no new deliveries). |
+| `"not_configured"` | No bucket was given and `CLONWAY_FLEET_BUCKET` is unset. Nothing was read. |
+| `"failed"` | A listing, read, callback or cursor save failed. Deliveries gathered before the failure are still returned. |
+
+`GcsCursorStore` records the same values in `last_outcome` after each `load` / `save`.
+
+### Where the bucket comes from
+
+There is no built-in bucket name anywhere in the framework. `emit_signals`, `poll`,
+`GcsCursorStore` and `failure_to_signal` take the bucket from, in this order:
+
+1. the `bucket=` argument;
+2. the `CLONWAY_FLEET_BUCKET` environment variable;
+3. nothing. The call publishes or reads nothing, logs
+   `no fleet bucket configured: reminders are not being published` once at info level, and
+   returns the `not_configured` outcome.
+
+`emit_signals` returns an `EmitResult`: a tuple of the built signals (so existing code is
+unchanged) with an `outcome` attribute of `"ok"`, `"disabled"` (the worker's flag is off),
+`"not_configured"` or `"failed"`.
 
 ---
 
@@ -193,7 +220,7 @@ The push payload is a **doorbell only**. On receiving it, call the same
 Phase A (polling) and Phase B (push) are behaviourally identical from the
 consumer's perspective. The infra provisioning (topic, subscriptions, IAM) is
 operator work; nothing in this repo names topics, projects, or GCP resources
-beyond the `emit._BUCKET` symbol reference.
+beyond the bucket name a worker supplies (see "Where the bucket comes from" in section 4).
 
 ---
 

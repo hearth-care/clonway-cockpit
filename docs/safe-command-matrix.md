@@ -148,7 +148,7 @@ specific worker extend its own matrix.
 | `<WORKER> --agent-stdio` | | ✓ | | | | all configured integrations (resolved per screen, lazy) | `{"schema_version": …, "frame": "home", …}` (JSON, newline-delimited) |
 | `<WORKER> --agent-stdio --allow-apply` | | | | | ✓ | all configured integrations + apply-gate token | `{"schema_version": …, "frame": "home", …}` (JSON, newline-delimited) |
 | `<WORKER> signals scan` (`<EMIT_FLAG>` unset / `0`) | ✓ | | | | | none | `signals: disabled (set <EMIT_FLAG>=1 to enable)` |
-| `<WORKER> signals scan` (`<EMIT_FLAG>=1`) | | | | | ✓ | GCS service account (`clonway-orchestrator-eu-west2`) | `signals: emitted N` |
+| `<WORKER> signals scan` (`<EMIT_FLAG>=1`) | | | | | ✓ | GCS service account (`example-fleet-bucket`) | `signals: emitted N` |
 
 **Notes:**
 
@@ -161,7 +161,7 @@ specific worker extend its own matrix.
   write. Adding `--allow-apply` opts into that handshake, raising the class
   to External post/apply.
 - `<WORKER> signals scan` with flag set writes to the shared GCS fleet bucket
-  (`clonway-orchestrator-eu-west2`). The enabling flag (`<EMIT_FLAG>=1`) is
+  (`example-fleet-bucket`). The enabling flag (`<EMIT_FLAG>=1`) is
   the R6 gate: it is explicit, named, and defaults OFF.
 
 ---
